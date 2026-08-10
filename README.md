@@ -22,6 +22,10 @@ The first prototype includes:
 
 The prototype deliberately uses in-memory data. Persistence, auth and email reminders come after validating the interaction model.
 
+## Prototype deployment
+
+The review build is published through GitHub Pages from the `feat/v1-foundation` branch.
+
 ## Local development
 
 Requires Node.js 20.9 or newer.
