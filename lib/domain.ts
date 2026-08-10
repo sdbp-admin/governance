@@ -1,0 +1,51 @@
+export type AttentionKind = "project_update" | "action" | "tension" | "governance";
+export type AttentionStatus = "needs_action" | "deferred" | "done";
+
+export type Person = {
+  id: string;
+  name: string;
+  email: string;
+  legalPosition?: string;
+  roles: string[];
+};
+
+export type Project = {
+  id: string;
+  title: string;
+  ownerId: string;
+  role?: string;
+  status: "active" | "paused" | "complete";
+  lastUpdate: string;
+  nextPrompt: string;
+  summary: string;
+};
+
+export type Action = {
+  id: string;
+  title: string;
+  ownerId: string;
+  status: "proposed" | "open" | "done" | "cancelled";
+  due?: string;
+  source?: string;
+};
+
+export type Tension = {
+  id: string;
+  title: string;
+  raiserId: string;
+  linkedProjectId?: string;
+  status: "open" | "resolved" | "needs_sync" | "governance";
+  waitingFor?: string;
+  createdAt: string;
+};
+
+export type AttentionItem = {
+  id: string;
+  kind: AttentionKind;
+  title: string;
+  reason: string;
+  primaryAction: string;
+  status: AttentionStatus;
+  due?: string;
+  staleDays?: number;
+};
