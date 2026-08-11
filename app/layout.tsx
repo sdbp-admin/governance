@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./roles.css";
 
 export const metadata: Metadata = {
   title: "SDBP Governance",
