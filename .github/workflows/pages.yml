@@ -15,6 +15,10 @@ concurrency:
   group: "pages"
   cancel-in-progress: true
 
+env:
+  NEXT_PUBLIC_SUPABASE_URL: https://fkypdaqxwllventfikfo.supabase.co
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_vxuX_FXIFhclLN8idi0x-A_7MnH9vK6
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -25,7 +29,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install dependencies
         run: npm install
