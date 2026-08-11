@@ -134,9 +134,7 @@ export const tensions: Tension[] = [
     raiserId: "luka",
     linkedProjectId: "general-assembly",
     status: "open",
-    waitingFor: "edo",
-    waitingKind: "action",
-    latestNote: "Action proposed to Edo: “Send current membership list to Luka”. The tension remains open until the action is completed and Luka confirms the result.",
+    latestNote: "A related action exists for Edo: send the current membership list to Luka.",
     createdAt: "2026-08-10",
   },
 ];
