@@ -8,6 +8,7 @@ type View = "attention" | "work" | "tensions" | "organisation" | "governance" | 
 type TensionOutcome = "information" | "action" | "project" | "governance" | "sync" | "none";
 
 type PrototypeSnapshot = {
+  currentUserId: string;
   attention: AttentionItem[];
   projects: Project[];
   actions: Action[];
@@ -15,10 +16,9 @@ type PrototypeSnapshot = {
   roles: RoleDefinition[];
 };
 
-const CURRENT_USER_ID = "edo";
 const PROTOTYPE_TODAY = "2026-08-11";
 const NEXT_WEEK = "2026-08-18";
-const SESSION_STORAGE_KEY = "sdbp-governance-prototype-v1";
+const SESSION_STORAGE_KEY = "sdbp-governance-prototype-v2";
 
 const labels: Record<View, string> = {
   attention: "My Attention",
@@ -42,6 +42,7 @@ const navMeta: Record<View, string> = {
 
 export function Prototype() {
   const [view, setView] = useState<View>("attention");
+  const [currentUserId, setCurrentUserId] = useState("edo");
   const [attention, setAttention] = useState<AttentionItem[]>(myAttention);
   const [workProjects, setWorkProjects] = useState<Project[]>(projects);
   const [workActions, setWorkActions] = useState<Action[]>(actions);
@@ -53,8 +54,8 @@ export function Prototype() {
   const [sessionReady, setSessionReady] = useState(false);
   const [saveNotice, setSaveNotice] = useState("");
 
-  const activeAttention = attention.filter((item) => item.status === "needs_action");
-  const deferredAttention = attention.filter((item) => item.status === "deferred");
+  const activeAttention = attention.filter((item) => item.ownerId === currentUserId && item.status === "needs_action");
+  const deferredAttention = attention.filter((item) => item.ownerId === currentUserId && item.status === "deferred");
   const projectUpdate = workProjects.find((project) => project.id === projectUpdateId) ?? null;
 
   useEffect(() => {
@@ -62,6 +63,7 @@ export function Prototype() {
       const stored = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
       if (stored) {
         const snapshot = JSON.parse(stored) as Partial<PrototypeSnapshot>;
+        if (typeof snapshot.currentUserId === "string" && people.some((person) => person.id === snapshot.currentUserId)) setCurrentUserId(snapshot.currentUserId);
         if (Array.isArray(snapshot.attention)) setAttention(snapshot.attention);
         if (Array.isArray(snapshot.projects)) setWorkProjects(snapshot.projects);
         if (Array.isArray(snapshot.actions)) setWorkActions(snapshot.actions);
@@ -78,6 +80,7 @@ export function Prototype() {
   useEffect(() => {
     if (!sessionReady) return;
     const snapshot: PrototypeSnapshot = {
+      currentUserId,
       attention,
       projects: workProjects,
       actions: workActions,
@@ -85,7 +88,7 @@ export function Prototype() {
       roles,
     };
     window.sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(snapshot));
-  }, [sessionReady, attention, workProjects, workActions, workTensions, roles]);
+  }, [sessionReady, currentUserId, attention, workProjects, workActions, workTensions, roles]);
 
   useEffect(() => {
     if (!saveNotice) return;
@@ -105,6 +108,23 @@ export function Prototype() {
     setAttention((items) => items.map((item) => item.kind === kind && item.targetId === targetId ? { ...item, status: "done" } : item));
   }
 
+  function upsertAttention(next: Omit<AttentionItem, "id">) {
+    setAttention((items) => {
+      const existing = items.find((item) =>
+        item.ownerId === next.ownerId &&
+        item.kind === next.kind &&
+        item.targetId === next.targetId &&
+        item.status !== "done"
+      );
+
+      if (existing) {
+        return items.map((item) => item.id === existing.id ? { ...item, ...next } : item);
+      }
+
+      return [{ ...next, id: `attention-${Date.now()}-${next.ownerId}` }, ...items];
+    });
+  }
+
   function deferItem(id: string) {
     setAttention((items) => items.map((item) => item.id === id ? { ...item, status: "deferred" } : item));
     announce("Reminder parked for later in this prototype session.");
@@ -121,6 +141,15 @@ export function Prototype() {
     setView("tensions");
   }
 
+  function switchPrototypeUser(nextUserId: string) {
+    setCurrentUserId(nextUserId);
+    setProjectUpdateId(null);
+    setSelectedTensionId(null);
+    setTensionDraftSeed("");
+    setView("attention");
+    announce(`Prototype view switched to ${personName(nextUserId)}.`);
+  }
+
   function handleAttentionPrimary(item: AttentionItem) {
     if (item.kind === "project_update" && item.targetId) {
       setProjectUpdateId(item.targetId);
@@ -129,19 +158,33 @@ export function Prototype() {
 
     if (item.kind === "action" && item.targetId) {
       const action = workActions.find((candidate) => candidate.id === item.targetId);
+      if (!action || action.ownerId !== currentUserId) return;
+
       setWorkActions((current) => current.map((candidate) => candidate.id === item.targetId ? { ...candidate, status: "open" } : candidate));
       completeItem(item.id);
-      announce(action ? `Action accepted: “${action.title}”.` : "Action accepted.");
+      announce(`Action accepted: “${action.title}”.`);
 
-      if (action?.sourceTensionId) {
-        setWorkTensions((current) => current.map((tension) => tension.id === action.sourceTensionId
-          ? {
-              ...tension,
-              waitingFor: tension.raiserId,
-              latestNote: `${personName(CURRENT_USER_ID)} accepted the action “${action.title}”. Waiting for ${personName(tension.raiserId)} to confirm whether this resolves the tension.`,
-            }
-          : tension));
-        completeAttentionForTarget("tension", action.sourceTensionId);
+      if (action.sourceTensionId) {
+        const sourceTension = workTensions.find((tension) => tension.id === action.sourceTensionId);
+        if (sourceTension) {
+          completeAttentionForTarget("tension", sourceTension.id);
+          setWorkTensions((current) => current.map((tension) => tension.id === sourceTension.id
+            ? {
+                ...tension,
+                waitingFor: sourceTension.raiserId,
+                latestNote: `${personName(currentUserId)} accepted the action “${action.title}”. Waiting for ${personName(sourceTension.raiserId)} to confirm whether this resolves the tension.`,
+              }
+            : tension));
+          upsertAttention({
+            ownerId: sourceTension.raiserId,
+            kind: "tension",
+            targetId: sourceTension.id,
+            title: sourceTension.title,
+            reason: `${personName(currentUserId)} accepted the proposed action. Did you get what you needed?`,
+            primaryAction: "Review outcome",
+            status: "needs_action",
+          });
+        }
       }
       return;
     }
@@ -184,18 +227,39 @@ export function Prototype() {
 
   function addTension(tension: Tension) {
     setWorkTensions((current) => [tension, ...current]);
+    upsertAttention({
+      ownerId: tension.raiserId,
+      kind: "tension",
+      targetId: tension.id,
+      title: tension.title,
+      reason: "You raised this tension. Process what you need next.",
+      primaryAction: "Process tension",
+      status: "needs_action",
+    });
     announce(`Tension raised: “${tension.title}”.`);
   }
 
   function respondToTension(tensionId: string, note: string) {
+    const sourceTension = workTensions.find((tension) => tension.id === tensionId);
+    if (!sourceTension) return;
+
+    completeAttentionForTarget("tension", tensionId);
     setWorkTensions((current) => current.map((tension) => tension.id === tensionId
       ? {
           ...tension,
           waitingFor: tension.raiserId,
-          latestNote: `${personName(CURRENT_USER_ID)} responded: ${note.trim()} Waiting for ${personName(tension.raiserId)} to confirm whether this resolves the tension.`,
+          latestNote: `${personName(currentUserId)} responded: ${note.trim()} Waiting for ${personName(tension.raiserId)} to confirm whether this resolves the tension.`,
         }
       : tension));
-    completeAttentionForTarget("tension", tensionId);
+    upsertAttention({
+      ownerId: sourceTension.raiserId,
+      kind: "tension",
+      targetId: sourceTension.id,
+      title: sourceTension.title,
+      reason: `${personName(currentUserId)} responded. Did you get what you needed?`,
+      primaryAction: "Review outcome",
+      status: "needs_action",
+    });
     announce("Response recorded on the tension.");
   }
 
@@ -205,6 +269,30 @@ export function Prototype() {
       : tension));
     completeAttentionForTarget("tension", tensionId);
     announce("Tension resolved.");
+  }
+
+  function keepTensionOpen(tensionId: string) {
+    const sourceTension = workTensions.find((tension) => tension.id === tensionId);
+    if (!sourceTension) return;
+
+    completeAttentionForTarget("tension", tensionId);
+    setWorkTensions((current) => current.map((tension) => tension.id === tensionId
+      ? {
+          ...tension,
+          waitingFor: undefined,
+          latestNote: `${personName(currentUserId)} confirmed the tension is not resolved yet. Ready to process again.`,
+        }
+      : tension));
+    upsertAttention({
+      ownerId: sourceTension.raiserId,
+      kind: "tension",
+      targetId: sourceTension.id,
+      title: sourceTension.title,
+      reason: "You said this tension is not resolved yet. Continue processing what you need.",
+      primaryAction: "Continue processing",
+      status: "needs_action",
+    });
+    announce("Tension kept open for further processing.");
   }
 
   function moveTension(tensionId: string, status: "governance" | "needs_sync", note: string) {
@@ -223,16 +311,17 @@ export function Prototype() {
       id: `action-${Date.now()}`,
       title: title.trim(),
       ownerId,
-      status: ownerId === CURRENT_USER_ID ? "open" : "proposed",
+      status: ownerId === currentUserId ? "open" : "proposed",
       source: tension.title,
       sourceTensionId: tension.id,
     };
     setWorkActions((current) => [action, ...current]);
 
-    if (ownerId === CURRENT_USER_ID) {
+    if (ownerId === currentUserId) {
       resolveTension(tensionId, `Action created: “${action.title}”. The tension is resolved.`);
       announce(`Action created: “${action.title}”.`);
     } else {
+      completeAttentionForTarget("tension", tensionId);
       setWorkTensions((current) => current.map((candidate) => candidate.id === tensionId
         ? {
             ...candidate,
@@ -241,6 +330,15 @@ export function Prototype() {
             latestNote: `Action proposed to ${personName(ownerId)}: “${action.title}”. The tension stays open until they respond.`,
           }
         : candidate));
+      upsertAttention({
+        ownerId,
+        kind: "action",
+        targetId: action.id,
+        title: action.title,
+        reason: `${personName(currentUserId)} proposed this action from the tension “${tension.title}”.`,
+        primaryAction: "Accept action",
+        status: "needs_action",
+      });
       announce(`Action proposed to ${personName(ownerId)}: “${action.title}”.`);
     }
   }
@@ -252,7 +350,7 @@ export function Prototype() {
     const project: Project = {
       id: `project-${Date.now()}`,
       title: title.trim(),
-      ownerId: CURRENT_USER_ID,
+      ownerId: currentUserId,
       status: "active",
       lastUpdate: PROTOTYPE_TODAY,
       nextPrompt: NEXT_WEEK,
@@ -279,13 +377,19 @@ export function Prototype() {
           ))}
         </nav>
         <div className="sidebar-foot">
-          <div className="avatar">E</div>
-          <div><strong>Edo</strong><small>Prototype view · saves in this tab</small></div>
+          <div className="avatar">{personInitial(currentUserId)}</div>
+          <label className="prototype-user">
+            <span>Test as</span>
+            <select value={currentUserId} onChange={(event) => switchPrototypeUser(event.target.value)}>
+              {people.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
+            </select>
+            <small>Switch person to test handoffs</small>
+          </label>
         </div>
       </aside>
 
       <main className="main">
-        <Header view={view} attentionCount={activeAttention.length} />
+        <Header view={view} attentionCount={activeAttention.length} currentUserId={currentUserId} />
         {view === "attention" && <AttentionView
           items={activeAttention}
           deferred={deferredAttention}
@@ -299,16 +403,23 @@ export function Prototype() {
         {view === "tensions" && <TensionsView
           tensions={workTensions}
           projects={workProjects}
+          currentUserId={currentUserId}
           selectedTensionId={selectedTensionId}
           draftSeed={tensionDraftSeed}
           onAddTension={addTension}
           onRespond={respondToTension}
           onResolve={resolveTension}
+          onKeepOpen={keepTensionOpen}
           onMove={moveTension}
           onCreateAction={createActionFromTension}
           onCreateProject={createProjectFromTension}
         />}
-        {view === "organisation" && <OrganisationView roles={roles} setRoles={setRoles} onSaved={(title) => announce(`Role saved: “${title}”.`)} />}
+        {view === "organisation" && <OrganisationView
+          roles={roles}
+          setRoles={setRoles}
+          onSaved={(title) => announce(`Role saved: “${title}”.`)}
+          onDeleted={(title) => announce(`Role removed: “${title}”.`)}
+        />}
         {view === "governance" && <GovernanceView />}
         {view === "records" && <RecordsView />}
         {view === "pulse" && <PulseView attention={attention} actions={workActions} tensions={workTensions} />}
@@ -320,7 +431,7 @@ export function Prototype() {
         project={projectUpdate}
         onSave={saveProjectUpdate}
         onNoChange={() => {
-          const item = attention.find((candidate) => candidate.kind === "project_update" && candidate.targetId === projectUpdate.id);
+          const item = attention.find((candidate) => candidate.kind === "project_update" && candidate.targetId === projectUpdate.id && candidate.ownerId === currentUserId);
           if (item) handleNoChange(item);
           setProjectUpdateId(null);
         }}
@@ -331,9 +442,9 @@ export function Prototype() {
   );
 }
 
-function Header({ view, attentionCount }: { view: View; attentionCount: number }) {
+function Header({ view, attentionCount, currentUserId }: { view: View; attentionCount: number; currentUserId: string }) {
   const descriptions: Record<View, string> = {
-    attention: attentionCount ? `${attentionCount} things need your attention. Start with the one that creates the most movement.` : "Nothing needs you right now.",
+    attention: attentionCount ? `${attentionCount} things need ${personName(currentUserId)}'s attention. Start with the one that creates the most movement.` : `Nothing needs ${personName(currentUserId)} right now.`,
     work: "Keep outcomes visible. Update only when something actually changed.",
     tensions: "A tension is a gap between current reality and a potential future you sense. Raise one whenever something could be better.",
     organisation: "See who fills each SDBP role, what that role covers, and where its authority comes from.",
@@ -509,14 +620,16 @@ function WorkView({ projects, actions }: { projects: Project[]; actions: Action[
   );
 }
 
-function TensionsView({ tensions, projects, selectedTensionId, draftSeed, onAddTension, onRespond, onResolve, onMove, onCreateAction, onCreateProject }: {
+function TensionsView({ tensions, projects, currentUserId, selectedTensionId, draftSeed, onAddTension, onRespond, onResolve, onKeepOpen, onMove, onCreateAction, onCreateProject }: {
   tensions: Tension[];
   projects: Project[];
+  currentUserId: string;
   selectedTensionId: string | null;
   draftSeed: string;
   onAddTension: (tension: Tension) => void;
   onRespond: (tensionId: string, note: string) => void;
   onResolve: (tensionId: string, note: string) => void;
+  onKeepOpen: (tensionId: string) => void;
   onMove: (tensionId: string, status: "governance" | "needs_sync", note: string) => void;
   onCreateAction: (tensionId: string, title: string, ownerId: string) => void;
   onCreateProject: (tensionId: string, title: string) => void;
@@ -526,15 +639,27 @@ function TensionsView({ tensions, projects, selectedTensionId, draftSeed, onAddT
   const [outcome, setOutcome] = useState<TensionOutcome | null>(null);
   const [outcomeTitle, setOutcomeTitle] = useState("");
   const [outcomeNote, setOutcomeNote] = useState("");
-  const [ownerId, setOwnerId] = useState(CURRENT_USER_ID);
+  const [ownerId, setOwnerId] = useState(currentUserId);
   const activeTensions = tensions.filter((tension) => tension.status !== "resolved");
+
+  useEffect(() => {
+    setDraft(draftSeed);
+  }, [draftSeed]);
+
+  useEffect(() => {
+    setProcessingId(selectedTensionId);
+    setOutcome(null);
+    setOutcomeTitle("");
+    setOutcomeNote("");
+    setOwnerId(currentUserId);
+  }, [selectedTensionId, currentUserId]);
 
   function resetProcessing() {
     setProcessingId(null);
     setOutcome(null);
     setOutcomeTitle("");
     setOutcomeNote("");
-    setOwnerId(CURRENT_USER_ID);
+    setOwnerId(currentUserId);
   }
 
   function startProcessing(tensionId: string) {
@@ -542,7 +667,7 @@ function TensionsView({ tensions, projects, selectedTensionId, draftSeed, onAddT
     setOutcome(null);
     setOutcomeTitle("");
     setOutcomeNote("");
-    setOwnerId(CURRENT_USER_ID);
+    setOwnerId(currentUserId);
   }
 
   function raiseTension() {
@@ -551,7 +676,7 @@ function TensionsView({ tensions, projects, selectedTensionId, draftSeed, onAddT
     const tension: Tension = {
       id: `tension-${Date.now()}`,
       title,
-      raiserId: CURRENT_USER_ID,
+      raiserId: currentUserId,
       status: "open",
       createdAt: PROTOTYPE_TODAY,
     };
@@ -579,8 +704,9 @@ function TensionsView({ tensions, projects, selectedTensionId, draftSeed, onAddT
         {activeTensions.length === 0 ? <div className="calm-empty compact-empty"><span>✓</span><h3>No open tensions</h3><p>Nothing currently needs processing.</p></div> : (
           <div className="tension-stream">{activeTensions.map((tension) => {
             const project = projects.find((candidate) => candidate.id === tension.linkedProjectId);
-            const canProcess = tension.raiserId === CURRENT_USER_ID && tension.status === "open";
-            const needsMyResponse = tension.waitingFor === CURRENT_USER_ID && tension.raiserId !== CURRENT_USER_ID && tension.status === "open";
+            const needsMyConfirmation = tension.raiserId === currentUserId && tension.waitingFor === currentUserId && tension.status === "open";
+            const canProcess = tension.raiserId === currentUserId && !tension.waitingFor && tension.status === "open";
+            const needsMyResponse = tension.waitingFor === currentUserId && tension.raiserId !== currentUserId && tension.status === "open";
             const isProcessing = processingId === tension.id;
 
             return (
@@ -590,6 +716,18 @@ function TensionsView({ tensions, projects, selectedTensionId, draftSeed, onAddT
                   <div className="tension-meta"><span>Raised by {personName(tension.raiserId)}</span>{project && <span>{project.title}</span>}<span>{formatTensionStatus(tension)}</span></div>
                   <h3>{tension.title}</h3>
                   <p>{tension.latestNote ?? (tension.waitingFor ? `Waiting for ${personName(tension.waitingFor)}.` : "Ready to process.")}</p>
+
+                  {isProcessing && needsMyConfirmation && (
+                    <div className="tension-process-panel">
+                      <span className="kind">Check the outcome</span>
+                      <h4>Did you get what you needed?</h4>
+                      <p className="process-help">You raised this tension. Confirm whether the response or accepted commitment resolves it.</p>
+                      <div className="process-actions">
+                        <button className="secondary" onClick={() => { onKeepOpen(tension.id); resetProcessing(); }}>No, keep it open</button>
+                        <button className="primary small" onClick={() => { onResolve(tension.id, `${personName(currentUserId)} confirmed the tension is resolved.`); resetProcessing(); }}>Yes, resolve tension</button>
+                      </div>
+                    </div>
+                  )}
 
                   {isProcessing && needsMyResponse && (
                     <div className="tension-process-panel">
@@ -622,9 +760,10 @@ function TensionsView({ tensions, projects, selectedTensionId, draftSeed, onAddT
                   )}
                 </div>
 
+                {!isProcessing && needsMyConfirmation && <button className="secondary" onClick={() => startProcessing(tension.id)}>Review outcome <span aria-hidden="true">→</span></button>}
                 {!isProcessing && needsMyResponse && <button className="secondary" onClick={() => startProcessing(tension.id)}>Respond <span aria-hidden="true">→</span></button>}
                 {!isProcessing && canProcess && <button className="secondary" onClick={() => startProcessing(tension.id)}>What do you need? <span aria-hidden="true">→</span></button>}
-                {!isProcessing && !needsMyResponse && !canProcess && <span className={`tension-state tension-state-${tension.status}`}>{formatTensionStatus(tension)}</span>}
+                {!isProcessing && !needsMyConfirmation && !needsMyResponse && !canProcess && <span className={`tension-state tension-state-${tension.status}`}>{formatTensionStatus(tension)}</span>}
               </article>
             );
           })}</div>
@@ -684,10 +823,11 @@ function TensionProcessPanel({ tension, outcome, setOutcome, outcomeTitle, setOu
   );
 }
 
-function OrganisationView({ roles, setRoles, onSaved }: {
+function OrganisationView({ roles, setRoles, onSaved, onDeleted }: {
   roles: RoleDefinition[];
   setRoles: React.Dispatch<React.SetStateAction<RoleDefinition[]>>;
   onSaved: (title: string) => void;
+  onDeleted: (title: string) => void;
 }) {
   const [editingRole, setEditingRole] = useState<RoleDefinition | null>(null);
   const unfilledRoles = roles.filter((role) => role.holderIds.length === 0);
@@ -717,6 +857,14 @@ function OrganisationView({ roles, setRoles, onSaved }: {
       : [...current, nextRole]);
     setEditingRole(null);
     onSaved(nextRole.title);
+  }
+
+  function deleteRole(roleId: string) {
+    const role = roles.find((candidate) => candidate.id === roleId);
+    if (!role) return;
+    setRoles((current) => current.filter((candidate) => candidate.id !== roleId));
+    setEditingRole(null);
+    onDeleted(role.title);
   }
 
   return (
@@ -768,7 +916,14 @@ function OrganisationView({ roles, setRoles, onSaved }: {
         </section>
       )}
 
-      {editingRole && <RoleEditor key={editingRole.id} role={editingRole} onSave={saveRole} onClose={() => setEditingRole(null)} />}
+      {editingRole && <RoleEditor
+        key={editingRole.id}
+        role={editingRole}
+        canDelete={roles.some((role) => role.id === editingRole.id)}
+        onSave={saveRole}
+        onDelete={() => deleteRole(editingRole.id)}
+        onClose={() => setEditingRole(null)}
+      />}
     </>
   );
 }
@@ -808,7 +963,13 @@ function RoleList({ label, items }: { label: string; items: string[] }) {
   );
 }
 
-function RoleEditor({ role, onSave, onClose }: { role: RoleDefinition; onSave: (role: RoleDefinition) => void; onClose: () => void }) {
+function RoleEditor({ role, canDelete, onSave, onDelete, onClose }: {
+  role: RoleDefinition;
+  canDelete: boolean;
+  onSave: (role: RoleDefinition) => void;
+  onDelete: () => void;
+  onClose: () => void;
+}) {
   const [title, setTitle] = useState(role.title);
   const [category, setCategory] = useState<RoleDefinition["category"]>(role.category);
   const [holderId, setHolderId] = useState(role.holderIds[0] ?? "");
@@ -854,7 +1015,10 @@ function RoleEditor({ role, onSave, onClose }: { role: RoleDefinition; onSave: (
             <label className="field"><span>Source</span><input value={source} onChange={(event) => setSource(event.target.value)} placeholder="Statutes, law, governance decision…" /></label>
             <label className="field"><span>Definition status</span><select value={status} onChange={(event) => setStatus(event.target.value as RoleDefinition["status"])}><option value="draft">Draft</option><option value="defined">Defined</option></select></label>
           </div>
-          <div className="editor-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button type="submit" className="primary" disabled={!title.trim()}>Save role</button></div>
+          <div className="editor-actions">
+            {canDelete && <button type="button" className="danger" onClick={() => { if (window.confirm(`Remove the role “${role.title}”?`)) onDelete(); }}>Remove role</button>}
+            <div className="editor-actions-right"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button type="submit" className="primary" disabled={!title.trim()}>Save role</button></div>
+          </div>
         </form>
       </section>
     </div>
@@ -867,9 +1031,16 @@ function GovernanceView() {
     { name: "Clarifying Questions", description: "Others may ask questions to understand the tension or proposal. This is not the place for reactions, opinions or discussion." },
     { name: "Reaction Round", description: "Each participant may react to the proposal. The proposer listens without responding during the round." },
     { name: "Option to Clarify", description: "The proposer may clarify the proposal or amend it after hearing the reactions." },
-    { name: "Objection Round", description: "Participants may raise concerns about adopting the proposal. Concerns that meet the objection criteria are captured as valid objections. If there are none, the proposal is accepted." },
-    { name: "Integration", description: "If valid objections exist, the proposal is amended to resolve each objection while still addressing the original tension. The proposal then returns to an Objection Round." },
-    { name: "Proposal Accepted", description: "When no valid objections remain, the proposal is adopted and the resulting governance change is recorded." },
+    { name: "Objection Round", description: "Each participant may raise a concern. A concern counts as an objection only when it passes the objection test described below." },
+    { name: "Integration", description: "If objections exist, the proposal is amended to resolve each objection while still addressing the original tension. The proposal then returns to an Objection Round." },
+    { name: "Proposal Accepted", description: "When no objections remain, the proposal is adopted and the resulting governance change is recorded." },
+  ];
+
+  const objectionTests = [
+    "The proposal would reduce SDBP's capacity to fulfil the purpose or ongoing accountabilities concerned.",
+    "It would limit the objector's capacity to fulfil the purpose or an accountability of a role they represent.",
+    "The concern is created by adopting this proposal; the same problem does not already exist without it.",
+    "The harmful impact would necessarily occur, or there would not be enough opportunity to adapt before significant harm could result.",
   ];
 
   return (
@@ -877,7 +1048,7 @@ function GovernanceView() {
       <section className="governance-stage">
         <span className="section-kicker">Governance process</span>
         <h2>Change the standing organisational structure</h2>
-        <p>Use governance when resolving a tension requires changing an ongoing role, accountability, domain or policy. A governance proposal is adopted when no valid objections remain.</p>
+        <p>Use governance when resolving a tension requires changing an ongoing role, accountability, domain or policy. A governance proposal is adopted when no objections remain.</p>
         <div className="process-path" aria-label="Integrative Decision-Making process">
           {governanceSteps.map((step, index) => <span key={step.name} className={index === 0 ? "active" : ""}>{step.name}</span>)}
         </div>
@@ -888,6 +1059,21 @@ function GovernanceView() {
             </div>
           ))}
         </div>
+
+        <div className="objection-guide">
+          <span className="section-kicker">Objection test · Holacracy v5</span>
+          <h3>When does a concern count as an objection?</h3>
+          <p>The objector needs to give a reasonable argument that <strong>all four</strong> tests are true:</p>
+          <ol className="objection-tests">
+            {objectionTests.map((test, index) => <li key={test}><span>{index + 1}</span><p>{test}</p></li>)}
+          </ol>
+          <div className="objection-rule">
+            <strong>Who decides?</strong>
+            <p>The Facilitator tests whether the objector has given a logical argument for each criterion. The Facilitator does not decide whether they personally agree with the concern or whether it is important enough.</p>
+          </div>
+          <p className="governance-source-note">Holacracy v5 also treats a violation of its Constitution as an automatic objection. SDBP should only use an equivalent automatic rule for statutes or governance rules it has actually adopted; this prototype does not silently adopt the full Holacracy Constitution.</p>
+        </div>
+
         <div className="calm-empty compact-empty"><span>○</span><h3>No governance proposal needs processing</h3><p>There is currently no proposed structural change waiting for a response.</p></div>
       </section>
       <aside className="governance-note">
