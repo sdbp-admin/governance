@@ -84,8 +84,8 @@ function Header({ view, attentionCount }: { view: View; attentionCount: number }
     attention: attentionCount ? `${attentionCount} things need your attention. Start with the one that creates the most movement.` : "Nothing needs you right now.",
     work: "Keep outcomes visible. Update only when something actually changed.",
     tensions: "A tension is a gap between current reality and a potential future you sense. Raise one whenever something could be better.",
-    organisation: "See the work SDBP depends on, separate from formal titles and individual people.",
-    governance: "Change responsibilities and standing rules when the structure itself needs to evolve.",
+    organisation: "See SDBP's formal board positions and the operating roles each person currently fills.",
+    governance: "Governance changes SDBP's ongoing roles, accountabilities, domains and policies. Use it when a tension requires a change to the standing organisational structure.",
     records: "The legal and organisational memory you can return to when context matters.",
     pulse: "A quiet overview of where SDBP is losing momentum or clarity — not an approval queue.",
   };
@@ -269,9 +269,9 @@ function OrganisationView() {
       </div>
       <div className="people-grid">{people.map((person) => (
         <article className="person-card" key={person.id}>
-          <div className="person-top"><div className="person-avatar">{person.name.charAt(0)}</div>{person.legalPosition && <span className="legal-chip">{person.legalPosition}</span>}</div>
+          <div className="person-top"><div className="person-avatar">{person.name.charAt(0)}</div></div>
           <h3>{person.name}</h3>
-          <small>{person.legalPosition ? "Formal position + operating roles" : "Board member"}</small>
+          <small>{person.legalPosition ?? "Board member"}</small>
           <div className="role-list">{person.roles.length ? person.roles.map((role) => <span key={role}>{role}</span>) : <em>No operating role captured yet</em>}</div>
         </article>
       ))}</div>
@@ -280,24 +280,41 @@ function OrganisationView() {
 }
 
 function GovernanceView() {
+  const governanceSteps = [
+    { name: "Present Proposal", description: "The proposer describes the tension and presents a governance change intended to address it." },
+    { name: "Clarifying Questions", description: "Others may ask questions to understand the tension or proposal. This is not the place for reactions, opinions or discussion." },
+    { name: "Reaction Round", description: "Each participant may react to the proposal. The proposer listens without responding during the round." },
+    { name: "Option to Clarify", description: "The proposer may clarify the proposal or amend it after hearing the reactions." },
+    { name: "Objection Round", description: "Participants may raise concerns about adopting the proposal. Concerns that meet the objection criteria are captured as valid objections. If there are none, the proposal is accepted." },
+    { name: "Integration", description: "If valid objections exist, the proposal is amended to resolve each objection while still addressing the original tension. The proposal then returns to an Objection Round." },
+    { name: "Proposal Accepted", description: "When no valid objections remain, the proposal is adopted and the resulting governance change is recorded." },
+  ];
+
   return (
     <div className="governance-layout">
       <section className="governance-stage">
-        <span className="section-kicker">Structural change</span>
-        <h2>Use governance when the pattern needs fixing</h2>
-        <p>Not every tension belongs here. Governance changes an ongoing responsibility, authority, role or standing rule.</p>
-        <div className="process-path" aria-label="Governance process">
-          {['Tension','Proposal','Clarify','React','Object','Integrate','Decide'].map((step, index) => <span key={step} className={index === 0 ? "active" : ""}>{step}</span>)}
+        <span className="section-kicker">Governance process</span>
+        <h2>Change the standing organisational structure</h2>
+        <p>Use governance when resolving a tension requires changing an ongoing role, accountability, domain or policy. A governance proposal is adopted when no valid objections remain.</p>
+        <div className="process-path" aria-label="Integrative Decision-Making process">
+          {governanceSteps.map((step, index) => <span key={step.name} className={index === 0 ? "active" : ""}>{step.name}</span>)}
         </div>
-        <div className="calm-empty compact-empty"><span>○</span><h3>No proposal needs processing</h3><p>The structure is quiet right now.</p></div>
+        <div className="soft-list">
+          {governanceSteps.map((step, index) => (
+            <div className="soft-row" key={step.name}>
+              <div><strong>{index + 1}. {step.name}</strong><small>{step.description}</small></div>
+            </div>
+          ))}
+        </div>
+        <div className="calm-empty compact-empty"><span>○</span><h3>No governance proposal needs processing</h3><p>There is currently no proposed structural change waiting for a response.</p></div>
       </section>
       <aside className="governance-note">
-        <span className="kind">A useful distinction</span>
-        <h3>Solve this instance</h3>
-        <p>Create an action or update a project.</p>
+        <span className="kind">What belongs here?</span>
+        <h3>Governance</h3>
+        <p>Changes an ongoing role, accountability, domain or policy.</p>
         <div className="note-divider" />
-        <h3>Fix the underlying responsibility</h3>
-        <p>Raise a governance tension.</p>
+        <h3>Operational work</h3>
+        <p>One-off actions, project updates and immediate barriers stay in Work or Tensions.</p>
       </aside>
     </div>
   );
