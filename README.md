@@ -12,56 +12,52 @@ Governance is facilitator-led. The app guides the live process and records the r
 
 Discussion can happen anywhere. Organisational commitments and authoritative records belong in the app.
 
-## Current validation focus
+## Current phase: persistence foundation
 
-The prototype deliberately has no backend. For testing, changes are saved in browser-session storage so they survive navigation and refresh within the current tab. Closing the tab resets the prototype.
+The interaction model has passed the two validation gates that were required before adding a backend.
 
-Before adding production persistence or authentication, the current phase validates two simple loops.
+### Validated operational loop
 
-### Operational loop
+- proposed/open actions remain visible in My Attention until done;
+- project updates and `No change` work;
+- tensions can be raised without knowing the solution;
+- linked work can notify the tension raiser without automatically resolving the tension;
+- if somebody other than the raiser marks a tension resolved, the raiser confirms or keeps it open.
 
-1. the app prompts a person when an interaction is due;
-2. a project can be updated or confirmed unchanged;
-3. a tension can be raised without knowing the solution;
-4. people resolve the tension through normal organisational work or conversation;
-5. if somebody other than the raiser marks it resolved, the raiser confirms;
-6. resulting commitments remain visible in Work without automatically controlling the tension lifecycle.
+### Validated governance loop
 
-### Governance meeting loop
+- a structural tension can move to Governance;
+- a proposal can be prepared before the meeting;
+- the facilitator can run the Integrative Decision-Making sequence from a dedicated shareable meeting window;
+- the app guides rather than replaces the facilitator;
+- an accepted proposal returns to the main app and appears under Records → Governance agreements.
 
-1. a structural tension is raised and flagged for Governance;
-2. a proposal may be prepared before the meeting;
-3. the board meets in person or through a tool such as Google Meet;
-4. the facilitator uses the Governance screen as a shared guide through the Integrative Decision-Making sequence;
-5. the app records the accepted proposal, decision and resulting governance change.
+The v1 domain model is now frozen in [`docs/v1-domain-model.md`](docs/v1-domain-model.md).
 
-## Current vertical slice
+## Important architecture lesson from testing
 
-The prototype includes:
+**My Attention is a projection, not a second source of truth.**
 
-- My Attention with active and intentionally deferred items;
-- weekly project-update prompts including one-click `No change`;
-- projects and actions;
-- tension capture and processing;
-- Organisation with people and editable role definitions;
-- board roles and operating roles as the same underlying concept with different sources of authority;
-- role purpose, scope, responsibilities, accountabilities, source and holder assignments;
-- an experimental Governance workflow that is now being simplified into a facilitator-controlled live meeting aid;
-- Records as the planned home of statutes, minutes, transcripts and governance agreements;
-- SDBP Pulse for Process Steward exception visibility;
-- representative General Assembly / membership workflow data.
+Actions, projects and tensions remain canonical. My Attention derives actionable items from their state and adds only small event-driven signals where needed. This prevents the Work and Attention views from silently diverging.
 
-## Tension model
+Likewise, an accepted governance proposal is the governance decision/agreement for v1. The system does not create duplicate `decision` and `governance agreement` records containing the same organisational result.
 
-A tension is a gap between current reality and a potential future sensed by a person.
+## Frozen core persistence model
 
-The target v1 lifecycle is intentionally small:
+The first schema is defined in [`supabase/migrations/0001_v1_core.sql`](supabase/migrations/0001_v1_core.sql) with ten application tables:
 
-- **Open**
-- **Awaiting confirmation** when somebody other than the raiser believes it is resolved
-- **Resolved** once the raiser confirms, or when the raiser resolves their own tension
+- people
+- roles
+- role assignments
+- projects
+- tensions
+- actions
+- governance proposals
+- attention signals
+- records
+- record versions
 
-Actions and projects may be linked to a tension for context. Their lifecycles do not automatically control the tension.
+The schema deliberately excludes workflow machinery that the validated product does not need.
 
 ## Role model
 
@@ -69,27 +65,33 @@ President, Secretary, Treasurer, Vice-President and similar offices are **board 
 
 Process Steward, Membership Administration, Member Communications and similar responsibilities are **operating roles**. Their authority comes from SDBP governance decisions.
 
-The app must not invent the content of statute- or law-based roles. Their definitions should be completed from the authoritative sources and linked to those sources.
+The app must not invent the content of statute- or law-based roles. Their definitions should be completed from authoritative sources and linked to those sources.
 
 ## What is intentionally not in v1
 
 No AI dependency, dependency graph, tension/action/project choreography, exhaustive asynchronous governance workflow, Gantt planning, nested circle hierarchy, performance scoring, automatic email/WhatsApp ingestion, or elaborate project-management layer is required for the core product.
 
-## Next implementation gate
+## Next implementation steps
 
-Do not connect the backend until the simplified operational loop and facilitator-led Governance Meeting loop feel coherent in the prototype. After that validation:
+The next phase is **persistence without product expansion**:
 
-1. freeze the v1 domain model;
-2. add the Supabase schema and seed data;
-3. add authentication;
-4. persist the validated workflows;
-5. add records/file storage, reminders, statute search and weekly harvest.
+1. apply the frozen schema to a Supabase development project;
+2. connect the app to Supabase while preserving the validated interaction behaviour;
+3. add invite-only email authentication;
+4. persist organisation, Work and Tensions;
+5. rebuild My Attention from canonical persisted state plus attention signals;
+6. persist Governance and Records;
+7. add reminders, private file storage, statute search and weekly harvest in later passes.
 
-See [`docs/operating-model.md`](docs/operating-model.md) for the current product boundary and the complexity scheduled for removal.
+Current prototype data is representative/draft and must not automatically become production seed data. Real board offices, emails and statute-derived role definitions need confirmation first.
+
+See [`docs/operating-model.md`](docs/operating-model.md) for the product boundary and [`docs/architecture.md`](docs/architecture.md) for the persistence architecture.
 
 ## Prototype deployment
 
 The review build is published through GitHub Pages from the `feat/v1-foundation` branch. That branch is allowed to deploy to the `github-pages` environment.
+
+The prototype still uses browser-session storage. Closing the tab resets the current test state.
 
 ## Local development
 
@@ -101,7 +103,3 @@ npm run dev
 ```
 
 Then open `http://localhost:3000`.
-
-## Architecture
-
-See [`docs/architecture.md`](docs/architecture.md).
