@@ -32,6 +32,9 @@ export function humanGovernanceStage(stage: GovernanceStage) {
 export function formatTensionStatus(tension: Tension) {
   if (tension.status === "needs_sync") return "Needs sync";
   if (tension.status === "governance") return "Moved to governance";
+  if (tension.waitingFor && tension.waitingKind === "action") return `Action with ${personName(tension.waitingFor)}`;
+  if (tension.waitingFor && tension.waitingKind === "project") return `Project with ${personName(tension.waitingFor)}`;
+  if (tension.waitingFor && tension.waitingKind === "confirmation") return `Confirmation from ${personName(tension.waitingFor)}`;
   if (tension.waitingFor) return `Waiting for ${personName(tension.waitingFor)}`;
   return "Open";
 }
