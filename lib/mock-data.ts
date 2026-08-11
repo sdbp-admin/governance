@@ -115,6 +115,7 @@ export const actions: Action[] = [
     status: "proposed",
     due: "2026-08-14",
     source: "Membership list tension",
+    sourceTensionId: "membership-list",
   },
   {
     id: "send-ga-mails",
