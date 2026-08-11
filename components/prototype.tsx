@@ -2,9 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { actions, myAttention, people, projects, roleDefinitions, tensions } from "@/lib/mock-data";
-import type { AttentionItem, RoleDefinition } from "@/lib/domain";
+import type { Action, AttentionItem, Project, RoleDefinition, Tension } from "@/lib/domain";
 
 type View = "attention" | "work" | "tensions" | "organisation" | "governance" | "records" | "pulse";
+type TensionOutcome = "information" | "action" | "project" | "governance" | "sync" | "none";
+
+const CURRENT_USER_ID = "edo";
+const PROTOTYPE_TODAY = "2026-08-11";
+const NEXT_WEEK = "2026-08-18";
 
 const labels: Record<View, string> = {
   attention: "My Attention",
@@ -29,11 +34,23 @@ const navMeta: Record<View, string> = {
 export function Prototype() {
   const [view, setView] = useState<View>("attention");
   const [attention, setAttention] = useState<AttentionItem[]>(myAttention);
+  const [workProjects, setWorkProjects] = useState<Project[]>(projects);
+  const [workActions, setWorkActions] = useState<Action[]>(actions);
+  const [workTensions, setWorkTensions] = useState<Tension[]>(tensions);
+  const [projectUpdateId, setProjectUpdateId] = useState<string | null>(null);
+  const [selectedTensionId, setSelectedTensionId] = useState<string | null>(null);
+  const [tensionDraftSeed, setTensionDraftSeed] = useState("");
+
   const activeAttention = attention.filter((item) => item.status === "needs_action");
   const deferredAttention = attention.filter((item) => item.status === "deferred");
+  const projectUpdate = workProjects.find((project) => project.id === projectUpdateId) ?? null;
 
   function completeItem(id: string) {
     setAttention((items) => items.map((item) => item.id === id ? { ...item, status: "done" } : item));
+  }
+
+  function completeAttentionForTarget(kind: AttentionItem["kind"], targetId: string) {
+    setAttention((items) => items.map((item) => item.kind === kind && item.targetId === targetId ? { ...item, status: "done" } : item));
   }
 
   function deferItem(id: string) {
@@ -42,6 +59,143 @@ export function Prototype() {
 
   function restoreItem(id: string) {
     setAttention((items) => items.map((item) => item.id === id ? { ...item, status: "needs_action" } : item));
+  }
+
+  function openTensions(seed = "", tensionId: string | null = null) {
+    setTensionDraftSeed(seed);
+    setSelectedTensionId(tensionId);
+    setView("tensions");
+  }
+
+  function handleAttentionPrimary(item: AttentionItem) {
+    if (item.kind === "project_update" && item.targetId) {
+      setProjectUpdateId(item.targetId);
+      return;
+    }
+
+    if (item.kind === "action" && item.targetId) {
+      const action = workActions.find((candidate) => candidate.id === item.targetId);
+      setWorkActions((current) => current.map((candidate) => candidate.id === item.targetId ? { ...candidate, status: "open" } : candidate));
+      completeItem(item.id);
+
+      if (action?.sourceTensionId) {
+        setWorkTensions((current) => current.map((tension) => tension.id === action.sourceTensionId
+          ? {
+              ...tension,
+              waitingFor: tension.raiserId,
+              latestNote: `${personName(CURRENT_USER_ID)} accepted the action “${action.title}”. Waiting for ${personName(tension.raiserId)} to confirm whether this resolves the tension.`,
+            }
+          : tension));
+        completeAttentionForTarget("tension", action.sourceTensionId);
+      }
+      return;
+    }
+
+    if (item.kind === "tension" && item.targetId) {
+      openTensions("", item.targetId);
+      return;
+    }
+
+    if (item.kind === "governance") {
+      setView("governance");
+    }
+  }
+
+  function handleNoChange(item: AttentionItem) {
+    if (item.targetId) {
+      setWorkProjects((current) => current.map((project) => project.id === item.targetId
+        ? { ...project, lastUpdate: PROTOTYPE_TODAY, nextPrompt: NEXT_WEEK }
+        : project));
+    }
+    completeItem(item.id);
+  }
+
+  function saveProjectUpdate(projectId: string, summary: string) {
+    setWorkProjects((current) => current.map((project) => project.id === projectId
+      ? { ...project, summary: summary.trim(), lastUpdate: PROTOTYPE_TODAY, nextPrompt: NEXT_WEEK }
+      : project));
+    completeAttentionForTarget("project_update", projectId);
+    setProjectUpdateId(null);
+  }
+
+  function raiseTensionFromProject(projectId: string) {
+    const project = workProjects.find((candidate) => candidate.id === projectId);
+    setProjectUpdateId(null);
+    openTensions(project ? `${project.title}: ` : "");
+  }
+
+  function addTension(tension: Tension) {
+    setWorkTensions((current) => [tension, ...current]);
+  }
+
+  function respondToTension(tensionId: string, note: string) {
+    setWorkTensions((current) => current.map((tension) => tension.id === tensionId
+      ? {
+          ...tension,
+          waitingFor: tension.raiserId,
+          latestNote: `${personName(CURRENT_USER_ID)} responded: ${note.trim()} Waiting for ${personName(tension.raiserId)} to confirm whether this resolves the tension.`,
+        }
+      : tension));
+    completeAttentionForTarget("tension", tensionId);
+  }
+
+  function resolveTension(tensionId: string, note: string) {
+    setWorkTensions((current) => current.map((tension) => tension.id === tensionId
+      ? { ...tension, status: "resolved", waitingFor: undefined, latestNote: note }
+      : tension));
+    completeAttentionForTarget("tension", tensionId);
+  }
+
+  function moveTension(tensionId: string, status: "governance" | "needs_sync", note: string) {
+    setWorkTensions((current) => current.map((tension) => tension.id === tensionId
+      ? { ...tension, status, waitingFor: undefined, latestNote: note }
+      : tension));
+    completeAttentionForTarget("tension", tensionId);
+  }
+
+  function createActionFromTension(tensionId: string, title: string, ownerId: string) {
+    const tension = workTensions.find((candidate) => candidate.id === tensionId);
+    if (!tension) return;
+
+    const action: Action = {
+      id: `action-${Date.now()}`,
+      title: title.trim(),
+      ownerId,
+      status: ownerId === CURRENT_USER_ID ? "open" : "proposed",
+      source: tension.title,
+      sourceTensionId: tension.id,
+    };
+    setWorkActions((current) => [action, ...current]);
+
+    if (ownerId === CURRENT_USER_ID) {
+      resolveTension(tensionId, `Action created: “${action.title}”. The tension is resolved.`);
+    } else {
+      setWorkTensions((current) => current.map((candidate) => candidate.id === tensionId
+        ? {
+            ...candidate,
+            status: "open",
+            waitingFor: ownerId,
+            latestNote: `Action proposed to ${personName(ownerId)}: “${action.title}”. The tension stays open until they respond.`,
+          }
+        : candidate));
+    }
+  }
+
+  function createProjectFromTension(tensionId: string, title: string) {
+    const tension = workTensions.find((candidate) => candidate.id === tensionId);
+    if (!tension) return;
+
+    const project: Project = {
+      id: `project-${Date.now()}`,
+      title: title.trim(),
+      ownerId: CURRENT_USER_ID,
+      status: "active",
+      lastUpdate: PROTOTYPE_TODAY,
+      nextPrompt: NEXT_WEEK,
+      summary: `Created from tension: ${tension.title}`,
+    };
+    setWorkProjects((current) => [project, ...current]);
+    resolveTension(tensionId, `Project created: “${project.title}”. The tension is resolved.`);
   }
 
   return (
@@ -67,14 +221,45 @@ export function Prototype() {
 
       <main className="main">
         <Header view={view} attentionCount={activeAttention.length} />
-        {view === "attention" && <AttentionView items={activeAttention} deferred={deferredAttention} completeItem={completeItem} deferItem={deferItem} restoreItem={restoreItem} />}
-        {view === "work" && <WorkView />}
-        {view === "tensions" && <TensionsView />}
+        {view === "attention" && <AttentionView
+          items={activeAttention}
+          deferred={deferredAttention}
+          onPrimary={handleAttentionPrimary}
+          onNoChange={handleNoChange}
+          deferItem={deferItem}
+          restoreItem={restoreItem}
+          onRaiseTension={() => openTensions()}
+        />}
+        {view === "work" && <WorkView projects={workProjects} actions={workActions} />}
+        {view === "tensions" && <TensionsView
+          tensions={workTensions}
+          projects={workProjects}
+          selectedTensionId={selectedTensionId}
+          draftSeed={tensionDraftSeed}
+          onAddTension={addTension}
+          onRespond={respondToTension}
+          onResolve={resolveTension}
+          onMove={moveTension}
+          onCreateAction={createActionFromTension}
+          onCreateProject={createProjectFromTension}
+        />}
         {view === "organisation" && <OrganisationView />}
         {view === "governance" && <GovernanceView />}
         {view === "records" && <RecordsView />}
-        {view === "pulse" && <PulseView attention={attention} />}
+        {view === "pulse" && <PulseView attention={attention} actions={workActions} tensions={workTensions} />}
       </main>
+
+      {projectUpdate && <ProjectUpdateEditor
+        project={projectUpdate}
+        onSave={saveProjectUpdate}
+        onNoChange={() => {
+          const item = attention.find((candidate) => candidate.kind === "project_update" && candidate.targetId === projectUpdate.id);
+          if (item) handleNoChange(item);
+          setProjectUpdateId(null);
+        }}
+        onRaiseTension={() => raiseTensionFromProject(projectUpdate.id)}
+        onClose={() => setProjectUpdateId(null)}
+      />}
     </div>
   );
 }
@@ -101,12 +286,14 @@ function Header({ view, attentionCount }: { view: View; attentionCount: number }
   );
 }
 
-function AttentionView({ items, deferred, completeItem, deferItem, restoreItem }: {
+function AttentionView({ items, deferred, onPrimary, onNoChange, deferItem, restoreItem, onRaiseTension }: {
   items: AttentionItem[];
   deferred: AttentionItem[];
-  completeItem: (id: string) => void;
+  onPrimary: (item: AttentionItem) => void;
+  onNoChange: (item: AttentionItem) => void;
   deferItem: (id: string) => void;
   restoreItem: (id: string) => void;
+  onRaiseTension: () => void;
 }) {
   const featured = items[0];
   const rest = items.slice(1);
@@ -128,8 +315,8 @@ function AttentionView({ items, deferred, completeItem, deferItem, restoreItem }
               <div className="focus-orb" aria-hidden="true"><span>{featured.staleDays ?? "→"}</span></div>
             </div>
             <div className="actions">
-              <button className="primary" onClick={() => completeItem(featured.id)}>{featured.primaryAction}</button>
-              {featured.kind === "project_update" && <button className="secondary" onClick={() => completeItem(featured.id)}>No change</button>}
+              <button className="primary" onClick={() => onPrimary(featured)}>{featured.primaryAction}</button>
+              {featured.kind === "project_update" && <button className="secondary" onClick={() => onNoChange(featured)}>No change</button>}
               <button className="quiet" onClick={() => deferItem(featured.id)}>Remind me later</button>
             </div>
           </article>
@@ -141,7 +328,7 @@ function AttentionView({ items, deferred, completeItem, deferItem, restoreItem }
               <p>open interactions</p>
             </div>
             <div className="week-divider" />
-            <button className="text-action">+ Raise a tension</button>
+            <button className="text-action" onClick={onRaiseTension}>+ Raise a tension</button>
             <small>The app will keep parked items in view and bring them back when due.</small>
           </aside>
         </div>
@@ -152,7 +339,7 @@ function AttentionView({ items, deferred, completeItem, deferItem, restoreItem }
           <div className="section-head"><div><span className="section-kicker">Next</span><h2>Then move these forward</h2></div></div>
           <div className="attention-grid">
             {rest.map((item) => (
-              <AttentionCard key={item.id} item={item} completeItem={completeItem} deferItem={deferItem} />
+              <AttentionCard key={item.id} item={item} onPrimary={onPrimary} deferItem={deferItem} />
             ))}
           </div>
         </section>
@@ -171,9 +358,9 @@ function AttentionView({ items, deferred, completeItem, deferItem, restoreItem }
   );
 }
 
-function AttentionCard({ item, completeItem, deferItem }: {
+function AttentionCard({ item, onPrimary, deferItem }: {
   item: AttentionItem;
-  completeItem: (id: string) => void;
+  onPrimary: (item: AttentionItem) => void;
   deferItem: (id: string) => void;
 }) {
   return (
@@ -185,19 +372,47 @@ function AttentionCard({ item, completeItem, deferItem }: {
         <p>{item.reason}</p>
       </div>
       <div className="actions compact-actions">
-        <button className="primary small" onClick={() => completeItem(item.id)}>{item.primaryAction}</button>
+        <button className="primary small" onClick={() => onPrimary(item)}>{item.primaryAction}</button>
         <button className="quiet small" onClick={() => deferItem(item.id)}>Later</button>
       </div>
     </article>
   );
 }
 
-function WorkView() {
+function ProjectUpdateEditor({ project, onSave, onNoChange, onRaiseTension, onClose }: {
+  project: Project;
+  onSave: (projectId: string, summary: string) => void;
+  onNoChange: () => void;
+  onRaiseTension: () => void;
+  onClose: () => void;
+}) {
+  const [summary, setSummary] = useState(project.summary);
+
+  return (
+    <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className="workflow-editor" role="dialog" aria-modal="true" aria-labelledby="project-update-title">
+        <div className="editor-head">
+          <div><span className="section-kicker">Weekly project update</span><h2 id="project-update-title">{project.title}</h2></div>
+          <button className="quiet editor-close" onClick={onClose} aria-label="Close project update">×</button>
+        </div>
+        <p className="editor-note">Has anything meaningfully changed since the last update? Keep this short. The app needs the current reality, not a report.</p>
+        <label className="field"><span>Current project state</span><textarea rows={5} value={summary} onChange={(event) => setSummary(event.target.value)} /></label>
+        <div className="workflow-choice-row">
+          <button className="secondary" onClick={onNoChange}>No change</button>
+          <button className="secondary" onClick={onRaiseTension}>Raise a tension instead</button>
+          <button className="primary" disabled={!summary.trim()} onClick={() => onSave(project.id, summary)}>Save update</button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function WorkView({ projects, actions }: { projects: Project[]; actions: Action[] }) {
   return (
     <div className="work-layout">
       <section className="work-main">
-        <div className="section-head"><div><span className="section-kicker">Current outcomes</span><h2>Active projects</h2></div><button className="primary small">+ Project</button></div>
-        <div className="project-grid">{projects.map((project, index) => (
+        <div className="section-head"><div><span className="section-kicker">Current outcomes</span><h2>Active projects</h2></div></div>
+        <div className="project-grid">{projects.filter((project) => project.status === "active").map((project, index) => (
           <article className={`project-card ${index === 0 ? "project-featured" : ""}`} key={project.id}>
             <div className="project-accent" aria-hidden="true" />
             <span className="kind">{project.role ?? "SDBP project"}</span>
@@ -212,8 +427,8 @@ function WorkView() {
       </section>
 
       <aside className="action-rail">
-        <div className="section-head"><div><span className="section-kicker">Concrete next steps</span><h2>Actions</h2></div><button className="quiet small">+ Add</button></div>
-        <div className="action-stack">{actions.map((action) => (
+        <div className="section-head"><div><span className="section-kicker">Concrete next steps</span><h2>Actions</h2></div></div>
+        <div className="action-stack">{actions.filter((action) => action.status !== "done" && action.status !== "cancelled").map((action) => (
           <article className="action-slip" key={action.id}>
             <span className="action-status">{action.status}</span>
             <h3>{action.title}</h3>
@@ -226,8 +441,57 @@ function WorkView() {
   );
 }
 
-function TensionsView() {
-  const [draft, setDraft] = useState("");
+function TensionsView({ tensions, projects, selectedTensionId, draftSeed, onAddTension, onRespond, onResolve, onMove, onCreateAction, onCreateProject }: {
+  tensions: Tension[];
+  projects: Project[];
+  selectedTensionId: string | null;
+  draftSeed: string;
+  onAddTension: (tension: Tension) => void;
+  onRespond: (tensionId: string, note: string) => void;
+  onResolve: (tensionId: string, note: string) => void;
+  onMove: (tensionId: string, status: "governance" | "needs_sync", note: string) => void;
+  onCreateAction: (tensionId: string, title: string, ownerId: string) => void;
+  onCreateProject: (tensionId: string, title: string) => void;
+}) {
+  const [draft, setDraft] = useState(draftSeed);
+  const [processingId, setProcessingId] = useState<string | null>(selectedTensionId);
+  const [outcome, setOutcome] = useState<TensionOutcome | null>(null);
+  const [outcomeTitle, setOutcomeTitle] = useState("");
+  const [outcomeNote, setOutcomeNote] = useState("");
+  const [ownerId, setOwnerId] = useState(CURRENT_USER_ID);
+  const activeTensions = tensions.filter((tension) => tension.status !== "resolved");
+
+  function resetProcessing() {
+    setProcessingId(null);
+    setOutcome(null);
+    setOutcomeTitle("");
+    setOutcomeNote("");
+    setOwnerId(CURRENT_USER_ID);
+  }
+
+  function startProcessing(tensionId: string) {
+    setProcessingId(tensionId);
+    setOutcome(null);
+    setOutcomeTitle("");
+    setOutcomeNote("");
+    setOwnerId(CURRENT_USER_ID);
+  }
+
+  function raiseTension() {
+    const title = draft.trim();
+    if (!title) return;
+    const tension: Tension = {
+      id: `tension-${Date.now()}`,
+      title,
+      raiserId: CURRENT_USER_ID,
+      status: "open",
+      createdAt: PROTOTYPE_TODAY,
+    };
+    onAddTension(tension);
+    setDraft("");
+    startProcessing(tension.id);
+  }
+
   return (
     <>
       <div className="tension-composer">
@@ -237,26 +501,118 @@ function TensionsView() {
           <p>A tension can point to a problem, an opportunity, missing clarity, or something blocking the work. You do not need to know the solution yet.</p>
         </div>
         <div className="composer-input">
-          <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} placeholder="Membership list still not received…" />
-          <button className="primary" disabled={!draft.trim()} onClick={() => setDraft("")}>Raise tension</button>
+          <textarea value={draft} onChange={(event) => setDraft(event.target.value)} rows={3} placeholder="Membership list still not received…" />
+          <button className="primary" disabled={!draft.trim()} onClick={raiseTension}>Raise tension</button>
         </div>
       </div>
 
       <section className="section">
-        <div className="section-head"><div><span className="section-kicker">Open</span><h2>Tensions waiting to be processed</h2></div><span className="counter">{tensions.length}</span></div>
-        <div className="tension-stream">{tensions.map((tension) => (
-          <article className="tension-card" key={tension.id}>
-            <div className="tension-line" aria-hidden="true" />
-            <div className="tension-content">
-              <div className="tension-meta"><span>Raised by {personName(tension.raiserId)}</span><span>General Assembly</span></div>
-              <h3>{tension.title}</h3>
-              <p>{tension.waitingFor ? `Waiting for ${personName(tension.waitingFor)}.` : "Ready to process."}</p>
-            </div>
-            <button className="secondary">What do you need? <span aria-hidden="true">→</span></button>
-          </article>
-        ))}</div>
+        <div className="section-head"><div><span className="section-kicker">Open</span><h2>Tensions waiting to be processed</h2></div><span className="counter">{activeTensions.length}</span></div>
+        {activeTensions.length === 0 ? <div className="calm-empty compact-empty"><span>✓</span><h3>No open tensions</h3><p>Nothing currently needs processing.</p></div> : (
+          <div className="tension-stream">{activeTensions.map((tension) => {
+            const project = projects.find((candidate) => candidate.id === tension.linkedProjectId);
+            const canProcess = tension.raiserId === CURRENT_USER_ID && tension.status === "open";
+            const needsMyResponse = tension.waitingFor === CURRENT_USER_ID && tension.raiserId !== CURRENT_USER_ID && tension.status === "open";
+            const isProcessing = processingId === tension.id;
+
+            return (
+              <article className={`tension-card ${isProcessing ? "tension-card-open" : ""}`} key={tension.id}>
+                <div className="tension-line" aria-hidden="true" />
+                <div className="tension-content">
+                  <div className="tension-meta"><span>Raised by {personName(tension.raiserId)}</span>{project && <span>{project.title}</span>}<span>{formatTensionStatus(tension)}</span></div>
+                  <h3>{tension.title}</h3>
+                  <p>{tension.latestNote ?? (tension.waitingFor ? `Waiting for ${personName(tension.waitingFor)}.` : "Ready to process.")}</p>
+
+                  {isProcessing && needsMyResponse && (
+                    <div className="tension-process-panel">
+                      <span className="kind">Your response</span>
+                      <h4>What does {personName(tension.raiserId)} need to know from you?</h4>
+                      <textarea rows={3} value={outcomeNote} onChange={(event) => setOutcomeNote(event.target.value)} placeholder="Give the concrete response or commitment…" />
+                      <div className="process-actions"><button className="quiet" onClick={resetProcessing}>Cancel</button><button className="primary small" disabled={!outcomeNote.trim()} onClick={() => { onRespond(tension.id, outcomeNote); resetProcessing(); }}>Send response</button></div>
+                    </div>
+                  )}
+
+                  {isProcessing && canProcess && (
+                    <TensionProcessPanel
+                      tension={tension}
+                      outcome={outcome}
+                      setOutcome={setOutcome}
+                      outcomeTitle={outcomeTitle}
+                      setOutcomeTitle={setOutcomeTitle}
+                      outcomeNote={outcomeNote}
+                      setOutcomeNote={setOutcomeNote}
+                      ownerId={ownerId}
+                      setOwnerId={setOwnerId}
+                      onCancel={resetProcessing}
+                      onCreateAction={() => { onCreateAction(tension.id, outcomeTitle, ownerId); resetProcessing(); }}
+                      onCreateProject={() => { onCreateProject(tension.id, outcomeTitle); resetProcessing(); }}
+                      onResolveInformation={() => { onResolve(tension.id, `Information captured: ${outcomeNote.trim()}`); resetProcessing(); }}
+                      onResolveNone={() => { onResolve(tension.id, "No further action is needed. The tension is resolved."); resetProcessing(); }}
+                      onGovernance={() => { onMove(tension.id, "governance", "This tension requires a change to an ongoing role, accountability, domain or policy and has moved to Governance."); resetProcessing(); }}
+                      onSync={() => { onMove(tension.id, "needs_sync", "Asynchronous processing was not enough. This tension needs synchronous discussion."); resetProcessing(); }}
+                    />
+                  )}
+                </div>
+
+                {!isProcessing && needsMyResponse && <button className="secondary" onClick={() => startProcessing(tension.id)}>Respond <span aria-hidden="true">→</span></button>}
+                {!isProcessing && canProcess && <button className="secondary" onClick={() => startProcessing(tension.id)}>What do you need? <span aria-hidden="true">→</span></button>}
+                {!isProcessing && !needsMyResponse && !canProcess && <span className={`tension-state tension-state-${tension.status}`}>{formatTensionStatus(tension)}</span>}
+              </article>
+            );
+          })}</div>
+        )}
       </section>
     </>
+  );
+}
+
+function TensionProcessPanel({ tension, outcome, setOutcome, outcomeTitle, setOutcomeTitle, outcomeNote, setOutcomeNote, ownerId, setOwnerId, onCancel, onCreateAction, onCreateProject, onResolveInformation, onResolveNone, onGovernance, onSync }: {
+  tension: Tension;
+  outcome: TensionOutcome | null;
+  setOutcome: (outcome: TensionOutcome | null) => void;
+  outcomeTitle: string;
+  setOutcomeTitle: (value: string) => void;
+  outcomeNote: string;
+  setOutcomeNote: (value: string) => void;
+  ownerId: string;
+  setOwnerId: (value: string) => void;
+  onCancel: () => void;
+  onCreateAction: () => void;
+  onCreateProject: () => void;
+  onResolveInformation: () => void;
+  onResolveNone: () => void;
+  onGovernance: () => void;
+  onSync: () => void;
+}) {
+  const outcomes: { id: TensionOutcome; label: string; description: string }[] = [
+    { id: "information", label: "Information", description: "I need an answer, fact or clarification." },
+    { id: "action", label: "Action", description: "I need one concrete next step." },
+    { id: "project", label: "Project", description: "I need an outcome that will take more than one step." },
+    { id: "governance", label: "Governance", description: "An ongoing role, accountability, domain or policy needs to change." },
+    { id: "sync", label: "Synchronous discussion", description: "This cannot be processed well enough asynchronously." },
+    { id: "none", label: "Nothing further", description: "Naming or reviewing it was enough." },
+  ];
+
+  return (
+    <div className="tension-process-panel">
+      <span className="kind">Process tension</span>
+      <h4>What do you need?</h4>
+      <p className="process-help">Choose the outcome that would resolve “{tension.title}”. If work is proposed to somebody else, the tension remains open until they respond.</p>
+      <div className="outcome-grid">{outcomes.map((candidate) => (
+        <button key={candidate.id} className={outcome === candidate.id ? "outcome-option selected" : "outcome-option"} onClick={() => setOutcome(candidate.id)}>
+          <strong>{candidate.label}</strong><small>{candidate.description}</small>
+        </button>
+      ))}</div>
+
+      {outcome === "information" && <div className="outcome-form"><label className="field"><span>Information or clarification</span><textarea rows={3} value={outcomeNote} onChange={(event) => setOutcomeNote(event.target.value)} /></label><button className="primary small" disabled={!outcomeNote.trim()} onClick={onResolveInformation}>Record and resolve</button></div>}
+      {outcome === "action" && <div className="outcome-form outcome-form-grid"><label className="field"><span>Action</span><input value={outcomeTitle} onChange={(event) => setOutcomeTitle(event.target.value)} placeholder="Send current membership list" /></label><label className="field"><span>Owner</span><select value={ownerId} onChange={(event) => setOwnerId(event.target.value)}>{people.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label><button className="primary small" disabled={!outcomeTitle.trim()} onClick={onCreateAction}>Create action</button></div>}
+      {outcome === "project" && <div className="outcome-form"><label className="field"><span>Project outcome</span><input value={outcomeTitle} onChange={(event) => setOutcomeTitle(event.target.value)} placeholder="Prepare membership data for the General Assembly" /></label><button className="primary small" disabled={!outcomeTitle.trim()} onClick={onCreateProject}>Create project</button></div>}
+      {outcome === "governance" && <div className="outcome-form"><p>This moves the tension to Governance because the standing organisational structure needs to change.</p><button className="primary small" onClick={onGovernance}>Move to Governance</button></div>}
+      {outcome === "sync" && <div className="outcome-form"><p>The tension stays visible but is marked as needing synchronous discussion.</p><button className="primary small" onClick={onSync}>Mark as needing sync</button></div>}
+      {outcome === "none" && <div className="outcome-form"><p>No action, project or structural change is needed.</p><button className="primary small" onClick={onResolveNone}>Resolve tension</button></div>}
+
+      <div className="process-actions"><button className="quiet" onClick={onCancel}>Close</button></div>
+    </div>
   );
 }
 
@@ -421,8 +777,8 @@ function RoleEditor({ role, onSave, onClose }: { role: RoleDefinition; onSave: (
             <label className="field"><span>Holder</span><select value={holderId} onChange={(event) => setHolderId(event.target.value)}><option value="">Unfilled</option>{people.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
             <label className="field field-wide"><span>Purpose</span><textarea rows={2} value={purpose} onChange={(event) => setPurpose(event.target.value)} placeholder="Why does this role exist?" /></label>
             <label className="field field-wide"><span>Scope</span><textarea rows={3} value={scope} onChange={(event) => setScope(event.target.value)} placeholder="What does the role cover, and where are its boundaries?" /></label>
-            <label className="field"><span>Responsibilities</span><textarea rows={5} value={responsibilities} onChange={(event) => setResponsibilities(event.target.value)} placeholder={'One responsibility per line'} /></label>
-            <label className="field"><span>Accountabilities</span><textarea rows={5} value={accountabilities} onChange={(event) => setAccountabilities(event.target.value)} placeholder={'One ongoing accountability per line'} /></label>
+            <label className="field"><span>Responsibilities</span><textarea rows={5} value={responsibilities} onChange={(event) => setResponsibilities(event.target.value)} placeholder="One responsibility per line" /></label>
+            <label className="field"><span>Accountabilities</span><textarea rows={5} value={accountabilities} onChange={(event) => setAccountabilities(event.target.value)} placeholder="One ongoing accountability per line" /></label>
             <label className="field"><span>Source</span><input value={source} onChange={(event) => setSource(event.target.value)} placeholder="Statutes, law, governance decision…" /></label>
             <label className="field"><span>Definition status</span><select value={status} onChange={(event) => setStatus(event.target.value as RoleDefinition["status"])}><option value="draft">Draft</option><option value="defined">Defined</option></select></label>
           </div>
@@ -476,54 +832,59 @@ function GovernanceView() {
 
 function RecordsView() {
   const records = [
-    { label: "Legal backbone", title: "SDBP Statutes", text: "Search the authoritative document by article or keyword.", action: "Search statutes", mark: "§" },
+    { label: "Legal backbone", title: "SDBP Statutes", text: "Authoritative current version, version history and searchable provisions.", action: "Search statutes", mark: "§" },
     { label: "What happened", title: "Board minutes", text: "Meeting records and the decisions or commitments that followed.", action: "Open minutes", mark: "M" },
     { label: "How we work", title: "Governance agreements", text: "Standing agreements, current versions and what they superseded.", action: "Open agreements", mark: "G" },
   ];
   return (
-    <div className="records-grid">{records.map((record, index) => (
-      <article className={`record-card record-${index + 1}`} key={record.title}>
-        <div className="record-mark">{record.mark}</div>
-        <span className="kind">{record.label}</span>
-        <h2>{record.title}</h2>
-        <p>{record.text}</p>
-        <button className="secondary">{record.action} <span aria-hidden="true">→</span></button>
-      </article>
-    ))}</div>
+    <>
+      <div className="records-intro"><span className="section-kicker">Planned persistence</span><strong>Uploads are not connected yet.</strong><p>Records will become persistent after the central interaction loop is validated and Supabase is connected.</p></div>
+      <div className="records-grid">{records.map((record, index) => (
+        <article className={`record-card record-${index + 1}`} key={record.title}>
+          <div className="record-mark">{record.mark}</div>
+          <span className="kind">{record.label}</span>
+          <h2>{record.title}</h2>
+          <p>{record.text}</p>
+          <button className="secondary" disabled>{record.action}</button>
+        </article>
+      ))}</div>
+    </>
   );
 }
 
-function PulseView({ attention }: { attention: AttentionItem[] }) {
+function PulseView({ attention, actions, tensions }: { attention: AttentionItem[]; actions: Action[]; tensions: Tension[] }) {
   const metrics = useMemo(() => ({
-    overdue: actions.filter((a) => a.status !== "done" && a.due && a.due < "2026-08-11").length,
-    stale: attention.filter((a) => (a.staleDays ?? 0) >= 7 && a.status !== "done").length,
-    tensions: tensions.filter((t) => t.status !== "resolved").length,
-  }), [attention]);
+    overdue: actions.filter((action) => action.status !== "done" && action.due && action.due < PROTOTYPE_TODAY).length,
+    stale: attention.filter((item) => (item.staleDays ?? 0) >= 7 && item.status !== "done").length,
+    tensions: tensions.filter((tension) => tension.status !== "resolved").length,
+  }), [attention, actions, tensions]);
+  const signalCount = metrics.overdue + metrics.stale + metrics.tensions;
 
   return (
     <>
       <div className="pulse-layout">
         <article className="pulse-hero">
-          <span className="section-kicker">Clarity signal</span>
-          <div className="pulse-number">1</div>
-          <h2>place needs attention</h2>
-          <p>Membership administration is the only visible point where the weekly rhythm is currently slipping.</p>
-          <div className="signal-line"><span /></div>
+          <span className="section-kicker">Process signals</span>
+          <div className="pulse-number">{signalCount}</div>
+          <h2>{signalCount === 1 ? "visible signal needs attention" : "visible signals need attention"}</h2>
+          <p>{signalCount ? "These are exceptions in the current organisational rhythm, not a performance score." : "No stale attention, unresolved tensions or overdue actions are currently visible."}</p>
+          <div className="signal-line"><span style={{ width: `${Math.min(100, signalCount * 18)}%` }} /></div>
         </article>
         <div className="pulse-metrics">
-          <Metric label="Open tensions" value={metrics.tensions} note="needs movement" />
+          <Metric label="Open tensions" value={metrics.tensions} note="not resolved" />
           <Metric label="Stale items" value={metrics.stale} note="7+ days" />
           <Metric label="Overdue actions" value={metrics.overdue} note="past due date" />
         </div>
       </div>
 
       <section className="section">
-        <div className="section-head"><div><span className="section-kicker">Exception only</span><h2>Where clarity is slipping</h2></div></div>
-        <article className="exception-card">
-          <div className="exception-marker"><span /></div>
-          <div><h3>Membership administration has not been updated</h3><p>The weekly prompt is still unanswered and Luka has an open tension linked to the General Assembly.</p></div>
-          <span className="badge-warn">needs attention</span>
-        </article>
+        <div className="section-head"><div><span className="section-kicker">Exceptions only</span><h2>Where clarity is slipping</h2></div></div>
+        {signalCount === 0 ? <div className="calm-empty compact-empty"><span>✓</span><h3>No exception needs attention</h3><p>The visible process is currently clear.</p></div> : (
+          <div className="exception-stack">
+            {metrics.stale > 0 && <article className="exception-card"><div className="exception-marker"><span /></div><div><h3>{metrics.stale} stale attention {metrics.stale === 1 ? "item" : "items"}</h3><p>An interaction has remained unanswered for at least seven days.</p></div><span className="badge-warn">needs attention</span></article>}
+            {tensions.filter((tension) => tension.status !== "resolved").map((tension) => <article className="exception-card" key={tension.id}><div className="exception-marker"><span /></div><div><h3>{tension.title}</h3><p>{tension.latestNote ?? `Open tension raised by ${personName(tension.raiserId)}.`}</p></div><span className="badge-warn">{formatTensionStatus(tension)}</span></article>)}
+          </div>
+        )}
       </section>
     </>
   );
@@ -551,4 +912,11 @@ function personInitial(id: string) {
 
 function formatShortDate(value: string) {
   return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(new Date(`${value}T12:00:00`));
+}
+
+function formatTensionStatus(tension: Tension) {
+  if (tension.status === "needs_sync") return "Needs sync";
+  if (tension.status === "governance") return "Moved to governance";
+  if (tension.waitingFor) return `Waiting for ${personName(tension.waitingFor)}`;
+  return "Open";
 }
