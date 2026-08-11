@@ -19,6 +19,37 @@
   border-top: 1px solid var(--border);
 }
 
+.save-toast {
+  position: fixed;
+  z-index: 1400;
+  top: 22px;
+  right: 24px;
+  max-width: min(420px, calc(100vw - 32px));
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 15px;
+  border: 1px solid #cfe3d1;
+  border-radius: 12px;
+  background: #f4faf1;
+  color: var(--brand-navy);
+  box-shadow: 0 16px 42px rgba(43,55,70,.14);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.save-toast > span {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--green-soft);
+  color: #647c13;
+  font-weight: 800;
+}
+
 .tension-card-open {
   align-items: start;
 }
@@ -203,5 +234,12 @@
 
   .tension-process-panel {
     padding: 14px;
+  }
+
+  .save-toast {
+    top: 12px;
+    right: 12px;
+    left: 12px;
+    max-width: none;
   }
 }
