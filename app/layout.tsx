@@ -3,6 +3,7 @@ import "./globals.css";
 import "./roles.css";
 import "./workflow.css";
 import "./governance.css";
+import "./meeting.css";
 
 export const metadata: Metadata = {
   title: "SDBP Governance",
