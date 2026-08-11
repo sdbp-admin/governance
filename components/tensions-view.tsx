@@ -7,14 +7,14 @@ import { PROTOTYPE_TODAY, formatTensionStatus, personName } from "@/lib/prototyp
 
 type TensionOutcome = "information" | "action" | "project" | "governance" | "sync" | "none";
 
-export function TensionsView({ tensions, projects, currentUserId, selectedTensionId, draftSeed, onAddTension, onRespond, onResolve, onKeepOpen, onMove, onCreateAction, onCreateProject }: {
+export function TensionsView({ tensions, projects, currentUserId, selectedTensionId, draftSeed, onAddTension, onMarkResolved, onResolve, onKeepOpen, onMove, onCreateAction, onCreateProject }: {
   tensions: Tension[];
   projects: Project[];
   currentUserId: string;
   selectedTensionId: string | null;
   draftSeed: string;
   onAddTension: (tension: Tension) => void;
-  onRespond: (tensionId: string, note: string) => void;
+  onMarkResolved: (tensionId: string) => void;
   onResolve: (tensionId: string, note: string) => void;
   onKeepOpen: (tensionId: string) => void;
   onMove: (tensionId: string, status: "governance" | "needs_sync", note: string) => void;
@@ -43,17 +43,25 @@ export function TensionsView({ tensions, projects, currentUserId, selectedTensio
 
   return <>
     <div className="tension-composer"><div className="composer-copy"><span className="section-kicker">Raise a tension</span><h2>What tension do you want to raise?</h2><p>A tension can point to a problem, an opportunity, missing clarity, or something blocking the work. You do not need to know the solution yet.</p></div><div className="composer-input"><textarea value={draft} onChange={(event) => setDraft(event.target.value)} rows={3} placeholder="Membership list still not received…" /><button className="primary" disabled={!draft.trim()} onClick={raiseTension}>Raise tension</button></div></div>
-    <section className="section"><div className="section-head"><div><span className="section-kicker">Open</span><h2>Tensions waiting to be processed</h2></div><span className="counter">{activeTensions.length}</span></div>{activeTensions.length === 0 ? <div className="calm-empty compact-empty"><span>✓</span><h3>No open tensions</h3><p>Nothing currently needs processing.</p></div> : <div className="tension-stream">{activeTensions.map((tension) => {
+
+    <section className="section"><div className="section-head"><div><span className="section-kicker">Open</span><h2>Tensions that still exist</h2></div><span className="counter">{activeTensions.length}</span></div>{activeTensions.length === 0 ? <div className="calm-empty compact-empty"><span>✓</span><h3>No open tensions</h3><p>Nothing currently needs attention.</p></div> : <div className="tension-stream">{activeTensions.map((tension) => {
       const project = projects.find((candidate) => candidate.id === tension.linkedProjectId);
-      const needsMyConfirmation = tension.waitingKind === "confirmation" && tension.raiserId === currentUserId && tension.waitingFor === currentUserId && tension.status === "open";
-      const canProcess = tension.raiserId === currentUserId && !tension.waitingFor && tension.status === "open";
-      const needsMyResponse = tension.waitingKind === "response" && tension.waitingFor === currentUserId && tension.raiserId !== currentUserId && tension.status === "open";
-      const isProcessing = processingId === tension.id;
-      return <article className={`tension-card ${isProcessing ? "tension-card-open" : ""}`} key={tension.id}><div className="tension-line" aria-hidden="true" /><div className="tension-content"><div className="tension-meta"><span>Raised by {personName(tension.raiserId)}</span>{project && <span>{project.title}</span>}<span>{formatTensionStatus(tension)}</span></div><h3>{tension.title}</h3><p>{tension.latestNote ?? (tension.waitingFor ? `Waiting for ${personName(tension.waitingFor)}.` : "Ready to process.")}</p>
-        {isProcessing && needsMyConfirmation && <div className="tension-process-panel"><span className="kind">Check the actual outcome</span><h4>Did this resolve your tension?</h4><p className="process-help">The resulting action or project has now been completed. Confirm whether the underlying situation is actually resolved for you.</p><div className="process-actions"><button className="secondary" onClick={() => { onKeepOpen(tension.id); resetProcessing(); }}>No, keep it open</button><button className="primary small" onClick={() => { onResolve(tension.id, `${personName(currentUserId)} confirmed the tension is resolved.`); resetProcessing(); }}>Yes, resolve tension</button></div></div>}
-        {isProcessing && needsMyResponse && <div className="tension-process-panel"><span className="kind">Your response</span><h4>What does {personName(tension.raiserId)} need to know from you?</h4><textarea rows={3} value={outcomeNote} onChange={(event) => setOutcomeNote(event.target.value)} placeholder="Give the concrete response or commitment…" /><div className="process-actions"><button className="quiet" onClick={resetProcessing}>Cancel</button><button className="primary small" disabled={!outcomeNote.trim()} onClick={() => { onRespond(tension.id, outcomeNote); resetProcessing(); }}>Send response</button></div></div>}
-        {isProcessing && canProcess && <TensionProcessPanel tension={tension} outcome={outcome} setOutcome={setOutcome} outcomeTitle={outcomeTitle} setOutcomeTitle={setOutcomeTitle} outcomeNote={outcomeNote} setOutcomeNote={setOutcomeNote} ownerId={ownerId} setOwnerId={setOwnerId} onCancel={resetProcessing} onCreateAction={() => { onCreateAction(tension.id, outcomeTitle, ownerId); resetProcessing(); }} onCreateProject={() => { onCreateProject(tension.id, outcomeTitle); resetProcessing(); }} onResolveInformation={() => { onResolve(tension.id, `Information captured: ${outcomeNote.trim()}`); resetProcessing(); }} onResolveNone={() => { onResolve(tension.id, "No further action is needed. The tension is resolved."); resetProcessing(); }} onGovernance={() => { onMove(tension.id, "governance", "This tension requires a change to an ongoing role, accountability, domain or policy and has moved to Governance."); resetProcessing(); }} onSync={() => { onMove(tension.id, "needs_sync", "Asynchronous processing was not enough. This tension needs synchronous discussion."); resetProcessing(); }} />}
-      </div>{!isProcessing && needsMyConfirmation && <button className="secondary" onClick={() => startProcessing(tension.id)}>Review outcome <span aria-hidden="true">→</span></button>}{!isProcessing && needsMyResponse && <button className="secondary" onClick={() => startProcessing(tension.id)}>Respond <span aria-hidden="true">→</span></button>}{!isProcessing && canProcess && <button className="secondary" onClick={() => startProcessing(tension.id)}>What do you need? <span aria-hidden="true">→</span></button>}{!isProcessing && !needsMyConfirmation && !needsMyResponse && !canProcess && <span className={`tension-state tension-state-${tension.status}`}>{formatTensionStatus(tension)}</span>}</article>;
+      const awaitingMyConfirmation = tension.status === "awaiting_confirmation" && tension.raiserId === currentUserId;
+      const canProcess = tension.status === "open" && tension.raiserId === currentUserId;
+      const canMarkResolved = tension.status === "open";
+      const isProcessing = processingId === tension.id && canProcess;
+
+      return <article className={`tension-card ${isProcessing ? "tension-card-open" : ""}`} key={tension.id}><div className="tension-line" aria-hidden="true" /><div className="tension-content"><div className="tension-meta"><span>Raised by {personName(tension.raiserId)}</span>{project && <span>{project.title}</span>}<span>{formatTensionStatus(tension)}</span></div><h3>{tension.title}</h3><p>{tension.latestNote ?? "Open until somebody believes the real-world tension is resolved."}</p>
+
+        {isProcessing && <TensionProcessPanel tension={tension} outcome={outcome} setOutcome={setOutcome} outcomeTitle={outcomeTitle} setOutcomeTitle={setOutcomeTitle} outcomeNote={outcomeNote} setOutcomeNote={setOutcomeNote} ownerId={ownerId} setOwnerId={setOwnerId} onCancel={resetProcessing} onCreateAction={() => { onCreateAction(tension.id, outcomeTitle, ownerId); resetProcessing(); }} onCreateProject={() => { onCreateProject(tension.id, outcomeTitle); resetProcessing(); }} onResolveInformation={() => { onResolve(tension.id, `Information captured: ${outcomeNote.trim()}`); resetProcessing(); }} onResolveNone={() => { onResolve(tension.id, "No further action is needed. The tension is resolved."); resetProcessing(); }} onGovernance={() => { onMove(tension.id, "governance", "This tension requires a change to an ongoing role, accountability, domain or policy and has moved to Governance."); resetProcessing(); }} onSync={() => { onMove(tension.id, "needs_sync", "This tension needs a synchronous conversation."); resetProcessing(); }} />}
+
+        {awaitingMyConfirmation && <div className="tension-process-panel"><span className="kind">Resolution check</span><h4>{personName(tension.resolutionProposedBy ?? "")} marked this resolved. Is it resolved for you?</h4><p className="process-help">Check the actual situation. If the tension still exists, keep it open.</p><div className="process-actions"><button className="secondary" onClick={() => onKeepOpen(tension.id)}>No, keep it open</button><button className="primary small" onClick={() => onResolve(tension.id, `${personName(currentUserId)} confirmed the tension is resolved.`)}>Yes, resolved</button></div></div>}
+      </div>
+
+      {!isProcessing && !awaitingMyConfirmation && canProcess && <div className="actions compact-actions"><button className="secondary" onClick={() => startProcessing(tension.id)}>What do you need? <span aria-hidden="true">→</span></button><button className="quiet" onClick={() => onMarkResolved(tension.id)}>Resolve</button></div>}
+      {!isProcessing && !awaitingMyConfirmation && canMarkResolved && tension.raiserId !== currentUserId && <button className="secondary" onClick={() => onMarkResolved(tension.id)}>Mark resolved</button>}
+      {!isProcessing && !awaitingMyConfirmation && !canMarkResolved && <span className={`tension-state tension-state-${tension.status}`}>{formatTensionStatus(tension)}</span>}
+      </article>;
     })}</div>}</section>
   </>;
 }
@@ -63,18 +71,19 @@ function TensionProcessPanel({ tension, outcome, setOutcome, outcomeTitle, setOu
 }) {
   const outcomes: { id: TensionOutcome; label: string; description: string }[] = [
     { id: "information", label: "Information", description: "I need an answer, fact or clarification." },
-    { id: "action", label: "Action", description: "I need one concrete next step." },
-    { id: "project", label: "Project", description: "I need an outcome that will take more than one step." },
+    { id: "action", label: "Action", description: "I want to capture one concrete next step." },
+    { id: "project", label: "Project", description: "I want to capture an outcome that takes more than one step." },
     { id: "governance", label: "Governance", description: "An ongoing role, accountability, domain or policy needs to change." },
-    { id: "sync", label: "Synchronous discussion", description: "This cannot be processed well enough asynchronously." },
+    { id: "sync", label: "Synchronous discussion", description: "This needs a real conversation." },
     { id: "none", label: "Nothing further", description: "Naming or reviewing it was enough." },
   ];
-  return <div className="tension-process-panel"><span className="kind">Process tension</span><h4>What do you need?</h4><p className="process-help">Choose what should happen next. If the result is an action or project, the tension stays open while that work is outstanding. The raiser confirms resolution after the work is completed.</p><div className="outcome-grid">{outcomes.map((candidate) => <button key={candidate.id} className={outcome === candidate.id ? "outcome-option selected" : "outcome-option"} onClick={() => setOutcome(candidate.id)}><strong>{candidate.label}</strong><small>{candidate.description}</small></button>)}</div>
+
+  return <div className="tension-process-panel"><span className="kind">Process tension</span><h4>What do you need?</h4><p className="process-help">Capture useful resulting work when needed. Creating an action or project does not control this tension; come back and resolve the tension when reality has actually changed.</p><div className="outcome-grid">{outcomes.map((candidate) => <button key={candidate.id} className={outcome === candidate.id ? "outcome-option selected" : "outcome-option"} onClick={() => setOutcome(candidate.id)}><strong>{candidate.label}</strong><small>{candidate.description}</small></button>)}</div>
     {outcome === "information" && <div className="outcome-form"><label className="field"><span>Information or clarification</span><textarea rows={3} value={outcomeNote} onChange={(event) => setOutcomeNote(event.target.value)} /></label><button className="primary small" disabled={!outcomeNote.trim()} onClick={onResolveInformation}>Record and resolve</button></div>}
     {outcome === "action" && <div className="outcome-form outcome-form-grid"><label className="field"><span>Action</span><input value={outcomeTitle} onChange={(event) => setOutcomeTitle(event.target.value)} placeholder="Send current membership list" /></label><label className="field"><span>Owner</span><select value={ownerId} onChange={(event) => setOwnerId(event.target.value)}>{people.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label><button className="primary small" disabled={!outcomeTitle.trim()} onClick={onCreateAction}>Create action</button></div>}
     {outcome === "project" && <div className="outcome-form"><label className="field"><span>Project outcome</span><input value={outcomeTitle} onChange={(event) => setOutcomeTitle(event.target.value)} placeholder="Prepare membership data for the General Assembly" /></label><button className="primary small" disabled={!outcomeTitle.trim()} onClick={onCreateProject}>Create project</button></div>}
-    {outcome === "governance" && <div className="outcome-form"><p>This moves the tension to Governance. There you create the actual structural proposal and start the governance sequence.</p><button className="primary small" onClick={onGovernance}>Move to Governance</button></div>}
-    {outcome === "sync" && <div className="outcome-form"><p>The tension stays visible but is marked as needing synchronous discussion.</p><button className="primary small" onClick={onSync}>Mark as needing sync</button></div>}
+    {outcome === "governance" && <div className="outcome-form"><p>This moves the tension to Governance so a proposal can be prepared for a facilitator-led governance meeting.</p><button className="primary small" onClick={onGovernance}>Move to Governance</button></div>}
+    {outcome === "sync" && <div className="outcome-form"><p>The app keeps the tension visible; the actual processing moves to a real conversation.</p><button className="primary small" onClick={onSync}>Mark as needing sync</button></div>}
     {outcome === "none" && <div className="outcome-form"><p>No action, project or structural change is needed.</p><button className="primary small" onClick={onResolveNone}>Resolve tension</button></div>}
     <div className="process-actions"><button className="quiet" onClick={onCancel}>Close</button></div>
   </div>;
