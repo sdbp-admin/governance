@@ -19,7 +19,7 @@ const labels: Record<View, string> = {
 const navMeta: Record<View, string> = {
   attention: "Today",
   work: "Projects & actions",
-  tensions: "What needs movement",
+  tensions: "Open tensions",
   organisation: "People & roles",
   governance: "Change the structure",
   records: "Organisational memory",
@@ -83,7 +83,7 @@ function Header({ view, attentionCount }: { view: View; attentionCount: number }
   const descriptions: Record<View, string> = {
     attention: attentionCount ? `${attentionCount} things need your attention. Start with the one that creates the most movement.` : "Nothing needs you right now.",
     work: "Keep outcomes visible. Update only when something actually changed.",
-    tensions: "Capture what is pulling your attention before deciding what the solution should be.",
+    tensions: "A tension is a gap between current reality and a potential future you sense. Raise one whenever something could be better.",
     organisation: "See the work SDBP depends on, separate from formal titles and individual people.",
     governance: "Change responsibilities and standing rules when the structure itself needs to evolve.",
     records: "The legal and organisational memory you can return to when context matters.",
@@ -232,9 +232,9 @@ function TensionsView() {
     <>
       <div className="tension-composer">
         <div className="composer-copy">
-          <span className="section-kicker">Capture first</span>
-          <h2>What is pulling your attention?</h2>
-          <p>You do not need to know the solution yet. Name what is happening.</p>
+          <span className="section-kicker">Raise a tension</span>
+          <h2>What tension do you want to raise?</h2>
+          <p>A tension can point to a problem, an opportunity, missing clarity, or something blocking the work. You do not need to know the solution yet.</p>
         </div>
         <div className="composer-input">
           <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} placeholder="Membership list still not received…" />
@@ -243,7 +243,7 @@ function TensionsView() {
       </div>
 
       <section className="section">
-        <div className="section-head"><div><span className="section-kicker">Open</span><h2>The agenda is the tensions</h2></div><span className="counter">{tensions.length}</span></div>
+        <div className="section-head"><div><span className="section-kicker">Open</span><h2>Tensions waiting to be processed</h2></div><span className="counter">{tensions.length}</span></div>
         <div className="tension-stream">{tensions.map((tension) => (
           <article className="tension-card" key={tension.id}>
             <div className="tension-line" aria-hidden="true" />
