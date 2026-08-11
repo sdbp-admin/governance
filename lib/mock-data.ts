@@ -135,6 +135,8 @@ export const tensions: Tension[] = [
     linkedProjectId: "general-assembly",
     status: "open",
     waitingFor: "edo",
+    waitingKind: "action",
+    latestNote: "Action proposed to Edo: “Send current membership list to Luka”. The tension remains open until the action is completed and Luka confirms the result.",
     createdAt: "2026-08-10",
   },
 ];
@@ -161,16 +163,5 @@ export const myAttention: AttentionItem[] = [
     primaryAction: "Accept action",
     status: "needs_action",
     due: "2026-08-14",
-  },
-  {
-    id: "tension-response",
-    ownerId: "edo",
-    kind: "tension",
-    targetId: "membership-list",
-    title: "Membership list still not received",
-    reason: "Luka is waiting for your response.",
-    primaryAction: "Respond",
-    status: "needs_action",
-    staleDays: 1,
   },
 ];
