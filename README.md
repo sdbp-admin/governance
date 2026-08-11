@@ -59,6 +59,8 @@ The first schema is defined in [`supabase/migrations/0001_v1_core.sql`](supabase
 
 The schema deliberately excludes workflow machinery that the validated product does not need.
 
+The `sdbp-governance-dev` Supabase project is connected to `feat/v1-foundation`, and the `v1_core` migration has been applied successfully. The repository now includes the Supabase browser client dependency and public build configuration. The existing UI still uses browser-session prototype state until authentication and confirmed organisational data are ready to replace it.
+
 ## Role model
 
 President, Secretary, Treasurer, Vice-President and similar offices are **board roles**. Their authority and mandatory duties come from SDBP's statutes and applicable law.
@@ -73,12 +75,12 @@ No AI dependency, dependency graph, tension/action/project choreography, exhaust
 
 ## Next implementation steps
 
-The next phase is **persistence without product expansion**:
+The current phase is **persistence without product expansion**:
 
-1. apply the frozen schema to a Supabase development project;
-2. connect the app to Supabase while preserving the validated interaction behaviour;
-3. add invite-only email authentication;
-4. persist organisation, Work and Tensions;
+1. configure invite-only authentication and the first confirmed board user;
+2. connect that Auth user to a `people` row;
+3. read People/Roles/Projects/Actions/Tensions from Postgres;
+4. persist an Action status change across browser sessions;
 5. rebuild My Attention from canonical persisted state plus attention signals;
 6. persist Governance and Records;
 7. add reminders, private file storage, statute search and weekly harvest in later passes.
@@ -91,15 +93,17 @@ See [`docs/operating-model.md`](docs/operating-model.md) for the product boundar
 
 The review build is published through GitHub Pages from the `feat/v1-foundation` branch. That branch is allowed to deploy to the `github-pages` environment.
 
-The prototype still uses browser-session storage. Closing the tab resets the current test state.
+The visible prototype still uses browser-session storage. Closing the tab resets the current test state until the persistence cut-over is completed.
 
 ## Local development
 
-Requires Node.js 20.9 or newer.
+Requires Node.js 22 or newer.
 
 ```bash
 npm install
 npm run dev
 ```
+
+Create `.env.local` from `.env.example` and provide the public Supabase project URL and publishable key.
 
 Then open `http://localhost:3000`.
