@@ -2,9 +2,13 @@
 
 A lightweight operating system for SDBP board work: clear roles, visible commitments, tension-driven problem solving, evolving governance, organisational memory, and an asynchronous weekly rhythm.
 
-## Product principle
+## Product principles
 
 The app holds structure, rhythm, memory, and process. People retain judgement and leadership.
+
+The app reduces unnecessary meetings. It does not replace necessary conversations.
+
+Governance is facilitator-led. The app guides the live process and records the resulting governance change; it does not replace the facilitator.
 
 Discussion can happen anywhere. Organisational commitments and authoritative records belong in the app.
 
@@ -12,14 +16,24 @@ Discussion can happen anywhere. Organisational commitments and authoritative rec
 
 The prototype deliberately has no backend. For testing, changes are saved in browser-session storage so they survive navigation and refresh within the current tab. Closing the tab resets the prototype.
 
-Before adding production persistence or authentication, the current phase validates the central operating loop:
+Before adding production persistence or authentication, the current phase validates two simple loops.
+
+### Operational loop
 
 1. the app prompts a person when an interaction is due;
 2. a project can be updated or confirmed unchanged;
 3. a tension can be raised without knowing the solution;
-4. the tension can be processed into an action, project, governance change, synchronous discussion, information, or no further action;
-5. resulting work becomes visible in Work and My Attention;
-6. SDBP Pulse changes as exceptions are resolved or become stale.
+4. people resolve the tension through normal organisational work or conversation;
+5. if somebody other than the raiser marks it resolved, the raiser confirms;
+6. resulting commitments remain visible in Work without automatically controlling the tension lifecycle.
+
+### Governance meeting loop
+
+1. a structural tension is raised and flagged for Governance;
+2. a proposal may be prepared before the meeting;
+3. the board meets in person or through a tool such as Google Meet;
+4. the facilitator uses the Governance screen as a shared guide through the Integrative Decision-Making sequence;
+5. the app records the accepted proposal, decision and resulting governance change.
 
 ## Current vertical slice
 
@@ -32,10 +46,22 @@ The prototype includes:
 - Organisation with people and editable role definitions;
 - board roles and operating roles as the same underlying concept with different sources of authority;
 - role purpose, scope, responsibilities, accountabilities, source and holder assignments;
-- lightweight Integrative Decision-Making guidance for governance;
+- an experimental Governance workflow that is now being simplified into a facilitator-controlled live meeting aid;
 - Records as the planned home of statutes, minutes, transcripts and governance agreements;
 - SDBP Pulse for Process Steward exception visibility;
 - representative General Assembly / membership workflow data.
+
+## Tension model
+
+A tension is a gap between current reality and a potential future sensed by a person.
+
+The target v1 lifecycle is intentionally small:
+
+- **Open**
+- **Awaiting confirmation** when somebody other than the raiser believes it is resolved
+- **Resolved** once the raiser confirms, or when the raiser resolves their own tension
+
+Actions and projects may be linked to a tension for context. Their lifecycles do not automatically control the tension.
 
 ## Role model
 
@@ -47,17 +73,19 @@ The app must not invent the content of statute- or law-based roles. Their defini
 
 ## What is intentionally not in v1
 
-No AI dependency, dependency graph, Gantt planning, nested circle hierarchy, performance scoring, automatic email/WhatsApp ingestion, or elaborate project-management layer is required for the core product.
+No AI dependency, dependency graph, tension/action/project choreography, exhaustive asynchronous governance workflow, Gantt planning, nested circle hierarchy, performance scoring, automatic email/WhatsApp ingestion, or elaborate project-management layer is required for the core product.
 
 ## Next implementation gate
 
-Do not connect the backend until the central interaction loop above feels coherent in the prototype. After that validation:
+Do not connect the backend until the simplified operational loop and facilitator-led Governance Meeting loop feel coherent in the prototype. After that validation:
 
 1. freeze the v1 domain model;
 2. add the Supabase schema and seed data;
 3. add authentication;
 4. persist the validated workflows;
 5. add records/file storage, reminders, statute search and weekly harvest.
+
+See [`docs/operating-model.md`](docs/operating-model.md) for the current product boundary and the complexity scheduled for removal.
 
 ## Prototype deployment
 
