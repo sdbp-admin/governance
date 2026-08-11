@@ -1,5 +1,5 @@
-import { Prototype } from "@/components/prototype";
+import { AuthenticatedApp } from "@/components/authenticated-app";
 
 export default function Page() {
-  return <Prototype />;
+  return <AuthenticatedApp />;
 }
