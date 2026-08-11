@@ -1,0 +1,207 @@
+.workflow-editor {
+  width: min(700px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  background: white;
+  border-radius: 24px;
+  border: 1px solid var(--border);
+  box-shadow: 0 30px 90px rgba(20,30,40,.28);
+  padding: 28px;
+}
+
+.workflow-choice-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.tension-card-open {
+  align-items: start;
+}
+
+.tension-process-panel {
+  margin-top: 18px;
+  padding: 18px;
+  border-radius: 15px;
+  background: #f7fafb;
+  border: 1px solid #dce5e9;
+}
+
+.tension-process-panel h4 {
+  margin: 5px 0 0;
+  font-size: 18px;
+  color: var(--brand-navy);
+}
+
+.tension-process-panel textarea,
+.tension-process-panel input,
+.tension-process-panel select {
+  width: 100%;
+  border: 1px solid #d7e0e5;
+  border-radius: 10px;
+  padding: 10px 11px;
+  background: white;
+  color: var(--text);
+}
+
+.process-help {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 8px 0 14px;
+}
+
+.outcome-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 8px;
+}
+
+.outcome-option {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  padding: 11px 12px;
+  border: 1px solid #dce4e8;
+  border-radius: 11px;
+  background: white;
+  color: var(--text);
+}
+
+.outcome-option strong {
+  font-size: 13px;
+  color: var(--brand-navy);
+}
+
+.outcome-option small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.outcome-option:hover,
+.outcome-option.selected {
+  border-color: #9dcddd;
+  background: var(--accent-soft);
+}
+
+.outcome-option.selected {
+  box-shadow: inset 0 0 0 1px rgba(37,150,190,.18);
+}
+
+.outcome-form {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #e2e8eb;
+}
+
+.outcome-form > .primary {
+  margin-top: 11px;
+}
+
+.outcome-form p {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0;
+}
+
+.outcome-form-grid {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) 180px;
+  gap: 10px;
+  align-items: end;
+}
+
+.outcome-form-grid .primary {
+  grid-column: 1 / -1;
+  justify-self: start;
+  margin-top: 0;
+}
+
+.process-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.tension-state {
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: #f1f4f5;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.tension-state-needs_sync {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.tension-state-governance {
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+
+.records-intro {
+  margin-bottom: 18px;
+  padding: 15px 17px;
+  border-radius: 14px;
+  border: 1px solid #dbe5e9;
+  background: rgba(255,255,255,.72);
+}
+
+.records-intro strong,
+.records-intro p {
+  display: block;
+}
+
+.records-intro strong {
+  margin-top: 4px;
+  color: var(--brand-navy);
+}
+
+.records-intro p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.exception-stack {
+  display: grid;
+  gap: 10px;
+}
+
+@media (max-width: 820px) {
+  .outcome-grid,
+  .outcome-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .outcome-form-grid .primary {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 560px) {
+  .workflow-editor {
+    max-height: 94vh;
+    border-radius: 22px 22px 0 0;
+    padding: 22px 18px;
+  }
+
+  .workflow-choice-row {
+    justify-content: stretch;
+  }
+
+  .workflow-choice-row button {
+    width: 100%;
+  }
+
+  .tension-process-panel {
+    padding: 14px;
+  }
+}
