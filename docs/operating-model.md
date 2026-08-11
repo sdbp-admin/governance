@@ -1,12 +1,12 @@
 # Simplified operating model
 
-This document is the current product boundary for SDBP Governance. It exists to prevent the prototype from turning useful organisational concepts into unnecessary software process.
+This document is the product boundary for SDBP Governance. It exists to prevent useful organisational concepts from turning into unnecessary software process.
 
 ## Core principle
 
 The app holds structure, rhythm, memory and process. People retain judgement and leadership.
 
-Two additional constraints follow from that principle:
+Two constraints follow from that principle:
 
 - **The app reduces unnecessary meetings. It does not replace necessary conversations.**
 - **The app guides and records governance. A human facilitator runs the governance process.**
@@ -28,6 +28,24 @@ The app should:
 
 Discussion may happen in the app, by email, WhatsApp, phone or in a meeting. The app does not need to reproduce every conversation. It needs the resulting organisational reality.
 
+## My Attention
+
+Testing established an important boundary: **My Attention is a projection over the organisation's actual state, not a second task database.**
+
+If an Action is proposed or open for Edo, that Action itself is the source of truth. My Attention shows it because it needs Edo's attention. Accepting the Action changes the Action from proposed to open; the item remains visible until the Action is done.
+
+The same principle applies to other canonical objects. My Attention may combine:
+
+- proposed/open Actions owned by the current person;
+- due Project updates;
+- a Tension awaiting confirmation from its raiser;
+- Governance preparation that requires action;
+- event-driven signals that cannot be inferred from the current object state alone.
+
+The validated example of the last category is linked work being completed. If Edo completes work linked to Luka's open Tension, Luka may receive a **Review tension** signal. That signal tells Luka new reality exists to check. It does not resolve the Tension.
+
+This separation prevents Work and My Attention from silently diverging.
+
 ## Tensions
 
 A tension is a gap between current reality and a potential future sensed by a person. It may point to a problem, opportunity, missing clarity or barrier.
@@ -36,38 +54,38 @@ A tension can be raised without knowing the solution.
 
 ### Minimal lifecycle
 
-The target lifecycle is deliberately small:
+The core lifecycle is deliberately small:
 
 1. **Open** - the tension still exists.
 2. **Awaiting confirmation** - somebody other than the raiser believes it is resolved and marks it resolved.
 3. **Resolved** - the raiser confirms the tension is resolved, or the raiser resolves their own tension directly.
 
-If the raiser does not agree that it is resolved, they keep it open.
+A Tension may also be routed to **Needs sync** or **Governance**. These are practical routes back to real conversation or structural governance; they are not dependency states.
+
+If the raiser does not agree that a proposed resolution actually resolved the real situation, they keep the Tension open.
 
 ### Example
 
 Luka raises: `Membership list still not received`.
 
-Edo sends the list and marks the tension resolved. The app asks Luka to confirm. Luka checks that the list arrived and confirms. Done.
+Edo sends the list. If it is represented as a linked Action, Edo marks the Action done. Luka receives a signal that the linked work was completed and checks the real situation. Luka resolves the Tension when the list is actually received.
 
-If the list was captured as a linked Action, Edo may instead mark that Action done. The app may then notify Luka that the linked work was completed so he knows to check the real situation. **That notification does not change the tension state.** Luka still decides whether the tension is resolved.
+Alternatively, Edo can mark Luka's Tension resolved directly after sending the list. Luka then confirms whether the real situation is resolved.
 
-The app does not need to know whether Edo solved the tension through an Action object, an email, a phone call or another route.
+The app does not need to know which route is organisationally 'correct'. People decide whether the tension actually disappeared.
 
 ### Links are context, not dependencies
 
-A tension may be linked to an action or project because that connection is useful context. The lifecycle of one object does not automatically control the lifecycle of another.
+A Tension may be linked to an Action or Project because that connection is useful context. The lifecycle of one object does not automatically control the lifecycle of another.
 
 Completion of linked work may produce an attention signal for the tension raiser. This is a notification, not dependency logic.
 
-Therefore v1 should not contain:
+Therefore v1 does not contain:
 
 - a dependency engine between tensions, actions and projects;
 - separate waiting states for `response`, `action`, `project` and `confirmation`;
 - automatic tension resolution when an action or project changes state;
 - automatic action or project state changes when a tension is resolved.
-
-People decide whether the real-world tension has been resolved.
 
 ## Work
 
@@ -75,35 +93,35 @@ Projects and actions remain simple commitments.
 
 - An **Action** is a concrete next step.
 - A **Project** is an outcome requiring more than one step.
-- Actions proposed to another person may require acceptance before they become that person's commitment.
+- Actions proposed to another person may require acceptance before they become that person's open commitment.
 - Actions and projects may link back to the tension that produced them.
 - Completing work does not automatically resolve a linked tension.
 - Completing linked work may notify the tension raiser that there is new reality to check.
 
-The app should show the link and relevant signals without turning them into workflow choreography.
+The app shows the link and relevant signals without turning them into workflow choreography.
 
 ## Governance
 
 Governance is used when a tension requires changing an ongoing role, accountability, domain or standing policy.
 
-Governance should not be implemented as a substitute for a governance meeting or for the facilitator.
+Governance is not a substitute for a governance meeting or for the facilitator.
 
 ### Before a governance meeting
 
-The app should allow a board member to:
+The app allows a board member to:
 
 - raise a structural tension;
 - flag it for Governance;
 - optionally draft a proposal;
 - keep the tension and proposal visible until a governance meeting is held.
 
-For v1, asynchronous preparation is useful. Full asynchronous governance decision-making is not required.
+Asynchronous preparation is useful. Exhaustive asynchronous governance decision-making is not required for v1.
 
 ### During a governance meeting
 
-The facilitator starts a **Governance Meeting** in the app while the board meets in person or through a tool such as Google Meet.
+The facilitator starts a **Governance Meeting** while the board meets in person or through a tool such as Google Meet.
 
-The meeting opens in a dedicated shareable window when the browser permits it. The main app remains available behind it. This meeting surface acts as the shared process guide and shows:
+The meeting opens in a dedicated shareable window when the browser permits it. The main app remains available behind it. The meeting surface acts as the shared process guide and shows:
 
 1. **Present Proposal**
 2. **Clarifying Questions**
@@ -113,11 +131,11 @@ The meeting opens in a dedicated shareable window when the browser permits it. T
 6. **Integration**, when required
 7. **Proposal Accepted**, when no objections remain
 
-For each step, the app should show the proper process language and a concise explanation of what happens in that step.
+For each step, the app shows proper process language and a concise explanation of what happens.
 
-The facilitator controls progression through the sequence. The app does **not** require every participant to log in and digitally complete or pass each round before the facilitator can continue.
+The facilitator controls progression. The app does **not** require every participant to log in and digitally complete or pass each round before the facilitator can continue.
 
-At the Objection Round, the app should make the adopted objection criteria available so participants and the facilitator can use them. The software should not decide whether an objection is valid.
+At the Objection Round, the adopted objection criteria remain visible so participants and the facilitator can use them. The software does not decide whether an objection is valid.
 
 Useful meeting capture may include:
 
@@ -125,31 +143,25 @@ Useful meeting capture may include:
 - important clarifications;
 - objections that need integration;
 - the integrated proposal;
-- whether the proposal was accepted, withdrawn or left unresolved.
+- whether the proposal was accepted.
 
-It does not need a digital transcript of every reaction unless SDBP later finds that useful.
+The app does not need a transcript of every reaction.
 
-When a proposal is accepted in the dedicated meeting window, the accepted result returns to the main app and the meeting window can close. Browser restrictions may require the meeting to remain in the main tab as a fallback.
+When a proposal is accepted in the dedicated meeting window, the accepted result returns to the main app and the meeting window closes when the browser permits it.
 
 ### After the meeting
 
-The app records the organisational result:
+The accepted proposal is the governance decision/agreement for v1. It appears immediately under **Records → Governance agreements**.
 
-- the accepted proposal or decision;
-- the role, accountability, domain or policy that changed;
-- the source tension;
-- the meeting/date and relevant record;
-- any follow-up action or project created.
-
-Accepted governance should appear immediately under **Records → Governance agreements**. Long-term authoritative persistence follows when the backend and file storage are connected.
+This avoids creating duplicate objects called `proposal`, `decision` and `governance agreement` that all contain the same organisational result.
 
 The meeting produces governance. The app preserves it.
 
 ## Necessary conversations
 
-The product should actively preserve a route back to real human interaction.
+The product preserves a route back to real human interaction.
 
-A tension can be marked **Needs sync** whenever asynchronous processing is insufficient. Structural or contested governance can be taken into a Governance Meeting. Relational conflict, ambiguity and difficult judgement should be handled by people, with the app providing context and recording relevant outcomes.
+A tension can be marked **Needs sync** whenever asynchronous processing is insufficient. Structural governance can be taken into a Governance Meeting. Relational conflict, ambiguity and difficult judgement should be handled by people, with the app providing context and recording relevant outcomes.
 
 ## Organisation and roles
 
@@ -158,19 +170,21 @@ Board roles and operating roles remain the same underlying role concept with dif
 - Board roles such as President, Secretary, Treasurer or Vice-President derive mandatory authority and duties from the SDBP Statutes and applicable law.
 - Operating roles such as Process Steward or Membership Administration derive authority from SDBP governance decisions.
 
-Role definitions should remain editable and inspectable. Statute- or law-based definitions must come from authoritative sources rather than being invented by the app.
+Role definitions remain editable and inspectable. Statute- or law-based definitions must come from authoritative sources rather than being invented by the app.
 
 ## Records
 
-Records remain the organisational memory and are not feature creep.
+Records are organisational memory and are not feature creep.
 
-The app should eventually hold authoritative statutes, approved minutes, governance decisions and governance agreements. Google Docs or Drive may be used for collaborative working documents, while approved or authoritative versions are stored in the governance system.
+The app should hold authoritative statutes, approved minutes, transcripts when relevant, and governance decisions. Google Docs or Drive may be used for collaborative working documents, while approved or authoritative versions are stored in the governance system.
 
-During prototype validation, accepted governance decisions are already reflected in Records even though authoritative file persistence is not connected yet.
+A logical document and its file versions are separate so old authoritative versions can be retained rather than overwritten.
+
+Accepted governance decisions are displayed in Records directly from the accepted Governance proposal; they do not need to be duplicated into the document tables.
 
 ## Complexity explicitly rejected for v1
 
-The following should not be part of the target v1 model unless real SDBP use later creates a clear need:
+Unless real SDBP use later creates a clear need, v1 does not include:
 
 - tension/action/project dependency machinery;
 - per-participant completion matrices for governance rounds;
@@ -184,22 +198,17 @@ The following should not be part of the target v1 model unless real SDBP use lat
 - communication-channel ingestion;
 - AI as a requirement for core operation.
 
-## Simplification already completed
+## Validation completed
 
-The exploratory prototype previously contained machinery that simulated too much organisational process in software. The simplification pass has removed or reduced:
+The two pre-persistence validation gates have now passed in the prototype:
 
-- `TensionWaitingKind` and automatic action/project-to-tension transitions;
-- participant-by-participant clarification, reaction and objection completion gates;
-- the requirement to switch prototype users to advance every governance round;
-- granular governance response state that existed mainly to simulate a meeting asynchronously.
+1. **Operational loop:** Actions remain coherent between Work and My Attention; linked completion can signal the Tension raiser; real-world resolution remains a human decision.
+2. **Governance loop:** a structural Tension becomes a proposal, the facilitator runs the sequence from a dedicated meeting window, and the accepted result returns to the main app and Records.
 
-The `Test as` selector remains temporarily as a prototype testing aid for normal handoffs. It is not a production feature.
+The model is therefore frozen in [`v1-domain-model.md`](v1-domain-model.md).
 
-## Next validation gate
+## Current phase
 
-Before Supabase is connected, the simplified prototype should prove two things:
+The next phase is **persistence without product expansion**.
 
-1. **Operational loop:** a person can update work, raise a tension, receive a useful signal when relevant linked work changes, and close the tension with minimal interaction.
-2. **Governance meeting loop:** a structural tension can become a proposal, a facilitator can run the real governance sequence from one shared meeting window, and the resulting decision returns to the main app and Records.
-
-Only after those two loops feel natural should the v1 persistence model be frozen.
+Connect the validated model to Supabase, authentication and later Records/file storage without redesigning the workflows that just passed testing. Any new workflow concept now needs a concrete SDBP tension that the frozen model cannot represent.
