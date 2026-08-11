@@ -24,7 +24,7 @@ The prototype deliberately uses in-memory data. Persistence, auth and email remi
 
 ## Prototype deployment
 
-The review build is published through GitHub Pages from the `feat/v1-foundation` branch.
+The review build is published through GitHub Pages from the `feat/v1-foundation` branch. That branch is allowed to deploy to the `github-pages` environment.
 
 ## Local development
 
