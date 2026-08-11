@@ -1,15 +1,24 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { actions, myAttention, people, projects, roleDefinitions, tensions } from "@/lib/mock-data";
 import type { Action, AttentionItem, Project, RoleDefinition, Tension } from "@/lib/domain";
 
 type View = "attention" | "work" | "tensions" | "organisation" | "governance" | "records" | "pulse";
 type TensionOutcome = "information" | "action" | "project" | "governance" | "sync" | "none";
 
+type PrototypeSnapshot = {
+  attention: AttentionItem[];
+  projects: Project[];
+  actions: Action[];
+  tensions: Tension[];
+  roles: RoleDefinition[];
+};
+
 const CURRENT_USER_ID = "edo";
 const PROTOTYPE_TODAY = "2026-08-11";
 const NEXT_WEEK = "2026-08-18";
+const SESSION_STORAGE_KEY = "sdbp-governance-prototype-v1";
 
 const labels: Record<View, string> = {
   attention: "My Attention",
@@ -37,13 +46,56 @@ export function Prototype() {
   const [workProjects, setWorkProjects] = useState<Project[]>(projects);
   const [workActions, setWorkActions] = useState<Action[]>(actions);
   const [workTensions, setWorkTensions] = useState<Tension[]>(tensions);
+  const [roles, setRoles] = useState<RoleDefinition[]>(roleDefinitions);
   const [projectUpdateId, setProjectUpdateId] = useState<string | null>(null);
   const [selectedTensionId, setSelectedTensionId] = useState<string | null>(null);
   const [tensionDraftSeed, setTensionDraftSeed] = useState("");
+  const [sessionReady, setSessionReady] = useState(false);
+  const [saveNotice, setSaveNotice] = useState("");
 
   const activeAttention = attention.filter((item) => item.status === "needs_action");
   const deferredAttention = attention.filter((item) => item.status === "deferred");
   const projectUpdate = workProjects.find((project) => project.id === projectUpdateId) ?? null;
+
+  useEffect(() => {
+    try {
+      const stored = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
+      if (stored) {
+        const snapshot = JSON.parse(stored) as Partial<PrototypeSnapshot>;
+        if (Array.isArray(snapshot.attention)) setAttention(snapshot.attention);
+        if (Array.isArray(snapshot.projects)) setWorkProjects(snapshot.projects);
+        if (Array.isArray(snapshot.actions)) setWorkActions(snapshot.actions);
+        if (Array.isArray(snapshot.tensions)) setWorkTensions(snapshot.tensions);
+        if (Array.isArray(snapshot.roles)) setRoles(snapshot.roles);
+      }
+    } catch {
+      window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+    } finally {
+      setSessionReady(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!sessionReady) return;
+    const snapshot: PrototypeSnapshot = {
+      attention,
+      projects: workProjects,
+      actions: workActions,
+      tensions: workTensions,
+      roles,
+    };
+    window.sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(snapshot));
+  }, [sessionReady, attention, workProjects, workActions, workTensions, roles]);
+
+  useEffect(() => {
+    if (!saveNotice) return;
+    const timer = window.setTimeout(() => setSaveNotice(""), 3600);
+    return () => window.clearTimeout(timer);
+  }, [saveNotice]);
+
+  function announce(message: string) {
+    setSaveNotice(message);
+  }
 
   function completeItem(id: string) {
     setAttention((items) => items.map((item) => item.id === id ? { ...item, status: "done" } : item));
@@ -55,10 +107,12 @@ export function Prototype() {
 
   function deferItem(id: string) {
     setAttention((items) => items.map((item) => item.id === id ? { ...item, status: "deferred" } : item));
+    announce("Reminder parked for later in this prototype session.");
   }
 
   function restoreItem(id: string) {
     setAttention((items) => items.map((item) => item.id === id ? { ...item, status: "needs_action" } : item));
+    announce("Item returned to My Attention.");
   }
 
   function openTensions(seed = "", tensionId: string | null = null) {
@@ -77,6 +131,7 @@ export function Prototype() {
       const action = workActions.find((candidate) => candidate.id === item.targetId);
       setWorkActions((current) => current.map((candidate) => candidate.id === item.targetId ? { ...candidate, status: "open" } : candidate));
       completeItem(item.id);
+      announce(action ? `Action accepted: “${action.title}”.` : "Action accepted.");
 
       if (action?.sourceTensionId) {
         setWorkTensions((current) => current.map((tension) => tension.id === action.sourceTensionId
@@ -108,14 +163,17 @@ export function Prototype() {
         : project));
     }
     completeItem(item.id);
+    announce("Project checked: no change. Next prompt is Aug 18.");
   }
 
   function saveProjectUpdate(projectId: string, summary: string) {
-    setWorkProjects((current) => current.map((project) => project.id === projectId
-      ? { ...project, summary: summary.trim(), lastUpdate: PROTOTYPE_TODAY, nextPrompt: NEXT_WEEK }
-      : project));
+    const project = workProjects.find((candidate) => candidate.id === projectId);
+    setWorkProjects((current) => current.map((candidate) => candidate.id === projectId
+      ? { ...candidate, summary: summary.trim(), lastUpdate: PROTOTYPE_TODAY, nextPrompt: NEXT_WEEK }
+      : candidate));
     completeAttentionForTarget("project_update", projectId);
     setProjectUpdateId(null);
+    announce(`${project?.title ?? "Project"} updated and saved in this browser session.`);
   }
 
   function raiseTensionFromProject(projectId: string) {
@@ -126,6 +184,7 @@ export function Prototype() {
 
   function addTension(tension: Tension) {
     setWorkTensions((current) => [tension, ...current]);
+    announce(`Tension raised: “${tension.title}”.`);
   }
 
   function respondToTension(tensionId: string, note: string) {
@@ -137,6 +196,7 @@ export function Prototype() {
         }
       : tension));
     completeAttentionForTarget("tension", tensionId);
+    announce("Response recorded on the tension.");
   }
 
   function resolveTension(tensionId: string, note: string) {
@@ -144,6 +204,7 @@ export function Prototype() {
       ? { ...tension, status: "resolved", waitingFor: undefined, latestNote: note }
       : tension));
     completeAttentionForTarget("tension", tensionId);
+    announce("Tension resolved.");
   }
 
   function moveTension(tensionId: string, status: "governance" | "needs_sync", note: string) {
@@ -151,6 +212,7 @@ export function Prototype() {
       ? { ...tension, status, waitingFor: undefined, latestNote: note }
       : tension));
     completeAttentionForTarget("tension", tensionId);
+    announce(status === "governance" ? "Tension moved to Governance." : "Tension marked as needing synchronous discussion.");
   }
 
   function createActionFromTension(tensionId: string, title: string, ownerId: string) {
@@ -169,6 +231,7 @@ export function Prototype() {
 
     if (ownerId === CURRENT_USER_ID) {
       resolveTension(tensionId, `Action created: “${action.title}”. The tension is resolved.`);
+      announce(`Action created: “${action.title}”.`);
     } else {
       setWorkTensions((current) => current.map((candidate) => candidate.id === tensionId
         ? {
@@ -178,6 +241,7 @@ export function Prototype() {
             latestNote: `Action proposed to ${personName(ownerId)}: “${action.title}”. The tension stays open until they respond.`,
           }
         : candidate));
+      announce(`Action proposed to ${personName(ownerId)}: “${action.title}”.`);
     }
   }
 
@@ -196,6 +260,7 @@ export function Prototype() {
     };
     setWorkProjects((current) => [project, ...current]);
     resolveTension(tensionId, `Project created: “${project.title}”. The tension is resolved.`);
+    announce(`Project created: “${project.title}”.`);
   }
 
   return (
@@ -215,7 +280,7 @@ export function Prototype() {
         </nav>
         <div className="sidebar-foot">
           <div className="avatar">E</div>
-          <div><strong>Edo</strong><small>Prototype view</small></div>
+          <div><strong>Edo</strong><small>Prototype view · saves in this tab</small></div>
         </div>
       </aside>
 
@@ -243,11 +308,13 @@ export function Prototype() {
           onCreateAction={createActionFromTension}
           onCreateProject={createProjectFromTension}
         />}
-        {view === "organisation" && <OrganisationView />}
+        {view === "organisation" && <OrganisationView roles={roles} setRoles={setRoles} onSaved={(title) => announce(`Role saved: “${title}”.`)} />}
         {view === "governance" && <GovernanceView />}
         {view === "records" && <RecordsView />}
         {view === "pulse" && <PulseView attention={attention} actions={workActions} tensions={workTensions} />}
       </main>
+
+      {saveNotice && <div className="save-toast" role="status" aria-live="polite"><span aria-hidden="true">✓</span>{saveNotice}</div>}
 
       {projectUpdate && <ProjectUpdateEditor
         project={projectUpdate}
@@ -420,6 +487,7 @@ function WorkView({ projects, actions }: { projects: Project[]; actions: Action[
             <p>{project.summary}</p>
             <div className="project-meta">
               <span><strong>{personName(project.ownerId)}</strong><small>owner</small></span>
+              <span><strong>{formatShortDate(project.lastUpdate)}</strong><small>last updated</small></span>
               <span><strong>{formatShortDate(project.nextPrompt)}</strong><small>next prompt</small></span>
             </div>
           </article>
@@ -616,8 +684,11 @@ function TensionProcessPanel({ tension, outcome, setOutcome, outcomeTitle, setOu
   );
 }
 
-function OrganisationView() {
-  const [roles, setRoles] = useState<RoleDefinition[]>(roleDefinitions);
+function OrganisationView({ roles, setRoles, onSaved }: {
+  roles: RoleDefinition[];
+  setRoles: React.Dispatch<React.SetStateAction<RoleDefinition[]>>;
+  onSaved: (title: string) => void;
+}) {
   const [editingRole, setEditingRole] = useState<RoleDefinition | null>(null);
   const unfilledRoles = roles.filter((role) => role.holderIds.length === 0);
 
@@ -645,6 +716,7 @@ function OrganisationView() {
       ? current.map((role) => role.id === nextRole.id ? nextRole : role)
       : [...current, nextRole]);
     setEditingRole(null);
+    onSaved(nextRole.title);
   }
 
   return (
@@ -754,7 +826,7 @@ function RoleEditor({ role, onSave, onClose }: { role: RoleDefinition; onSave: (
           <div><span className="section-kicker">Role definition</span><h2 id="role-editor-title">{role.title ? `Edit ${role.title}` : "Add role"}</h2></div>
           <button className="quiet editor-close" onClick={onClose} aria-label="Close role editor">×</button>
         </div>
-        <p className="editor-note">Prototype only: these edits are kept in this browser session and reset when the page is refreshed.</p>
+        <p className="editor-note">Prototype only: these edits are saved in this browser tab and survive a refresh. Closing the tab resets the prototype.</p>
 
         <form onSubmit={(event) => {
           event.preventDefault();
