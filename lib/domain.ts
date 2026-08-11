@@ -49,12 +49,14 @@ export type Tension = {
   linkedProjectId?: string;
   status: "open" | "resolved" | "needs_sync" | "governance";
   waitingFor?: string;
+  latestNote?: string;
   createdAt: string;
 };
 
 export type AttentionItem = {
   id: string;
   kind: AttentionKind;
+  targetId?: string;
   title: string;
   reason: string;
   primaryAction: string;
