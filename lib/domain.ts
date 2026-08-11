@@ -66,3 +66,51 @@ export type AttentionItem = {
   due?: string;
   staleDays?: number;
 };
+
+export type GovernanceStage =
+  | "clarifying_questions"
+  | "reaction_round"
+  | "clarify"
+  | "objection_round"
+  | "integration"
+  | "accepted";
+
+export type GovernanceQuestion = {
+  id: string;
+  authorId: string;
+  text: string;
+  answer?: string;
+};
+
+export type GovernanceReaction = {
+  id: string;
+  authorId: string;
+  text: string;
+};
+
+export type GovernanceObjection = {
+  id: string;
+  authorId: string;
+  concern: string;
+  criteria: [boolean, boolean, boolean, boolean];
+  status: "candidate" | "valid" | "invalid" | "integrated";
+  facilitatorNote?: string;
+};
+
+export type GovernanceProposal = {
+  id: string;
+  tensionId: string;
+  title: string;
+  proposal: string;
+  proposerId: string;
+  stage: GovernanceStage;
+  questions: GovernanceQuestion[];
+  clarificationDoneIds: string[];
+  reactions: GovernanceReaction[];
+  reactionPassIds: string[];
+  objections: GovernanceObjection[];
+  objectionPassIds: string[];
+  integrationNote?: string;
+  createdAt: string;
+  acceptedAt?: string;
+};
