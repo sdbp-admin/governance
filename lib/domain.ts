@@ -31,6 +31,7 @@ export type Project = {
   lastUpdate: string;
   nextPrompt: string;
   summary: string;
+  sourceTensionId?: string;
 };
 
 export type Action = {
@@ -43,6 +44,8 @@ export type Action = {
   sourceTensionId?: string;
 };
 
+export type TensionWaitingKind = "response" | "action" | "project" | "confirmation";
+
 export type Tension = {
   id: string;
   title: string;
@@ -50,6 +53,7 @@ export type Tension = {
   linkedProjectId?: string;
   status: "open" | "resolved" | "needs_sync" | "governance";
   waitingFor?: string;
+  waitingKind?: TensionWaitingKind;
   latestNote?: string;
   createdAt: string;
 };
