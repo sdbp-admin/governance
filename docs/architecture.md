@@ -1,111 +1,82 @@
 # Technical architecture
 
-## Goal
+## Status
 
-Keep v1 simple enough for a volunteer board while leaving clean seams for persistence, authentication, reminders, email delivery and organisational records.
+**The interaction-validation phase is complete and the v1 domain model is frozen.**
+
+The browser prototype successfully validated both required loops:
+
+1. normal operational handoffs through Work, My Attention and Tensions;
+2. a facilitator-led Governance Meeting that returns an accepted proposal to the main app and Records.
+
+The project now moves from interaction prototyping to persistence implementation. New workflow features should not be added unless real use exposes a concrete problem.
+
+See [`v1-domain-model.md`](v1-domain-model.md) for the frozen domain and [`operating-model.md`](operating-model.md) for the product boundary.
+
+## Product constraints
 
 The application holds structure, rhythm, memory and process. People retain judgement and leadership.
 
 The app reduces unnecessary meetings. It does not replace necessary conversations.
 
-Governance is facilitator-led. The app guides and records the process; it does not replace the facilitator or force the board to reproduce a real meeting as asynchronous software workflow.
+Governance is facilitator-led. The app guides and records the process; it does not replace the facilitator.
 
-See [`operating-model.md`](operating-model.md) for the current product boundary.
+Context links explain why work exists. They do not create automatic lifecycle dependencies.
 
-## Current phase: simplification and interaction validation
-
-The prototype has no backend. Representative state is held in the browser and mirrored to session storage so interaction testing survives navigation and refresh within the current tab. Closing the tab resets the prototype.
-
-This browser-session persistence is only a testing aid. It is not the production persistence model.
-
-The prototype recently accumulated more state than the target product needs, particularly around tension dependencies and participant-by-participant governance rounds. That complexity is now explicitly scheduled for removal before the persistence model is frozen.
-
-Backend services remain deliberately unwired until two loops have been validated.
-
-### Operational interaction gate
-
-1. a person receives an attention request;
-2. a project is updated, confirmed unchanged, or produces a tension;
-3. a tension is raised without requiring a solution;
-4. people address the tension through normal work or conversation;
-5. a person may mark the tension resolved;
-6. if that person is not the raiser, the raiser confirms or keeps it open;
-7. SDBP Pulse reflects the resulting organisational reality.
-
-Actions and projects may be linked to the tension for context, but their states do not automatically determine whether the tension is resolved.
-
-### Governance meeting interaction gate
-
-1. a structural tension is flagged for Governance;
-2. the raiser may prepare a proposal before the meeting;
-3. the board holds a real governance meeting, in person or through a tool such as Google Meet;
-4. the facilitator runs the Integrative Decision-Making sequence from one shared Governance screen;
-5. the app displays the current step, proper process language, useful guidance and objection criteria;
-6. the facilitator advances the process manually;
-7. the accepted proposal and resulting governance change are recorded.
-
-The prototype should not require every participant to log in and digitally complete each round before the facilitator can continue.
-
-Only after these loops are coherent should the persistence model be frozen.
-
-## Proposed production stack
+## Production stack
 
 - Next.js App Router + TypeScript
 - Supabase Postgres for application data
-- Supabase Auth for board-member authentication
+- Supabase Auth for invited board-member authentication
 - Supabase Storage for authoritative files and organisational records
-- Vercel for production hosting and a daily reminder/harvest cron
+- Vercel for production hosting and scheduled reminder/harvest jobs
 - transactional email provider for notification delivery
-- optional Google Drive / Google Docs links for working documents, not as the application's system of record
+- optional Google Drive / Google Docs links for working documents, not as the system of record
 
-## Domain boundaries
+The current GitHub Pages build remains the review prototype until persistence and authentication require a production deployment model.
+
+## Frozen domain boundaries
 
 ### Organisation
 
-People, roles, role definitions and role assignments.
+People, roles and role assignments.
 
-All formal offices and operating responsibilities use the same underlying role model. The distinction is the role's source of authority:
+Board roles and operating roles use the same role model. Their source of authority differs:
 
-- **Board roles** such as President, Secretary, Treasurer or Vice-President derive authority and mandatory duties from the SDBP Statutes and applicable law.
-- **Operating roles** such as Process Steward or Membership Administration derive authority from SDBP governance decisions.
+- **Board roles** derive mandatory authority and duties from the SDBP Statutes and applicable law.
+- **Operating roles** derive authority from SDBP governance decisions.
 
-A role may contain purpose, scope, responsibilities, accountabilities, source, definition status and one or more holders.
-
-The app must never silently invent the content of a statute- or law-based role.
+Persist role holders through `role_assignments`; do not embed a list of holder ids in the database role row.
 
 ### Work
 
-Projects and actions.
+Projects and actions are canonical commitments.
 
-Projects represent outcomes requiring more than one step. Actions are concrete next steps. Proposed actions assigned to another person may require acceptance before becoming that person's open commitment.
+Projects represent outcomes requiring more than one step. Actions are concrete next steps. An action assigned to somebody else can begin as `proposed` and become `open` when accepted.
 
-Actions and projects may link to a source tension. That link is contextual. It is not a dependency rule.
+Actions and projects may link to a source tension. Completion does not resolve that tension automatically.
 
 ### Tensions
 
-A tension is a gap between current reality and a potential future sensed by a person. It may point to a problem, opportunity, missing clarity or barrier.
+A tension is a gap between current reality and a potential future sensed by a person.
 
-A tension can be captured before its solution is known.
-
-The target v1 lifecycle is intentionally small:
+V1 keeps the practical status set small:
 
 - `open`
 - `awaiting_confirmation`
 - `resolved`
+- `needs_sync`
+- `governance`
 
-The raiser can resolve their own tension directly. If another person marks it resolved, the raiser confirms or keeps it open.
+The raiser resolves their own tension directly. If another person marks it resolved, the raiser confirms or keeps it open.
 
-A tension may also be routed to a synchronous conversation or Governance when that is the appropriate way to process it. Those routes should not grow into a dependency state machine.
-
-The target v1 model does not need separate waiting kinds for responses, actions, projects or confirmation, and does not automatically resolve tensions when linked work changes state.
+`needs_sync` and `governance` are routing states, not the beginning of a workflow engine.
 
 ### Governance
 
-Governance changes ongoing roles, accountabilities, domains or standing policies. Operational work does not become governance merely because it is important.
+A structural tension may produce a proposal. The proposal is prepared asynchronously and then used by the facilitator during a real governance meeting.
 
-A structural tension and optional draft proposal can be prepared asynchronously. The actual governance process is facilitator-led and can be run during a real meeting.
-
-The Governance Meeting screen should act as a live guide through:
+The meeting window guides:
 
 1. Present Proposal
 2. Clarifying Questions
@@ -115,147 +86,153 @@ The Governance Meeting screen should act as a live guide through:
 6. Integration, when required
 7. Proposal Accepted
 
-The application may capture important clarifications, objections, integration notes and the current proposal text. These are meeting records, not software gates.
+Meeting notes remain lightweight structured JSON on the proposal. The application does not persist participant-completion matrices.
 
-The facilitator controls progression. The app displays the adopted objection criteria but does not algorithmically decide whether an objection is valid.
+For v1, an **accepted governance proposal is the governance decision/agreement**. Records displays it directly. There is no separate `decisions` row duplicating the same organisational result.
 
-The target persistence model should store the meaningful proposal, decision and governance result rather than a participant completion matrix for every round.
+A separate `governance_meetings` table is also not required by the validated behaviour. The popup/shareable meeting surface is a presentation mode around the proposal.
 
 ### Records
 
-Statutes, minutes, transcripts, governance agreements, versions, statute sections and links to other domain objects.
+Records and record versions hold organisational documents such as statutes, board minutes and transcripts.
 
-Records are the organisational memory. Working documents may live in Google Docs, but approved or authoritative records belong in the application.
+The logical record is separate from its file versions so authoritative history can be retained without destructive replacement.
 
-The current statutes should be explicitly identifiable as the authoritative version, with version/date/history and superseded versions retained.
+Accepted governance proposals appear in the Records interface as governance agreements but are not copied into the document tables.
 
-### Cadence
+### My Attention
 
-Attention requests, defer-until dates, reminders, project-update prompts and weekly snapshots.
+This boundary changed as a direct result of testing.
 
-Email is a pull mechanism back into the application, not a second system of record.
+**My Attention is a projection, not a second system of record.**
 
-## Important rules
+It combines canonical state such as:
 
-1. Board roles and operating roles share a role model; their authority comes from different sources.
-2. A tension can be captured before its solution is known.
-3. Links between tensions, actions and projects provide context, not automatic lifecycle dependencies.
-4. Only items requiring a response enter My Attention.
-5. Deferred items have an explicit return date; ignored items remain visible and become stale.
-6. The Process Steward sees exceptions, not an approval queue.
-7. Project updates are prompted on a regular rhythm and allow a one-click `No change` response.
-8. Discussion can happen anywhere; organisational commitments and authoritative records must be captured in the app.
-9. The app reduces unnecessary meetings but preserves a route to synchronous conversation whenever judgement or interaction requires it.
-10. Governance is facilitator-led. The software guides and records; it does not replace the facilitator.
-11. The application does not ingest every email or WhatsApp conversation.
-12. Statute search is deterministic full-text search. Humans interpret matching provisions.
-13. AI is an optional enhancement only and must never be required for core operation.
-14. Operating governance cannot silently override the Statutes, applicable law or other nondelegable constraints.
+- proposed/open actions owned by the current person;
+- due project updates;
+- a tension awaiting the raiser's confirmation;
+- governance preparation that requires action;
+- small event-driven signals that cannot be derived from the object's current status.
 
-## Candidate persistence model
+The validated example of the final category is completion of work linked to somebody else's open tension. That creates an `attention_signal` for the tension raiser to review the new reality. The signal does not change the tension state.
 
-This remains a candidate until the simplified interaction-validation gate is passed.
+Do not persist a generic copy of every action/project/tension inside an `attention_requests` table. That duplication already caused prototype divergence and is explicitly rejected in the frozen model.
 
-Prefer a small schema first. Suggested core tables:
+Intentional deferral can later be stored as a separate user-specific preference without changing the canonical source object.
+
+## Frozen core schema
+
+The first migration is [`../supabase/migrations/0001_v1_core.sql`](../supabase/migrations/0001_v1_core.sql).
+
+It contains ten application tables:
 
 - `people`
 - `roles`
 - `role_assignments`
 - `projects`
-- `actions`
 - `tensions`
+- `actions`
 - `governance_proposals`
-- `governance_meetings`
-- `decisions`
+- `attention_signals`
 - `records`
 - `record_versions`
-- `attention_requests`
+
+This is smaller than the earlier candidate architecture because validation showed that several apparent entities were just workflow/UI artifacts.
+
+### Deliberately absent from the first migration
+
+- generic `attention_requests`
+- `governance_meetings`
+- `governance_responses`
+- separate `decisions`
+- `tension_outcomes`
+- generic dependency/link graphs
 - `weekly_snapshots`
-- `activity_log`
+- generic `activity_log`
+- statute-section search tables
 
-Do not normalize every array or meeting note into a separate table before real use shows a need. For example, role responsibilities/accountabilities and lightweight governance meeting notes may initially live as structured fields on their parent record.
+These can be introduced later through additive migrations if real use requires them.
 
-The earlier candidate tables `tension_outcomes` and `governance_responses` are not assumed to be necessary. They were partly artifacts of an over-detailed prototype workflow.
+## Authentication and authorization
 
-A role record should include at minimum category (`board` or `operating`), title, purpose, scope, source and definition status. Source links can later connect a board role to a statute provision or governance record.
+People are domain objects and may exist before login access is connected. `people.auth_user_id` therefore optionally references the Supabase Auth user.
+
+SDBP v1 is one shared board workspace, not a multi-tenant product. The initial authorization model is intentionally simple:
+
+- authentication is invite-only for board users;
+- unauthenticated clients receive no application-table access;
+- authenticated board users share the organisational data;
+- Row Level Security is enabled on every exposed application table;
+- more granular record visibility can be added later if SDBP stores material that requires it.
+
+Do not expose a Supabase service-role key to the browser.
 
 ## Records and file storage
 
-Supabase Storage is the preferred storage layer for authoritative PDFs and other files. The database stores metadata and version relationships; Storage holds the binary file.
+Authoritative files will live in a **private Supabase Storage bucket**. The database keeps the organisational metadata and version relationships; Storage keeps the file itself.
 
-Typical record metadata:
+`record_versions.storage_path` stores the object path. Storage access must use authenticated access/RLS rather than public file URLs.
 
-- title;
-- type;
-- version;
-- current / superseded status;
-- effective date;
-- uploaded by;
-- source;
-- supersedes / superseded-by relationship;
-- storage path;
-- optional working-document URL.
+The Storage schema itself should be treated as Supabase-managed. File operations go through the Storage API rather than direct SQL manipulation of Storage metadata.
 
-Google Drive or Google Docs may be linked as a collaborative working source. They should not determine whether an authoritative SDBP record exists or who may access the governance application.
+Google Drive or Google Docs may be linked as collaborative working sources. They do not determine whether an authoritative SDBP record exists.
 
-## Reminder engine
+## Statute search
 
-A single scheduled job can run daily and:
+Statute search remains deterministic and human-interpreted.
 
-1. create due project-update prompts;
-2. reactivate deferred attention requests whose defer date has arrived;
-3. send reminders for unanswered attention requests according to a small cadence;
-4. flag old unanswered requests as stale for the Process Steward view;
-5. generate the weekly organisational harvest on the configured weekday.
+Later, extracted statute sections can use Postgres full-text search with a stored `tsvector`/GIN index. Search returns matching provisions; the software does not provide legal interpretation.
 
-Avoid per-item scheduled jobs. Store dates and let one daily job decide what is due.
+This is a later migration because the current core persistence model does not require statute section extraction to save validated board work.
 
-## Security
+## Reminder and cadence layer
 
-- Board-member-only authenticated application.
-- Row-level database policies should enforce organisation membership.
-- Records may require a visibility classification if SDBP later stores sensitive board material.
-- Statutes and governance records require version history rather than destructive replacement.
-- File access should follow application permissions rather than depend on public URLs.
+Do not create per-item scheduled jobs.
 
-## Complexity scheduled for removal from the prototype
+After core persistence works, one scheduled job can evaluate dates and state daily to:
 
-The next code pass should simplify rather than expand.
+- identify due project updates;
+- reactivate deferred items;
+- send reminders for unresolved attention;
+- surface stale exceptions to the Process Steward;
+- create the weekly organisational harvest.
 
-Remove or reduce:
+Open actions and due project updates should be derived from canonical data rather than copied into reminder tables.
 
-- `TensionWaitingKind` and automatic action/project-to-tension choreography;
-- automatic resolution of tensions when linked actions or projects change state;
-- participant-by-participant completion arrays for clarification, reaction and objection rounds;
-- software gates requiring every board member to click through each governance round;
-- granular governance response state whose only purpose is to simulate a meeting asynchronously.
+## Seed data rule
 
-Retain:
+The current prototype contains representative/draft data and incomplete board-role information. It must **not** be treated as authoritative production seed data.
 
-- links from work to source tensions for context;
-- a minimal raiser-confirmation mechanism when somebody else marks a tension resolved;
-- structural tension capture and proposal preparation;
-- proper Integrative Decision-Making terminology and explanations;
-- visible objection criteria;
-- facilitator-controlled progression through a live Governance Meeting;
-- the resulting decision and governance record.
+Production seeding should happen only from confirmed SDBP information, especially:
 
-The `Test as` selector can remain temporarily to test normal handoffs. It is not a production requirement.
+- real board-member email addresses;
+- actual statutory board offices;
+- role definitions taken from the SDBP Statutes/applicable law;
+- approved operating roles and accountabilities.
 
-## Revised v1 build order
+Development-only representative seed data can be added separately when local Supabase development is wired.
 
-1. Simplify the current prototype to match the target operating model.
-2. Validate the operational tension-resolution loop.
-3. Validate a facilitator-led Governance Meeting from one shared screen.
-4. Consolidate and freeze the v1 domain model from what was learned.
-5. Add Supabase schema and seed data.
-6. Add email authentication.
-7. Persist projects, actions, tensions and attention requests.
-8. Add weekly project-update prompts and defer/reminder behaviour.
-9. Add Process Steward pulse queries.
-10. Persist organisation and role management.
-11. Persist lightweight governance meetings and decisions.
-12. Add records, file storage and statute full-text search.
-13. Add weekly snapshot/harvest and notification emails.
+## Security rules
 
-Do not add dependency graphs, AI, advanced project management, nested circles, performance metrics, exhaustive asynchronous governance, or communication-channel ingestion unless real SDBP use creates a tension that justifies them.
+1. Every exposed application table has RLS enabled.
+2. Production access is restricted to invited/authenticated SDBP users.
+3. Authoritative files use private Storage access.
+4. Statutes and organisational records are versioned rather than destructively overwritten.
+5. Board-role definitions derived from statutes/law are not invented by application code.
+6. AI is never required for access control, legal interpretation or core operation.
+
+## Persistence implementation order
+
+1. Apply the frozen core schema to a Supabase development project.
+2. Connect Supabase to the app without changing the validated UI behaviour.
+3. Add invite-only email authentication and map Auth users to `people`.
+4. Persist people, roles and role assignments.
+5. Persist projects, actions and tensions.
+6. Rebuild My Attention as a projection over canonical persisted state plus `attention_signals`.
+7. Persist governance proposals/meeting notes and accepted governance.
+8. Add records and private file storage.
+9. Add project-update cadence, deferral and reminder delivery.
+10. Add Process Steward queries and weekly harvest.
+11. Add statute extraction/full-text search.
+
+The guiding rule for this phase is **persistence without product expansion**. The behaviour has been validated; the next work should make that behaviour durable and secure.
