@@ -142,6 +142,7 @@ export const myAttention: AttentionItem[] = [
   {
     id: "membership-update",
     kind: "project_update",
+    targetId: "membership",
     title: "Membership administration",
     reason: "Weekly update is due. Last update was 11 days ago.",
     primaryAction: "Update project",
@@ -151,6 +152,7 @@ export const myAttention: AttentionItem[] = [
   {
     id: "membership-action",
     kind: "action",
+    targetId: "send-membership-list",
     title: "Send current membership list to Luka",
     reason: "Luka needs this for the General Assembly.",
     primaryAction: "Accept action",
@@ -160,6 +162,7 @@ export const myAttention: AttentionItem[] = [
   {
     id: "tension-response",
     kind: "tension",
+    targetId: "membership-list",
     title: "Membership list still not received",
     reason: "Luka is waiting for your response.",
     primaryAction: "Respond",
