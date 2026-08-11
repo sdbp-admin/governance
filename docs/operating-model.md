@@ -6,7 +6,7 @@ This document is the current product boundary for SDBP Governance. It exists to 
 
 The app holds structure, rhythm, memory and process. People retain judgement and leadership.
 
-Two additional constraints now follow from that principle:
+Two additional constraints follow from that principle:
 
 - **The app reduces unnecessary meetings. It does not replace necessary conversations.**
 - **The app guides and records governance. A human facilitator runs the governance process.**
@@ -50,11 +50,15 @@ Luka raises: `Membership list still not received`.
 
 Edo sends the list and marks the tension resolved. The app asks Luka to confirm. Luka checks that the list arrived and confirms. Done.
 
+If the list was captured as a linked Action, Edo may instead mark that Action done. The app may then notify Luka that the linked work was completed so he knows to check the real situation. **That notification does not change the tension state.** Luka still decides whether the tension is resolved.
+
 The app does not need to know whether Edo solved the tension through an Action object, an email, a phone call or another route.
 
 ### Links are context, not dependencies
 
 A tension may be linked to an action or project because that connection is useful context. The lifecycle of one object does not automatically control the lifecycle of another.
+
+Completion of linked work may produce an attention signal for the tension raiser. This is a notification, not dependency logic.
 
 Therefore v1 should not contain:
 
@@ -74,8 +78,9 @@ Projects and actions remain simple commitments.
 - Actions proposed to another person may require acceptance before they become that person's commitment.
 - Actions and projects may link back to the tension that produced them.
 - Completing work does not automatically resolve a linked tension.
+- Completing linked work may notify the tension raiser that there is new reality to check.
 
-The app should show the link without turning it into workflow choreography.
+The app should show the link and relevant signals without turning them into workflow choreography.
 
 ## Governance
 
@@ -98,7 +103,7 @@ For v1, asynchronous preparation is useful. Full asynchronous governance decisio
 
 The facilitator starts a **Governance Meeting** in the app while the board meets in person or through a tool such as Google Meet.
 
-The Governance screen becomes a shared meeting aid that can be screen-shared. It shows:
+The meeting opens in a dedicated shareable window when the browser permits it. The main app remains available behind it. This meeting surface acts as the shared process guide and shows:
 
 1. **Present Proposal**
 2. **Clarifying Questions**
@@ -124,6 +129,8 @@ Useful meeting capture may include:
 
 It does not need a digital transcript of every reaction unless SDBP later finds that useful.
 
+When a proposal is accepted in the dedicated meeting window, the accepted result returns to the main app and the meeting window can close. Browser restrictions may require the meeting to remain in the main tab as a fallback.
+
 ### After the meeting
 
 The app records the organisational result:
@@ -133,6 +140,8 @@ The app records the organisational result:
 - the source tension;
 - the meeting/date and relevant record;
 - any follow-up action or project created.
+
+Accepted governance should appear immediately under **Records → Governance agreements**. Long-term authoritative persistence follows when the backend and file storage are connected.
 
 The meeting produces governance. The app preserves it.
 
@@ -157,6 +166,8 @@ Records remain the organisational memory and are not feature creep.
 
 The app should eventually hold authoritative statutes, approved minutes, governance decisions and governance agreements. Google Docs or Drive may be used for collaborative working documents, while approved or authoritative versions are stored in the governance system.
 
+During prototype validation, accepted governance decisions are already reflected in Records even though authoritative file persistence is not connected yet.
+
 ## Complexity explicitly rejected for v1
 
 The following should not be part of the target v1 model unless real SDBP use later creates a clear need:
@@ -173,24 +184,22 @@ The following should not be part of the target v1 model unless real SDBP use lat
 - communication-channel ingestion;
 - AI as a requirement for core operation.
 
-## Prototype complexity scheduled for removal
+## Simplification already completed
 
-The current prototype contains some machinery added while exploring the interaction model. It should not be treated as the target architecture.
-
-In particular, the next simplification pass should remove or reduce:
+The exploratory prototype previously contained machinery that simulated too much organisational process in software. The simplification pass has removed or reduced:
 
 - `TensionWaitingKind` and automatic action/project-to-tension transitions;
 - participant-by-participant clarification, reaction and objection completion gates;
 - the requirement to switch prototype users to advance every governance round;
-- granular governance response state that exists only to simulate a meeting asynchronously.
+- granular governance response state that existed mainly to simulate a meeting asynchronously.
 
-The `Test as` selector can remain temporarily as a prototype testing aid. It is not a production feature.
+The `Test as` selector remains temporarily as a prototype testing aid for normal handoffs. It is not a production feature.
 
 ## Next validation gate
 
 Before Supabase is connected, the simplified prototype should prove two things:
 
-1. **Operational loop:** a person can update work, raise a tension, resolve it through normal human action, and close it with minimal interaction.
-2. **Governance meeting loop:** a structural tension can become a proposal, a facilitator can run the real governance sequence from one shared screen, and the resulting decision can be recorded.
+1. **Operational loop:** a person can update work, raise a tension, receive a useful signal when relevant linked work changes, and close the tension with minimal interaction.
+2. **Governance meeting loop:** a structural tension can become a proposal, a facilitator can run the real governance sequence from one shared meeting window, and the resulting decision returns to the main app and Records.
 
 Only after those two loops feel natural should the v1 persistence model be frozen.
