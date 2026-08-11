@@ -44,16 +44,15 @@ export type Action = {
   sourceTensionId?: string;
 };
 
-export type TensionWaitingKind = "response" | "action" | "project" | "confirmation";
+export type TensionStatus = "open" | "awaiting_confirmation" | "resolved" | "needs_sync" | "governance";
 
 export type Tension = {
   id: string;
   title: string;
   raiserId: string;
   linkedProjectId?: string;
-  status: "open" | "resolved" | "needs_sync" | "governance";
-  waitingFor?: string;
-  waitingKind?: TensionWaitingKind;
+  status: TensionStatus;
+  resolutionProposedBy?: string;
   latestNote?: string;
   createdAt: string;
 };
@@ -72,34 +71,14 @@ export type AttentionItem = {
 };
 
 export type GovernanceStage =
+  | "prepared"
+  | "present_proposal"
   | "clarifying_questions"
   | "reaction_round"
   | "clarify"
   | "objection_round"
   | "integration"
   | "accepted";
-
-export type GovernanceQuestion = {
-  id: string;
-  authorId: string;
-  text: string;
-  answer?: string;
-};
-
-export type GovernanceReaction = {
-  id: string;
-  authorId: string;
-  text: string;
-};
-
-export type GovernanceObjection = {
-  id: string;
-  authorId: string;
-  concern: string;
-  criteria: [boolean, boolean, boolean, boolean];
-  status: "candidate" | "valid" | "invalid" | "integrated";
-  facilitatorNote?: string;
-};
 
 export type GovernanceProposal = {
   id: string;
@@ -108,13 +87,7 @@ export type GovernanceProposal = {
   proposal: string;
   proposerId: string;
   stage: GovernanceStage;
-  questions: GovernanceQuestion[];
-  clarificationDoneIds: string[];
-  reactions: GovernanceReaction[];
-  reactionPassIds: string[];
-  objections: GovernanceObjection[];
-  objectionPassIds: string[];
-  integrationNote?: string;
+  meetingNotes: Partial<Record<GovernanceStage, string>>;
   createdAt: string;
   acceptedAt?: string;
 };
