@@ -20,6 +20,11 @@ type Snapshot = {
   governanceProposals: GovernanceProposal[];
 };
 
+type GovernanceMessage = {
+  type?: string;
+  proposal?: GovernanceProposal;
+};
+
 const STORAGE = "sdbp-governance-prototype-v5";
 
 export function Prototype() {
@@ -34,6 +39,7 @@ export function Prototype() {
   const [projectUpdateId, setProjectUpdateId] = useState<string | null>(null);
   const [selectedTensionId, setSelectedTensionId] = useState<string | null>(null);
   const [tensionDraftSeed, setTensionDraftSeed] = useState("");
+  const [meetingProposalId, setMeetingProposalId] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [notice, setNotice] = useState("");
 
@@ -55,6 +61,11 @@ export function Prototype() {
         if (Array.isArray(snapshot.roles)) setRoles(snapshot.roles);
         if (Array.isArray(snapshot.governanceProposals)) setGovernanceProposals(snapshot.governanceProposals);
       }
+      const meetingId = new URLSearchParams(window.location.search).get("meeting");
+      if (meetingId) {
+        setMeetingProposalId(meetingId);
+        setView("governance");
+      }
     } catch {
       sessionStorage.removeItem(STORAGE);
     } finally {
@@ -67,6 +78,24 @@ export function Prototype() {
     const snapshot: Snapshot = { currentUserId, attention, projects: workProjects, actions: workActions, tensions: workTensions, roles, governanceProposals };
     sessionStorage.setItem(STORAGE, JSON.stringify(snapshot));
   }, [ready, currentUserId, attention, workProjects, workActions, workTensions, roles, governanceProposals]);
+
+  useEffect(() => {
+    function receiveGovernanceResult(event: MessageEvent<GovernanceMessage>) {
+      if (event.origin !== window.location.origin) return;
+      const proposal = event.data?.proposal;
+      if (event.data?.type !== "sdbp-governance-accepted" || !proposal || proposal.stage !== "accepted") return;
+      setGovernanceProposals((items) => {
+        const exists = items.some((candidate) => candidate.id === proposal.id);
+        return exists ? items.map((candidate) => candidate.id === proposal.id ? proposal : candidate) : [proposal, ...items];
+      });
+      setWorkTensions((items) => items.map((tension) => tension.id === proposal.tensionId ? { ...tension, status: "resolved", resolutionProposedBy: undefined, latestNote: `Governance proposal accepted: “${proposal.title}”.` } : tension));
+      setAttention((items) => items.map((item) => item.targetId === proposal.tensionId && (item.kind === "governance" || item.kind === "tension") ? { ...item, status: "done" } : item));
+      setView("governance");
+      setNotice("Governance meeting completed. The accepted decision is back in the main app and recorded under Records.");
+    }
+    window.addEventListener("message", receiveGovernanceResult);
+    return () => window.removeEventListener("message", receiveGovernanceResult);
+  }, []);
 
   useEffect(() => {
     if (!notice) return;
@@ -211,6 +240,17 @@ export function Prototype() {
     if (!action || action.ownerId !== currentUserId) return;
     setWorkActions((items) => items.map((candidate) => candidate.id === id ? { ...candidate, status: "done" } : candidate));
     completeTarget("action", id);
+
+    if (action.sourceTensionId) {
+      const tension = workTensions.find((candidate) => candidate.id === action.sourceTensionId);
+      if (tension && tension.status === "open") {
+        setWorkTensions((items) => items.map((candidate) => candidate.id === tension.id ? { ...candidate, latestNote: `${personName(currentUserId)} completed the linked action “${action.title}”. The tension is still open until somebody marks the real situation resolved.` } : candidate));
+        if (tension.raiserId !== currentUserId) {
+          upsertAttention({ ownerId: tension.raiserId, kind: "tension", targetId: tension.id, title: tension.title, reason: `${personName(currentUserId)} completed the linked action “${action.title}”. Check the real situation and resolve the tension if it is now gone.`, primaryAction: "Review tension", status: "needs_action" });
+        }
+      }
+    }
+
     announce(`Action completed: “${action.title}”.`);
   }
 
@@ -228,6 +268,17 @@ export function Prototype() {
     const project = workProjects.find((candidate) => candidate.id === id);
     if (!project || project.ownerId !== currentUserId || project.status !== "active") return;
     setWorkProjects((items) => items.map((candidate) => candidate.id === id ? { ...candidate, status: "complete", lastUpdate: PROTOTYPE_TODAY } : candidate));
+
+    if (project.sourceTensionId) {
+      const tension = workTensions.find((candidate) => candidate.id === project.sourceTensionId);
+      if (tension && tension.status === "open") {
+        setWorkTensions((items) => items.map((candidate) => candidate.id === tension.id ? { ...candidate, latestNote: `${personName(currentUserId)} marked the linked project “${project.title}” complete. The tension remains independent until the real situation is resolved.` } : candidate));
+        if (tension.raiserId !== currentUserId) {
+          upsertAttention({ ownerId: tension.raiserId, kind: "tension", targetId: tension.id, title: tension.title, reason: `${personName(currentUserId)} completed the linked project “${project.title}”. Check whether the original tension is now resolved.`, primaryAction: "Review tension", status: "needs_action" });
+        }
+      }
+    }
+
     announce(`Project outcome achieved: “${project.title}”.`);
   }
 
@@ -246,8 +297,22 @@ export function Prototype() {
   }
 
   function startGovernanceMeeting(id: string) {
-    updateProposal(id, (proposal) => ({ ...proposal, stage: "present_proposal" }));
-    announce("Governance meeting started. Present Proposal is on screen.");
+    const meetingProposals = governanceProposals.map((proposal) => proposal.id === id ? { ...proposal, stage: "present_proposal" as GovernanceStage } : proposal);
+    const snapshot: Snapshot = { currentUserId, attention, projects: workProjects, actions: workActions, tensions: workTensions, roles, governanceProposals: meetingProposals };
+    sessionStorage.setItem(STORAGE, JSON.stringify(snapshot));
+
+    const url = new URL(window.location.href);
+    url.searchParams.set("meeting", id);
+    const meetingWindow = window.open(url.toString(), `sdbp-governance-${id}`, "popup=yes,width=1280,height=900,resizable=yes,scrollbars=yes");
+
+    if (!meetingWindow) {
+      setGovernanceProposals(meetingProposals);
+      setView("governance");
+      announce("The browser blocked the meeting window, so the governance meeting opened in this tab instead.");
+      return;
+    }
+
+    announce("Governance meeting opened in a separate window for screen sharing.");
   }
 
   function setGovernanceStage(id: string, stage: GovernanceStage) {
@@ -266,11 +331,25 @@ export function Prototype() {
   function acceptProposal(id: string) {
     const proposal = governanceProposals.find((candidate) => candidate.id === id);
     if (!proposal) return;
-    updateProposal(id, (candidate) => ({ ...candidate, stage: "accepted", acceptedAt: PROTOTYPE_TODAY }));
+    const acceptedProposal: GovernanceProposal = { ...proposal, stage: "accepted", acceptedAt: PROTOTYPE_TODAY };
+    setGovernanceProposals((items) => items.map((candidate) => candidate.id === id ? acceptedProposal : candidate));
     setWorkTensions((items) => items.map((tension) => tension.id === proposal.tensionId ? { ...tension, status: "resolved", resolutionProposedBy: undefined, latestNote: `Governance proposal accepted: “${proposal.title}”.` } : tension));
     completeTarget("governance", proposal.tensionId);
     completeTarget("tension", proposal.tensionId);
-    announce("Proposal accepted and the governance result recorded in this prototype session.");
+
+    if (meetingProposalId && window.opener && !window.opener.closed) {
+      window.opener.postMessage({ type: "sdbp-governance-accepted", proposal: acceptedProposal }, window.location.origin);
+      window.setTimeout(() => window.close(), 120);
+      return;
+    }
+
+    announce("Proposal accepted. The governance result is now visible under Records.");
+  }
+
+  const governanceView = <GovernanceView tensions={workTensions} proposals={governanceProposals} currentUserId={currentUserId} facilitatorId={facilitatorId} meetingProposalId={meetingProposalId ?? undefined} onGoToTensions={() => setView("tensions")} onCreateProposal={createProposal} onStartMeeting={startGovernanceMeeting} onSetStage={setGovernanceStage} onSaveNotes={saveGovernanceNotes} onUpdateProposal={updateProposalText} onAccept={acceptProposal} />;
+
+  if (meetingProposalId) {
+    return <main className="main governance-meeting-popout">{governanceView}{notice && <div className="save-toast" role="status"><span>✓</span>{notice}</div>}</main>;
   }
 
   return <div className="shell"><aside className="sidebar"><div className="brand-lockup"><div className="brand-mark" aria-hidden="true"><span /><span /></div><div className="brand">SDBP Governance<small>Structure · rhythm · memory</small></div></div><nav className="nav">{(Object.keys(labels) as View[]).map((key) => <button key={key} className={view === key ? "active" : ""} onClick={() => setView(key)}><strong>{labels[key]}</strong><small>{navMeta[key]}</small></button>)}</nav><div className="sidebar-foot"><div className="avatar">{personInitial(currentUserId)}</div><label className="prototype-user"><span>Test as</span><select value={currentUserId} onChange={(event) => switchUser(event.target.value)}>{people.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select><small>Prototype aid for normal handoffs</small></label></div></aside>
@@ -279,8 +358,8 @@ export function Prototype() {
       {view === "work" && <WorkView projects={workProjects} actions={workActions} tensions={workTensions} currentUserId={currentUserId} onCompleteAction={completeAction} onCompleteProject={completeProject} />}
       {view === "tensions" && <TensionsView tensions={workTensions} projects={workProjects} currentUserId={currentUserId} selectedTensionId={selectedTensionId} draftSeed={tensionDraftSeed} onAddTension={addTension} onMarkResolved={markTensionResolved} onResolve={resolveTension} onKeepOpen={keepOpen} onMove={moveTension} onCreateAction={createAction} onCreateProject={createProject} />}
       {view === "organisation" && <OrganisationView roles={roles} setRoles={setRoles} onSaved={(title) => announce(`Role saved: “${title}”.`)} onDeleted={(title) => announce(`Role removed: “${title}”.`)} />}
-      {view === "governance" && <GovernanceView tensions={workTensions} proposals={governanceProposals} currentUserId={currentUserId} facilitatorId={facilitatorId} onGoToTensions={() => setView("tensions")} onCreateProposal={createProposal} onStartMeeting={startGovernanceMeeting} onSetStage={setGovernanceStage} onSaveNotes={saveGovernanceNotes} onUpdateProposal={updateProposalText} onAccept={acceptProposal} />}
-      {view === "records" && <RecordsView />}
+      {view === "governance" && governanceView}
+      {view === "records" && <RecordsView governanceProposals={governanceProposals} tensions={workTensions} />}
       {view === "pulse" && <PulseView attention={attention} actions={workActions} tensions={workTensions} />}
     </main>
     {notice && <div className="save-toast" role="status"><span>✓</span>{notice}</div>}
