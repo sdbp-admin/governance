@@ -142,6 +142,7 @@ export const tensions: Tension[] = [
 export const myAttention: AttentionItem[] = [
   {
     id: "membership-update",
+    ownerId: "edo",
     kind: "project_update",
     targetId: "membership",
     title: "Membership administration",
@@ -152,6 +153,7 @@ export const myAttention: AttentionItem[] = [
   },
   {
     id: "membership-action",
+    ownerId: "edo",
     kind: "action",
     targetId: "send-membership-list",
     title: "Send current membership list to Luka",
@@ -162,6 +164,7 @@ export const myAttention: AttentionItem[] = [
   },
   {
     id: "tension-response",
+    ownerId: "edo",
     kind: "tension",
     targetId: "membership-list",
     title: "Membership list still not received",
