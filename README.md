@@ -10,7 +10,9 @@ Discussion can happen anywhere. Organisational commitments and authoritative rec
 
 ## Current validation focus
 
-The prototype is deliberately in-memory. Before adding persistence or authentication, the current phase validates the central operating loop:
+The prototype deliberately has no backend. For testing, changes are saved in browser-session storage so they survive navigation and refresh within the current tab. Closing the tab resets the prototype.
+
+Before adding production persistence or authentication, the current phase validates the central operating loop:
 
 1. the app prompts a person when an interaction is due;
 2. a project can be updated or confirmed unchanged;
