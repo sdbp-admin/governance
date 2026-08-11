@@ -156,6 +156,7 @@
   justify-content: flex-end;
   gap: 8px;
   margin-top: 12px;
+  flex-wrap: wrap;
 }
 
 .tension-state {
@@ -206,9 +207,127 @@
   gap: 10px;
 }
 
+.prototype-user {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.prototype-user > span {
+  color: #dfe7ec;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.prototype-user select {
+  width: 100%;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 8px;
+  padding: 6px 28px 6px 8px;
+  background: rgba(255,255,255,.08);
+  color: white;
+  font-size: 12px;
+}
+
+.prototype-user select option {
+  color: var(--text);
+  background: white;
+}
+
+.prototype-user select:focus-visible {
+  outline: 3px solid rgba(37,150,190,.35);
+  outline-offset: 2px;
+}
+
+.prototype-user small {
+  margin-top: 0;
+}
+
+.objection-guide {
+  margin-top: 30px;
+  padding: 24px;
+  border: 1px solid #dbe4e8;
+  border-radius: 18px;
+  background: linear-gradient(145deg, #fff 0%, #f7fafb 100%);
+}
+
+.objection-guide h3 {
+  margin-top: 6px;
+  font-size: 22px;
+}
+
+.objection-guide > p {
+  color: var(--muted);
+  margin: 9px 0 0;
+}
+
+.objection-tests {
+  list-style: none;
+  padding: 0;
+  margin: 18px 0 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 10px;
+}
+
+.objection-tests li {
+  display: grid;
+  grid-template-columns: 30px minmax(0,1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 13px;
+  border: 1px solid #e0e7ea;
+  border-radius: 12px;
+  background: white;
+}
+
+.objection-tests li > span {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.objection-tests p {
+  margin: 2px 0 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.objection-rule {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-left: 3px solid var(--brand-blue);
+  background: #eef7fa;
+}
+
+.objection-rule strong {
+  color: var(--brand-navy);
+}
+
+.objection-rule p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.governance-source-note {
+  font-size: 12px;
+}
+
 @media (max-width: 820px) {
   .outcome-grid,
-  .outcome-form-grid {
+  .outcome-form-grid,
+  .objection-tests {
     grid-template-columns: 1fr;
   }
 
@@ -232,8 +351,13 @@
     width: 100%;
   }
 
-  .tension-process-panel {
+  .tension-process-panel,
+  .objection-guide {
     padding: 14px;
+  }
+
+  .process-actions button {
+    width: 100%;
   }
 
   .save-toast {
