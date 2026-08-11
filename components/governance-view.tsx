@@ -10,6 +10,7 @@ type Props = {
   proposals: GovernanceProposal[];
   currentUserId: string;
   facilitatorId?: string;
+  meetingProposalId?: string;
   onGoToTensions: () => void;
   onCreateProposal: (tensionId: string, title: string, text: string) => void;
   onStartMeeting: (proposalId: string) => void;
@@ -25,17 +26,28 @@ export function GovernanceView(props: Props) {
   const prepared = props.proposals.filter((proposal) => proposal.stage === "prepared");
   const live = props.proposals.filter((proposal) => proposal.stage !== "prepared" && proposal.stage !== "accepted");
   const accepted = props.proposals.filter((proposal) => proposal.stage === "accepted");
+  const meetingProposal = props.meetingProposalId ? props.proposals.find((proposal) => proposal.id === props.meetingProposalId) : undefined;
+
+  if (props.meetingProposalId) {
+    if (!meetingProposal) {
+      return <div className="calm-empty"><span>○</span><h2>Meeting proposal not found</h2><p>Close this window and reopen the governance meeting from the main app.</p></div>;
+    }
+    if (meetingProposal.stage === "accepted") {
+      return <div className="governance-meeting-surface"><div className="meeting-window-head"><div><span className="section-kicker">SDBP Governance Meeting</span><h1>Proposal accepted</h1><p>The result is being returned to the main governance app.</p></div></div><div className="calm-empty compact-empty"><span>✓</span><h3>{meetingProposal.title}</h3><p>{meetingProposal.proposal}</p></div></div>;
+    }
+    return <div className="governance-meeting-surface"><div className="meeting-window-head"><div><span className="section-kicker">SDBP Governance Meeting · facilitator view</span><h1>{meetingProposal.title}</h1><p>Share this window in the meeting. The facilitator controls the process; participants do not need to operate the software.</p></div><span className="governance-stage-badge">{humanGovernanceStage(meetingProposal.stage)}</span></div><LiveMeeting proposal={meetingProposal} tension={props.tensions.find((tension) => tension.id === meetingProposal.tensionId)} facilitatorId={props.facilitatorId} onSetStage={props.onSetStage} onSaveNotes={props.onSaveNotes} onUpdateProposal={props.onUpdateProposal} onAccept={props.onAccept} /></div>;
+  }
 
   return <div className="governance-layout"><section className="governance-stage">
     <span className="section-kicker">Prepare here · meet live</span>
     <h2>Governance is facilitator-led</h2>
-    <p>Prepare a structural tension and proposal in the app. When a real governance meeting starts, share this screen and use it as the process guide. The facilitator advances the meeting; the software does not simulate each participant.</p>
+    <p>Prepare a structural tension and proposal in the app. When a real governance meeting starts, open the dedicated meeting window and share that screen. The facilitator advances the meeting; the software does not simulate each participant.</p>
 
     {ready.length > 0 && <section className="section"><div className="section-head"><div><span className="section-kicker">Before the meeting</span><h2>Structural tensions needing a proposal</h2></div></div><div className="governance-ready-list">{ready.map((tension) => <Starter key={tension.id} tension={tension} user={props.currentUserId} create={props.onCreateProposal} />)}</div></section>}
 
     {prepared.length > 0 && <section className="section"><div className="section-head"><div><span className="section-kicker">Prepared</span><h2>Ready for a governance meeting</h2></div></div><div className="governance-proposal-stack">{prepared.map((proposal) => <PreparedProposal key={proposal.id} proposal={proposal} tension={props.tensions.find((tension) => tension.id === proposal.tensionId)} onStart={() => props.onStartMeeting(proposal.id)} />)}</div></section>}
 
-    {live.length > 0 && <section className="section"><div className="section-head"><div><span className="section-kicker">Live meeting aid</span><h2>Governance meeting</h2></div><span className="muted">Share this screen in Google Meet or use it in the room</span></div><div className="governance-proposal-stack">{live.map((proposal) => <LiveMeeting key={`${proposal.id}-${proposal.stage}`} proposal={proposal} tension={props.tensions.find((tension) => tension.id === proposal.tensionId)} facilitatorId={props.facilitatorId} onSetStage={props.onSetStage} onSaveNotes={props.onSaveNotes} onUpdateProposal={props.onUpdateProposal} onAccept={props.onAccept} />)}</div></section>}
+    {live.length > 0 && <section className="section"><div className="section-head"><div><span className="section-kicker">Meeting in progress</span><h2>Governance meeting</h2></div><span className="muted">The same flow can run here if a popup was blocked</span></div><div className="governance-proposal-stack">{live.map((proposal) => <LiveMeeting key={`${proposal.id}-${proposal.stage}`} proposal={proposal} tension={props.tensions.find((tension) => tension.id === proposal.tensionId)} facilitatorId={props.facilitatorId} onSetStage={props.onSetStage} onSaveNotes={props.onSaveNotes} onUpdateProposal={props.onUpdateProposal} onAccept={props.onAccept} />)}</div></section>}
 
     {!ready.length && !prepared.length && !live.length && !accepted.length && <div className="calm-empty compact-empty"><span>○</span><h3>No governance item is waiting</h3><p>Raise a structural tension in Tensions and move it to Governance when a standing role, accountability, domain or policy needs to change.</p><button className="secondary small" onClick={props.onGoToTensions}>Go to Tensions</button></div>}
 
@@ -55,7 +67,7 @@ function Starter({ tension, user, create }: { tension: Tension; user: string; cr
 }
 
 function PreparedProposal({ proposal, tension, onStart }: { proposal: GovernanceProposal; tension?: Tension; onStart: () => void }) {
-  return <article className="governance-proposal-card"><div className="governance-proposal-head"><div><span className="kind">Proposed by {personName(proposal.proposerId)}</span><h3>{proposal.title}</h3></div><span className="governance-stage-badge">Prepared</span></div>{tension && <div className="governance-proposal-text"><strong>Source tension</strong><p>{tension.title}</p></div>}<div className="governance-proposal-text"><strong>Proposal</strong><p>{proposal.proposal}</p></div><div className="process-actions"><button className="primary" onClick={onStart}>Start governance meeting</button></div></article>;
+  return <article className="governance-proposal-card"><div className="governance-proposal-head"><div><span className="kind">Proposed by {personName(proposal.proposerId)}</span><h3>{proposal.title}</h3></div><span className="governance-stage-badge">Prepared</span></div>{tension && <div className="governance-proposal-text"><strong>Source tension</strong><p>{tension.title}</p></div>}<div className="governance-proposal-text"><strong>Proposal</strong><p>{proposal.proposal}</p></div><div className="process-actions"><button className="primary" onClick={onStart}>Open governance meeting window ↗</button></div></article>;
 }
 
 function LiveMeeting({ proposal, tension, facilitatorId, onSetStage, onSaveNotes, onUpdateProposal, onAccept }: {
