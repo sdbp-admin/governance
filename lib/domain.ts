@@ -40,6 +40,7 @@ export type Action = {
   status: "proposed" | "open" | "done" | "cancelled";
   due?: string;
   source?: string;
+  sourceTensionId?: string;
 };
 
 export type Tension = {
