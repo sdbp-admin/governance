@@ -8,7 +8,11 @@ The application holds structure, rhythm, memory and process. People retain judge
 
 ## Current phase: interaction validation
 
-The prototype still uses in-memory representative data. Backend services are deliberately not wired until the central operating loop has been validated.
+The prototype has no backend. Representative state is held in the browser and mirrored to session storage so interaction testing survives navigation and refresh within the current tab. Closing the tab resets the prototype.
+
+This browser-session persistence is only a testing aid. It is not the production persistence model and should not influence the database design beyond exposing which objects and transitions actually need to persist.
+
+Backend services are deliberately not wired until the central operating loop has been validated.
 
 The interaction gate is one complete loop:
 
@@ -170,7 +174,7 @@ Avoid per-item scheduled jobs. Store dates and let one daily job decide what is 
 
 ## Revised v1 build order
 
-1. Validate one complete frontend operating loop in-memory.
+1. Validate one complete frontend operating loop using browser-session state.
 2. Consolidate and freeze the v1 domain model from what was learned.
 3. Add Supabase schema and seed data.
 4. Add email authentication.
