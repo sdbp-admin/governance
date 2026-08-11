@@ -25,7 +25,7 @@ type GovernanceMessage = {
   proposal?: GovernanceProposal;
 };
 
-const STORAGE = "sdbp-governance-prototype-v5";
+const STORAGE = "sdbp-governance-prototype-v6";
 
 export function Prototype() {
   const [view, setView] = useState<View>("attention");
@@ -72,6 +72,57 @@ export function Prototype() {
       setReady(true);
     }
   }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    setAttention((items) => {
+      let changed = false;
+      const next = [...items];
+
+      for (const action of workActions) {
+        const index = next.findIndex((item) => item.kind === "action" && item.targetId === action.id && item.ownerId === action.ownerId);
+        const active = action.status === "proposed" || action.status === "open";
+
+        if (!active) {
+          if (index >= 0 && next[index].status !== "done") {
+            next[index] = { ...next[index], status: "done" };
+            changed = true;
+          }
+          continue;
+        }
+
+        const primaryAction = action.status === "proposed" ? "Accept action" : "Mark done";
+        const reason = action.status === "proposed"
+          ? `${action.source ? `Proposed from ${action.source}. ` : ""}Accept it to make it your open commitment.`
+          : `${action.source ? `From ${action.source}. ` : ""}This is an open commitment assigned to you.`;
+
+        if (index < 0) {
+          next.push({
+            id: `action-attention-${action.id}`,
+            ownerId: action.ownerId,
+            kind: "action",
+            targetId: action.id,
+            title: action.title,
+            reason,
+            primaryAction,
+            status: "needs_action",
+            due: action.due,
+          });
+          changed = true;
+          continue;
+        }
+
+        const existing = next[index];
+        const status = existing.status === "deferred" ? "deferred" : "needs_action";
+        if (existing.title !== action.title || existing.reason !== reason || existing.primaryAction !== primaryAction || existing.status !== status || existing.due !== action.due) {
+          next[index] = { ...existing, title: action.title, reason, primaryAction, status, due: action.due };
+          changed = true;
+        }
+      }
+
+      return changed ? next : items;
+    });
+  }, [ready, workActions]);
 
   useEffect(() => {
     if (!ready) return;
@@ -136,17 +187,27 @@ export function Prototype() {
 
   function handleAttentionPrimary(item: AttentionItem) {
     if (item.kind === "project_update" && item.targetId) { setProjectUpdateId(item.targetId); return; }
-    if (item.kind === "action" && item.targetId) { acceptAction(item); return; }
+    if (item.kind === "action" && item.targetId) {
+      const action = workActions.find((candidate) => candidate.id === item.targetId);
+      if (action?.status === "proposed") acceptAction(item);
+      else if (action?.status === "open") completeAction(action.id);
+      return;
+    }
     if (item.kind === "tension" && item.targetId) { openTensions("", item.targetId); return; }
     if (item.kind === "governance") setView("governance");
   }
 
   function acceptAction(item: AttentionItem) {
     const action = workActions.find((candidate) => candidate.id === item.targetId);
-    if (!action || action.ownerId !== currentUserId) return;
+    if (!action || action.ownerId !== currentUserId || action.status !== "proposed") return;
     setWorkActions((items) => items.map((candidate) => candidate.id === action.id ? { ...candidate, status: "open" } : candidate));
-    completeItem(item.id);
-    announce(`Action accepted: “${action.title}”.`);
+    setAttention((items) => items.map((candidate) => candidate.id === item.id ? {
+      ...candidate,
+      status: "needs_action",
+      reason: `${action.source ? `From ${action.source}. ` : ""}This is now an open commitment assigned to you.`,
+      primaryAction: "Mark done",
+    } : candidate));
+    announce(`Action accepted: “${action.title}”. It remains in My Attention until done.`);
   }
 
   function noChange(item: AttentionItem) {
@@ -231,13 +292,12 @@ export function Prototype() {
     setWorkActions((items) => [action, ...items]);
     completeTarget("tension", id);
     setWorkTensions((items) => items.map((candidate) => candidate.id === id ? { ...candidate, latestNote: `Related action created: “${action.title}”. The tension remains independent and can be resolved whenever the real situation is resolved.` } : candidate));
-    if (ownerId !== currentUserId) upsertAttention({ ownerId, kind: "action", targetId: action.id, title: action.title, reason: `${personName(currentUserId)} proposed this action from “${tension.title}”.`, primaryAction: "Accept action", status: "needs_action" });
     announce(ownerId === currentUserId ? `Action created: “${action.title}”.` : `Action proposed to ${personName(ownerId)}.`);
   }
 
   function completeAction(id: string) {
     const action = workActions.find((candidate) => candidate.id === id);
-    if (!action || action.ownerId !== currentUserId) return;
+    if (!action || action.ownerId !== currentUserId || action.status !== "open") return;
     setWorkActions((items) => items.map((candidate) => candidate.id === id ? { ...candidate, status: "done" } : candidate));
     completeTarget("action", id);
 
