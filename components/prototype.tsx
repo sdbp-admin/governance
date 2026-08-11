@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { actions, myAttention, people, projects, tensions } from "@/lib/mock-data";
-import type { AttentionItem } from "@/lib/domain";
+import { actions, myAttention, people, projects, roleDefinitions, tensions } from "@/lib/mock-data";
+import type { AttentionItem, RoleDefinition } from "@/lib/domain";
 
 type View = "attention" | "work" | "tensions" | "organisation" | "governance" | "records" | "pulse";
 
@@ -84,7 +84,7 @@ function Header({ view, attentionCount }: { view: View; attentionCount: number }
     attention: attentionCount ? `${attentionCount} things need your attention. Start with the one that creates the most movement.` : "Nothing needs you right now.",
     work: "Keep outcomes visible. Update only when something actually changed.",
     tensions: "A tension is a gap between current reality and a potential future you sense. Raise one whenever something could be better.",
-    organisation: "See SDBP's formal board positions and the operating roles each person currently fills.",
+    organisation: "See who fills each SDBP role, what that role covers, and where its authority comes from.",
     governance: "Governance changes SDBP's ongoing roles, accountabilities, domains and policies. Use it when a tension requires a change to the standing organisational structure.",
     records: "The legal and organisational memory you can return to when context matters.",
     pulse: "A quiet overview of where SDBP is losing momentum or clarity — not an approval queue.",
@@ -261,21 +261,175 @@ function TensionsView() {
 }
 
 function OrganisationView() {
+  const [roles, setRoles] = useState<RoleDefinition[]>(roleDefinitions);
+  const [editingRole, setEditingRole] = useState<RoleDefinition | null>(null);
+  const unfilledRoles = roles.filter((role) => role.holderIds.length === 0);
+
+  function editRole(role: RoleDefinition) {
+    setEditingRole(role);
+  }
+
+  function addRole(holderId = "", category: RoleDefinition["category"] = "operating") {
+    setEditingRole({
+      id: `role-${Date.now()}`,
+      title: "",
+      category,
+      holderIds: holderId ? [holderId] : [],
+      purpose: "",
+      scope: "",
+      responsibilities: [],
+      accountabilities: [],
+      source: category === "board" ? "SDBP Statutes / applicable law" : "SDBP operating governance",
+      status: "draft",
+    });
+  }
+
+  function saveRole(nextRole: RoleDefinition) {
+    setRoles((current) => current.some((role) => role.id === nextRole.id)
+      ? current.map((role) => role.id === nextRole.id ? nextRole : role)
+      : [...current, nextRole]);
+    setEditingRole(null);
+  }
+
   return (
     <>
       <div className="org-intro">
-        <div><span className="section-kicker">One SDBP circle for now</span><h2>Roles make the work visible</h2><p>Formal board positions remain separate from the operating roles people currently fill.</p></div>
+        <div>
+          <span className="section-kicker">Roles and authority</span>
+          <h2>Roles make responsibilities explicit</h2>
+          <p>Board roles and operating roles are both roles. Board-role authority comes from the statutes and applicable law; operating-role authority comes from SDBP governance. Hover a role to see its definition, or click it to edit.</p>
+          <div className="org-actions"><button className="primary small" onClick={() => addRole()}>+ Add role</button></div>
+        </div>
         <div className="org-ring" aria-hidden="true"><span>SDBP</span></div>
       </div>
-      <div className="people-grid">{people.map((person) => (
-        <article className="person-card" key={person.id}>
-          <div className="person-top"><div className="person-avatar">{person.name.charAt(0)}</div></div>
-          <h3>{person.name}</h3>
-          <small>{person.legalPosition ?? "Board member"}</small>
-          <div className="role-list">{person.roles.length ? person.roles.map((role) => <span key={role}>{role}</span>) : <em>No operating role captured yet</em>}</div>
-        </article>
-      ))}</div>
+
+      <div className="people-grid">{people.map((person) => {
+        const boardRoles = roles.filter((role) => role.category === "board" && role.holderIds.includes(person.id));
+        const operatingRoles = roles.filter((role) => role.category === "operating" && role.holderIds.includes(person.id));
+
+        return (
+          <article className="person-card" key={person.id}>
+            <div className="person-top"><div className="person-avatar">{person.name.charAt(0)}</div></div>
+            <h3>{person.name}</h3>
+
+            <div className="person-role-group">
+              <span className="role-group-label">Board role</span>
+              <div className="role-list">
+                {boardRoles.length
+                  ? boardRoles.map((role) => <RoleChip key={role.id} role={role} onEdit={editRole} />)
+                  : <button className="missing-role" onClick={() => addRole(person.id, "board")}>+ Add board role</button>}
+              </div>
+            </div>
+
+            <div className="person-role-group">
+              <span className="role-group-label">Operating roles</span>
+              <div className="role-list">
+                {operatingRoles.length
+                  ? operatingRoles.map((role) => <RoleChip key={role.id} role={role} onEdit={editRole} />)
+                  : <button className="missing-role" onClick={() => addRole(person.id, "operating")}>+ Add operating role</button>}
+              </div>
+            </div>
+          </article>
+        );
+      })}</div>
+
+      {unfilledRoles.length > 0 && (
+        <section className="section">
+          <div className="section-head"><div><span className="section-kicker">Unfilled</span><h2>Roles without a holder</h2></div></div>
+          <div className="unfilled-role-list">{unfilledRoles.map((role) => <RoleChip key={role.id} role={role} onEdit={editRole} />)}</div>
+        </section>
+      )}
+
+      {editingRole && <RoleEditor key={editingRole.id} role={editingRole} onSave={saveRole} onClose={() => setEditingRole(null)} />}
     </>
+  );
+}
+
+function RoleChip({ role, onEdit }: { role: RoleDefinition; onEdit: (role: RoleDefinition) => void }) {
+  return (
+    <div className="role-chip-wrap">
+      <button className={`role-chip role-chip-${role.category}`} onClick={() => onEdit(role)} aria-describedby={`role-tip-${role.id}`}>
+        {role.title || "Untitled role"}
+      </button>
+      <div className="role-popover" id={`role-tip-${role.id}`} role="tooltip">
+        <div className="role-popover-head">
+          <div><span className="kind">{role.category === "board" ? "Board role" : "Operating role"}</span><h3>{role.title || "Untitled role"}</h3></div>
+          <span className={`definition-status ${role.status}`}>{role.status}</span>
+        </div>
+        <RoleDetail label="Purpose" text={role.purpose || "Not defined yet."} />
+        <RoleDetail label="Scope" text={role.scope || "Not defined yet."} />
+        <RoleList label="Responsibilities" items={role.responsibilities} />
+        <RoleList label="Accountabilities" items={role.accountabilities} />
+        <div className="role-source"><strong>Source</strong><span>{role.source || "Not recorded"}</span></div>
+        <button className="secondary small" onClick={() => onEdit(role)}>Edit role</button>
+      </div>
+    </div>
+  );
+}
+
+function RoleDetail({ label, text }: { label: string; text: string }) {
+  return <div className="role-detail"><strong>{label}</strong><p>{text}</p></div>;
+}
+
+function RoleList({ label, items }: { label: string; items: string[] }) {
+  return (
+    <div className="role-detail">
+      <strong>{label}</strong>
+      {items.length ? <ul>{items.map((item) => <li key={item}>{item}</li>)}</ul> : <p>Not defined yet.</p>}
+    </div>
+  );
+}
+
+function RoleEditor({ role, onSave, onClose }: { role: RoleDefinition; onSave: (role: RoleDefinition) => void; onClose: () => void }) {
+  const [title, setTitle] = useState(role.title);
+  const [category, setCategory] = useState<RoleDefinition["category"]>(role.category);
+  const [holderId, setHolderId] = useState(role.holderIds[0] ?? "");
+  const [purpose, setPurpose] = useState(role.purpose);
+  const [scope, setScope] = useState(role.scope);
+  const [responsibilities, setResponsibilities] = useState(role.responsibilities.join("\n"));
+  const [accountabilities, setAccountabilities] = useState(role.accountabilities.join("\n"));
+  const [source, setSource] = useState(role.source);
+  const [status, setStatus] = useState<RoleDefinition["status"]>(role.status);
+
+  return (
+    <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className="role-editor" role="dialog" aria-modal="true" aria-labelledby="role-editor-title">
+        <div className="editor-head">
+          <div><span className="section-kicker">Role definition</span><h2 id="role-editor-title">{role.title ? `Edit ${role.title}` : "Add role"}</h2></div>
+          <button className="quiet editor-close" onClick={onClose} aria-label="Close role editor">×</button>
+        </div>
+        <p className="editor-note">Prototype only: these edits are kept in this browser session and reset when the page is refreshed.</p>
+
+        <form onSubmit={(event) => {
+          event.preventDefault();
+          onSave({
+            ...role,
+            title: title.trim(),
+            category,
+            holderIds: holderId ? [holderId] : [],
+            purpose: purpose.trim(),
+            scope: scope.trim(),
+            responsibilities: splitLines(responsibilities),
+            accountabilities: splitLines(accountabilities),
+            source: source.trim(),
+            status,
+          });
+        }}>
+          <div className="editor-grid">
+            <label className="field field-wide"><span>Role title</span><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Secretary" autoFocus /></label>
+            <label className="field"><span>Role type</span><select value={category} onChange={(event) => setCategory(event.target.value as RoleDefinition["category"])}><option value="board">Board role</option><option value="operating">Operating role</option></select></label>
+            <label className="field"><span>Holder</span><select value={holderId} onChange={(event) => setHolderId(event.target.value)}><option value="">Unfilled</option>{people.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
+            <label className="field field-wide"><span>Purpose</span><textarea rows={2} value={purpose} onChange={(event) => setPurpose(event.target.value)} placeholder="Why does this role exist?" /></label>
+            <label className="field field-wide"><span>Scope</span><textarea rows={3} value={scope} onChange={(event) => setScope(event.target.value)} placeholder="What does the role cover, and where are its boundaries?" /></label>
+            <label className="field"><span>Responsibilities</span><textarea rows={5} value={responsibilities} onChange={(event) => setResponsibilities(event.target.value)} placeholder={'One responsibility per line'} /></label>
+            <label className="field"><span>Accountabilities</span><textarea rows={5} value={accountabilities} onChange={(event) => setAccountabilities(event.target.value)} placeholder={'One ongoing accountability per line'} /></label>
+            <label className="field"><span>Source</span><input value={source} onChange={(event) => setSource(event.target.value)} placeholder="Statutes, law, governance decision…" /></label>
+            <label className="field"><span>Definition status</span><select value={status} onChange={(event) => setStatus(event.target.value as RoleDefinition["status"])}><option value="draft">Draft</option><option value="defined">Defined</option></select></label>
+          </div>
+          <div className="editor-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button type="submit" className="primary" disabled={!title.trim()}>Save role</button></div>
+        </form>
+      </section>
+    </div>
   );
 }
 
@@ -377,6 +531,10 @@ function PulseView({ attention }: { attention: AttentionItem[] }) {
 
 function Metric({ label, value, note }: { label: string; value: number; note: string }) {
   return <article className="metric-card"><span>{label}</span><strong>{value}</strong><small>{note}</small></article>;
+}
+
+function splitLines(value: string) {
+  return value.split("\n").map((line) => line.trim()).filter(Boolean);
 }
 
 function humanKind(kind: AttentionItem["kind"]) {
