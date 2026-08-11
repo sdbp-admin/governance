@@ -1,12 +1,12 @@
 # Supabase development handoff
 
-The repository now contains the frozen v1 database migration but is **not yet connected to a Supabase project**.
+The repository contains the frozen v1 database migration and is now connected to the `sdbp-governance-dev` Supabase project through the GitHub integration. The development project currently follows the `feat/v1-foundation` branch.
 
 ## Required development-project setup
 
 1. Create a Supabase development project for SDBP Governance.
 2. Disable open public sign-up before treating it as a board workspace; board users should be invited/admin-created.
-3. Apply `migrations/0001_v1_core.sql` to the development database.
+3. Apply `migrations/0001_v1_core.sql` to the development database through the GitHub integration.
 4. From the Supabase project Connect panel, copy the Project URL and publishable key into a local `.env.local` file using `.env.example` as the template.
 5. Do not put a Supabase secret/service-role key in browser code or commit it to GitHub.
 6. Only after the schema applies cleanly should the Next.js Supabase client/auth utilities be added and the validated prototype state moved from session storage to Postgres.
