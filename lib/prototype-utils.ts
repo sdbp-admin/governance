@@ -26,15 +26,13 @@ export function formatShortDate(value: string) {
 }
 
 export function humanGovernanceStage(stage: GovernanceStage) {
+  if (stage === "prepared") return "Prepared for meeting";
   return GOVERNANCE_STEPS.find((step) => step.id === stage)?.name ?? stage;
 }
 
 export function formatTensionStatus(tension: Tension) {
+  if (tension.status === "awaiting_confirmation") return `Awaiting ${personName(tension.raiserId)} confirmation`;
   if (tension.status === "needs_sync") return "Needs sync";
-  if (tension.status === "governance") return "Moved to governance";
-  if (tension.waitingFor && tension.waitingKind === "action") return `Action with ${personName(tension.waitingFor)}`;
-  if (tension.waitingFor && tension.waitingKind === "project") return `Project with ${personName(tension.waitingFor)}`;
-  if (tension.waitingFor && tension.waitingKind === "confirmation") return `Confirmation from ${personName(tension.waitingFor)}`;
-  if (tension.waitingFor) return `Waiting for ${personName(tension.waitingFor)}`;
-  return "Open";
+  if (tension.status === "governance") return "Governance";
+  return tension.status === "resolved" ? "Resolved" : "Open";
 }
