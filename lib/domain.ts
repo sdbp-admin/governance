@@ -44,6 +44,8 @@ export type Action = {
   sourceTensionId?: string;
 };
 
+// `needs_sync` and `governance` are practical routing states in the prototype.
+// They do not imply a dependency engine or automatic lifecycle choreography.
 export type TensionStatus = "open" | "awaiting_confirmation" | "resolved" | "needs_sync" | "governance";
 
 export type Tension = {
@@ -57,6 +59,9 @@ export type Tension = {
   createdAt: string;
 };
 
+// Prototype/UI projection only. Production My Attention is composed from
+// canonical object state plus small persisted event-driven attention signals.
+// It must not become a second source of truth for Action/Project/Tension status.
 export type AttentionItem = {
   id: string;
   ownerId: string;
@@ -80,6 +85,9 @@ export type GovernanceStage =
   | "integration"
   | "accepted";
 
+// In v1 an accepted GovernanceProposal is the governance decision/agreement.
+// Records displays accepted proposals directly rather than duplicating them into
+// separate Decision and GovernanceAgreement objects.
 export type GovernanceProposal = {
   id: string;
   tensionId: string;
