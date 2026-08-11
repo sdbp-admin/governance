@@ -5,8 +5,21 @@ export type Person = {
   id: string;
   name: string;
   email: string;
-  legalPosition?: string;
-  roles: string[];
+};
+
+export type RoleCategory = "board" | "operating";
+
+export type RoleDefinition = {
+  id: string;
+  title: string;
+  category: RoleCategory;
+  holderIds: string[];
+  purpose: string;
+  scope: string;
+  responsibilities: string[];
+  accountabilities: string[];
+  source: string;
+  status: "draft" | "defined";
 };
 
 export type Project = {
