@@ -56,6 +56,7 @@ export type Tension = {
 
 export type AttentionItem = {
   id: string;
+  ownerId: string;
   kind: AttentionKind;
   targetId?: string;
   title: string;
