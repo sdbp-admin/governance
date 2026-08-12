@@ -102,7 +102,7 @@ Use this structure:
 ## Facilitation interventions that could have helped
 ## Practices to try next meeting
 
-Keep the coaching concrete. Refer to meeting topics or moments rather than making generic statements. Recommend no more than three practical improvements for the next meeting.
+Keep the coaching concrete. Refer to meeting topics or moments rather than making generic statements. Under "Practices to try next meeting", choose one clearly labelled PRIMARY PRACTICE: the single facilitation experiment most likely to improve the next meeting. You may add up to two clearly labelled SECONDARY PRACTICES. Do not give the facilitator a long improvement list.
 
 SDBP PROCESSING NOTES — NOT PART OF EITHER DOCUMENT
 
