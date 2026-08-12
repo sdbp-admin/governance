@@ -1,1 +1,1 @@
-export { Prototype } from "@/components/prototype-app";
+export { LaunchApp as Prototype } from "@/components/launch-app";
