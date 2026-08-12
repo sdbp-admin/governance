@@ -59,10 +59,11 @@ export function extractMinutesFollowUpsFromText(text: string): RecordFollowUp[] 
   const normalized = normalizePdfText(text);
   const participants = extractParticipants(normalized);
   const actions = extractActionRows(section(normalized, "Actions and commitments", "Projects / project changes"), participants);
+  const projects = extractBullets(section(normalized, "Projects / project changes", "Tensions and unresolved matters"), "project");
   const tensions = extractBullets(section(normalized, "Tensions and unresolved matters", "Governance follow-up"), "tension");
   const governance = extractBullets(section(normalized, "Governance follow-up", "Other relevant records or documents"), "governance");
 
-  return dedupeFollowUps([...actions, ...tensions, ...governance]);
+  return dedupeFollowUps([...actions, ...projects, ...tensions, ...governance]);
 }
 
 function extractPositionedActionRows(items: PositionedText[]): RecordFollowUp[] {
