@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase/client";
 
 type Profile = { id: string; name: string; email: string };
 type AuthStatus = "loading" | "signed_out" | "signed_in" | "not_invited" | "error";
+type AmrEntry = { method?: string };
 
 export function AuthenticatedLaunch() {
   const [status, setStatus] = useState<AuthStatus>("loading");
@@ -15,6 +16,7 @@ export function AuthenticatedLaunch() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordEditor, setPasswordEditor] = useState(false);
+  const [passwordRequired, setPasswordRequired] = useState(false);
   const [recoveryMode, setRecoveryMode] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -22,10 +24,14 @@ export function AuthenticatedLaunch() {
 
   const resolveUser = useCallback(async () => {
     setError("");
-    const { data: userData, error: userError } = await supabase.auth.getUser();
+    const [{ data: userData, error: userError }, { data: sessionData }] = await Promise.all([
+      supabase.auth.getUser(),
+      supabase.auth.getSession(),
+    ]);
     const user = userData.user;
     if (userError || !user) {
       setProfile(null);
+      setPasswordRequired(false);
       setStatus("signed_out");
       return;
     }
@@ -59,6 +65,7 @@ export function AuthenticatedLaunch() {
 
     if (!person) {
       setProfile(null);
+      setPasswordRequired(false);
       setStatus("not_invited");
       return;
     }
@@ -67,6 +74,25 @@ export function AuthenticatedLaunch() {
     setProfile(next);
     setEmail(next.email);
     setStatus("signed_in");
+
+    const passwordMarked = user.user_metadata?.sdbp_password_set === true;
+    const methods = readAuthenticationMethods(sessionData.session?.access_token);
+    const signedInWithPassword = methods.includes("password");
+
+    if (!passwordMarked && signedInWithPassword) {
+      const { error: markError } = await supabase.auth.updateUser({
+        data: { ...user.user_metadata, sdbp_password_set: true },
+      });
+      if (!markError) setPasswordRequired(false);
+      return;
+    }
+
+    if (!passwordMarked) {
+      setPasswordRequired(true);
+      setPasswordEditor(true);
+    } else {
+      setPasswordRequired(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -78,10 +104,12 @@ export function AuthenticatedLaunch() {
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "PASSWORD_RECOVERY") {
         setRecoveryMode(true);
+        setPasswordRequired(false);
         setPasswordEditor(true);
       }
       if (!session?.user) {
         setProfile(null);
+        setPasswordRequired(false);
         setStatus("signed_out");
         return;
       }
@@ -126,10 +154,22 @@ export function AuthenticatedLaunch() {
     if (newPassword.length < 8) { setError("Use at least 8 characters."); return; }
     if (newPassword !== confirmPassword) { setError("The two passwords do not match."); return; }
     setSending(true);
-    const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+
+    const { data: userData } = await supabase.auth.getUser();
+    const metadata = userData.user?.user_metadata ?? {};
+    const { error: updateError } = await supabase.auth.updateUser({
+      password: newPassword,
+      data: { ...metadata, sdbp_password_set: true },
+    });
+
     if (updateError) setError(updateError.message);
     else {
-      setNewPassword(""); setConfirmPassword(""); setPasswordEditor(false); setRecoveryMode(false); setMessage("Password saved.");
+      setNewPassword("");
+      setConfirmPassword("");
+      setPasswordEditor(false);
+      setPasswordRequired(false);
+      setRecoveryMode(false);
+      setMessage(passwordRequired ? "Password created. Your account is ready." : "Password saved.");
       await resolveUser();
     }
     setSending(false);
@@ -137,12 +177,15 @@ export function AuthenticatedLaunch() {
 
   async function signOut() {
     await supabase.auth.signOut();
-    setProfile(null); setPassword(""); setMessage(""); setError(""); setStatus("signed_out");
+    setProfile(null); setPassword(""); setMessage(""); setError(""); setPasswordRequired(false); setPasswordEditor(false); setStatus("signed_out");
   }
 
   if (status === "loading") return <AuthShell><div className="auth-state"><span className="auth-spinner" /><h1>Opening SDBP</h1><p>Checking your access.</p></div></AuthShell>;
 
-  if (passwordEditor && status === "signed_in") return <AuthShell><div className="auth-card"><span className="section-kicker">{recoveryMode ? "Password recovery" : "Your account"}</span><h1>{recoveryMode ? "Choose a new password" : "Change password"}</h1><form onSubmit={savePassword} className="auth-form"><label htmlFor="new-password">New password</label><input id="new-password" type="password" autoComplete="new-password" minLength={8} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required /><label htmlFor="confirm-password">Confirm password</label><input id="confirm-password" type="password" autoComplete="new-password" minLength={8} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required /><button type="submit" className="primary" disabled={sending}>{sending ? "Saving…" : "Save password"}</button></form>{error && <div className="auth-message error">{error}</div>}{!recoveryMode && <div className="auth-actions"><button className="quiet" onClick={() => setPasswordEditor(false)}>Cancel</button></div>}</div></AuthShell>;
+  if (passwordEditor && status === "signed_in") {
+    const firstPassword = passwordRequired && !recoveryMode;
+    return <AuthShell><div className="auth-card"><span className="section-kicker">{recoveryMode ? "Password recovery" : firstPassword ? "Welcome to SDBP" : "Your account"}</span><h1>{recoveryMode ? "Choose a new password" : firstPassword ? "Create your password" : "Change password"}</h1>{firstPassword && <p>Your email is confirmed. Create a password before entering the SDBP workspace.</p>}<form onSubmit={savePassword} className="auth-form"><label htmlFor="new-password">New password</label><input id="new-password" type="password" autoComplete="new-password" minLength={8} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required /><label htmlFor="confirm-password">Confirm password</label><input id="confirm-password" type="password" autoComplete="new-password" minLength={8} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required /><button type="submit" className="primary" disabled={sending}>{sending ? "Saving…" : firstPassword ? "Create password & enter SDBP" : "Save password"}</button></form>{error && <div className="auth-message error">{error}</div>}{!recoveryMode && !firstPassword && <div className="auth-actions"><button className="quiet" onClick={() => setPasswordEditor(false)}>Cancel</button></div>}</div></AuthShell>;
+  }
 
   if (status === "signed_out") return <AuthShell><div className="auth-card"><span className="section-kicker">SDBP workspace</span><h1>Sign in</h1><p>Use the email address you were invited with.</p><form onSubmit={signIn} className="auth-form"><label htmlFor="board-email">Email</label><input id="board-email" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /><label htmlFor="board-password">Password</label><input id="board-password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /><button type="submit" className="primary" disabled={sending}>{sending ? "Signing in…" : "Sign in"}</button></form><div className="auth-login-options"><button type="button" onClick={() => void sendPasswordReset()} disabled={sending}>Forgot password?</button><button type="button" onClick={() => void sendSignInLink()} disabled={sending}>Email me a sign-in link</button></div>{message && <div className="auth-message success">{message}</div>}{error && <div className="auth-message error">{error}</div>}<small className="auth-footnote">Access is by invitation only.</small></div></AuthShell>;
 
@@ -155,4 +198,18 @@ export function AuthenticatedLaunch() {
 
 function AuthShell({ children }: { children: React.ReactNode }) {
   return <main className="auth-shell"><div className="auth-brand"><div className="brand-mark" aria-hidden="true"><span /><span /></div><div><strong>SDBP Governance</strong><small>Structure · rhythm · memory</small></div></div>{children}</main>;
+}
+
+function readAuthenticationMethods(accessToken?: string) {
+  if (!accessToken) return [] as string[];
+  try {
+    const payload = accessToken.split(".")[1];
+    if (!payload) return [] as string[];
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    const claims = JSON.parse(window.atob(padded)) as { amr?: AmrEntry[] };
+    return (claims.amr ?? []).map((entry) => entry.method).filter((method): method is string => Boolean(method));
+  } catch {
+    return [] as string[];
+  }
 }
