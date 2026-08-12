@@ -37,13 +37,20 @@ export async function loadOwnActions(ownerId: string | undefined, uiOwnerId: str
   return (data as ActionRow[]).map((row) => toPrototypeAction(row, uiOwnerId));
 }
 
-export async function createOwnAction(ownerId: string, uiOwnerId: string, title: string) {
+export async function createOwnAction(
+  ownerId: string,
+  uiOwnerId: string,
+  title: string,
+  options: { due?: string; source?: string } = {},
+) {
   const { data, error } = await supabase
     .from("actions")
     .insert({
       title: title.trim(),
       owner_id: ownerId,
       status: "open",
+      due_on: options.due || null,
+      source_label: options.source?.trim() || null,
     })
     .select(ACTION_COLUMNS)
     .single();
