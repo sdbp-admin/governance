@@ -4,9 +4,10 @@ import { useEffect, useRef, useState, type DragEvent } from "react";
 import type { GovernanceProposal, Tension } from "@/lib/domain";
 import { extractMinutesFollowUpsFromPdf } from "@/lib/pdf-minutes";
 import { formatShortDate } from "@/lib/prototype-utils";
-import { MINUTES_GPT_PROMPT, parseMinutesFollowUps, type RecordFollowUp } from "@/lib/records-followups";
+import { MINUTES_GPT_PROMPT, parseMinutesFollowUps, type RecordFollowUp, type RecordFollowUpStatus } from "@/lib/records-followups";
 import {
   createRecordSignedUrl,
+  deleteRecord,
   loadRecords,
   updateRecordFollowUps,
   uploadRecord,
@@ -20,17 +21,20 @@ type Props = {
   tensions: Tension[];
   profileId?: string;
   onNotice?: (message: string) => void;
+  onCaptureFollowUp?: (sourceTitle: string, followup: RecordFollowUp) => Promise<boolean>;
 };
 
 const RECORD_ACCEPT = ".pdf,.txt,.md,.doc,.docx,application/pdf,text/plain,text/markdown,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
-export function RecordsView({ governanceProposals, tensions, profileId, onNotice }: Props) {
+export function RecordsView({ governanceProposals, tensions, profileId, onNotice, onCaptureFollowUp }: Props) {
   const [records, setRecords] = useState<RecordSummary[]>([]);
   const [loading, setLoading] = useState(Boolean(profileId));
   const [error, setError] = useState("");
   const [uploadingType, setUploadingType] = useState<RecordType | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
+  const [reviewingIds, setReviewingIds] = useState<Set<string>>(new Set());
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const [expandedFollowUps, setExpandedFollowUps] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
 
@@ -57,9 +61,9 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
 
         const needsBackfill = items.filter((record) =>
           record.recordType === "board_minutes" &&
-          record.followups.length === 0 &&
           isPdfRecord(record) &&
-          Boolean(record.currentVersion?.storagePath),
+          Boolean(record.currentVersion?.storagePath) &&
+          (record.followups.length === 0 || !record.followups.some((followup) => followup.kind === "action")),
         );
 
         for (const record of needsBackfill) {
@@ -86,8 +90,9 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
       const response = await fetch(url);
       if (!response.ok) throw new Error("Could not read the stored minutes PDF.");
 
-      const followups = await extractMinutesFollowUpsFromPdf(await response.arrayBuffer());
-      if (followups.length === 0) return;
+      const extracted = await extractMinutesFollowUpsFromPdf(await response.arrayBuffer());
+      const followups = mergeFollowUps(record.followups, extracted);
+      if (followups.length === record.followups.length) return;
 
       await updateRecordFollowUps(record.id, followups);
       if (!isCancelled()) {
@@ -215,6 +220,64 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
     }
   }
 
+  async function deleteMinutes(record: RecordSummary) {
+    const title = displayRecordTitle(record.title);
+    const confirmed = window.confirm(`Delete “${title}”?\n\nThis permanently removes the minutes document from Records. Work already accepted from these minutes will remain.`);
+    if (!confirmed) return;
+
+    setDeletingIds((items) => addToSet(items, record.id));
+    setError("");
+    try {
+      await deleteRecord(record.id);
+      setRecords((items) => items.filter((item) => item.id !== record.id));
+      setExpandedFollowUps((items) => removeFromSet(items, record.id));
+      onNotice?.(`Deleted minutes: “${title}”.`);
+    } catch (deleteError) {
+      setError(readError(deleteError));
+    } finally {
+      setDeletingIds((items) => removeFromSet(items, record.id));
+    }
+  }
+
+  async function reviewFollowUp(record: RecordSummary, followup: RecordFollowUp, status: Extract<RecordFollowUpStatus, "captured" | "not_needed">) {
+    if (reviewingIds.has(followup.id)) return;
+    if (status === "captured" && !onCaptureFollowUp) {
+      setError("This follow-up cannot be captured into the current app state.");
+      return;
+    }
+
+    setReviewingIds((items) => addToSet(items, followup.id));
+    setError("");
+    const updated = record.followups.map((item) => item.id === followup.id ? { ...item, status } : item);
+
+    try {
+      await updateRecordFollowUps(record.id, updated);
+
+      if (status === "captured") {
+        const captured = await onCaptureFollowUp!(displayRecordTitle(record.title), followup);
+        if (!captured) {
+          await updateRecordFollowUps(record.id, record.followups);
+          return;
+        }
+      }
+
+      setRecords((items) => items.map((item) => item.id === record.id ? { ...item, followups: updated } : item));
+      if (!updated.some((item) => item.status === "unreviewed")) {
+        setExpandedFollowUps((items) => removeFromSet(items, record.id));
+      }
+      onNotice?.(status === "captured" ? `Follow-up captured: “${followup.title}”.` : "Suggestion dismissed.");
+    } catch (reviewError) {
+      try {
+        await updateRecordFollowUps(record.id, record.followups);
+      } catch {
+        // Keep the original error visible; a subsequent refresh will reconcile the stored review state.
+      }
+      setError(readError(reviewError));
+    } finally {
+      setReviewingIds((items) => removeFromSet(items, followup.id));
+    }
+  }
+
   function toggleFollowUps(recordId: string) {
     setExpandedFollowUps((items) => items.has(recordId) ? removeFromSet(items, recordId) : addToSet(items, recordId));
   }
@@ -269,16 +332,30 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
           {minutes.slice(0, 5).map((record) => {
             const isExpanded = expandedFollowUps.has(record.id);
             const isProcessing = processingIds.has(record.id);
+            const unreviewed = record.followups.filter((followup) => followup.status === "unreviewed");
+            const reviewed = record.followups.length > 0 && unreviewed.length === 0;
             return <div className="minute-record" key={record.id}>
-              <StoredDocument record={record} openingId={openingId} onOpen={openRecord} />
-              {isProcessing && <small className="followup-processing">Finding follow-ups…</small>}
-              {!isProcessing && record.followups.length > 0 && <>
+              <StoredDocument
+                record={record}
+                openingId={openingId}
+                onOpen={openRecord}
+                onDelete={() => void deleteMinutes(record)}
+                deleting={deletingIds.has(record.id)}
+              />
+              {isProcessing && <small className="followup-processing">Updating follow-ups…</small>}
+              {!isProcessing && unreviewed.length > 0 && <>
                 <button className="followup-toggle" type="button" onClick={() => toggleFollowUps(record.id)}>
-                  <span>{record.followups.length} follow-ups to review</span>
+                  <span>{unreviewed.length} {unreviewed.length === 1 ? "follow-up" : "follow-ups"} to review</span>
                   <span aria-hidden="true">{isExpanded ? "−" : "+"}</span>
                 </button>
-                {isExpanded && <FollowUpReview followups={record.followups} />}
+                {isExpanded && <FollowUpReview
+                  followups={unreviewed}
+                  reviewingIds={reviewingIds}
+                  onCapture={(followup) => void reviewFollowUp(record, followup, "captured")}
+                  onDismiss={(followup) => void reviewFollowUp(record, followup, "not_needed")}
+                />}
               </>}
+              {!isProcessing && reviewed && <div className="followup-reviewed"><span>✓</span> Follow-ups reviewed</div>}
             </div>;
           })}
           {minutes.length > 5 && <small>{minutes.length - 5} earlier {minutes.length - 5 === 1 ? "record" : "records"} also stored.</small>}
@@ -303,16 +380,29 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
   </>;
 }
 
-function FollowUpReview({ followups }: { followups: RecordFollowUp[] }) {
+function FollowUpReview({ followups, reviewingIds, onCapture, onDismiss }: {
+  followups: RecordFollowUp[];
+  reviewingIds: Set<string>;
+  onCapture: (followup: RecordFollowUp) => void;
+  onDismiss: (followup: RecordFollowUp) => void;
+}) {
   return <div className="followup-review">
-    <small>Suggested from the approved minutes. Nothing is created automatically.</small>
-    {followups.map((followup) => <div className="followup-item" key={followup.id}>
-      <span className={`followup-kind ${followup.kind}`}>{followup.kind}</span>
-      <div>
-        <strong>{followup.title}</strong>
-        {(followup.owner || followup.due) && <small>{followup.owner ? `Owner: ${followup.owner}` : "Owner: unclear"}{followup.due ? ` · Due: ${followup.due}` : ""}</small>}
-      </div>
-    </div>)}
+    <small>Suggested from the approved minutes. Accepting moves it into the normal app workflow; dismissing only clears the suggestion.</small>
+    {followups.map((followup) => {
+      const busy = reviewingIds.has(followup.id);
+      const claimMine = (followup.kind === "action" || followup.kind === "project") && !followup.owner;
+      return <div className="followup-item" key={followup.id}>
+        <span className={`followup-kind ${followup.kind}`}>{followup.kind}</span>
+        <div className="followup-copy">
+          <strong>{followup.title}</strong>
+          {(followup.owner || followup.due) && <small>{followup.owner ? `Owner: ${followup.owner}` : "Owner: unclear"}{followup.due ? ` · Due: ${followup.due}` : ""}</small>}
+        </div>
+        <div className="followup-actions">
+          <button type="button" className="followup-accept" disabled={busy} onClick={() => onCapture(followup)}>{busy ? "Saving…" : claimMine ? "Accept as mine" : "Accept"}</button>
+          <button type="button" className="followup-dismiss" disabled={busy} onClick={() => onDismiss(followup)}>Dismiss</button>
+        </div>
+      </div>;
+    })}
   </div>;
 }
 
@@ -356,13 +446,23 @@ function RecordDropZone({ label, hint, disabled, onFile }: { label: string; hint
   </div>;
 }
 
-function StoredDocument({ record, openingId, onOpen, label }: { record: RecordSummary; openingId: string | null; onOpen: (record: RecordSummary) => Promise<void>; label?: string }) {
+function StoredDocument({ record, openingId, onOpen, label, onDelete, deleting = false }: {
+  record: RecordSummary;
+  openingId: string | null;
+  onOpen: (record: RecordSummary) => Promise<void>;
+  label?: string;
+  onDelete?: () => void;
+  deleting?: boolean;
+}) {
   const previewable = isPdfRecord(record);
   return <div className="stored-record-row">
     <div><small>{label}</small><strong>{displayRecordTitle(record.title)}</strong></div>
-    <button className="quiet" type="button" disabled={!record.currentVersion?.storagePath || openingId === record.id} onClick={() => void onOpen(record)}>
-      {openingId === record.id ? (previewable ? "Opening…" : "Downloading…") : (previewable ? "Open" : "Download")}
-    </button>
+    <div className="stored-record-actions">
+      <button className="quiet" type="button" disabled={!record.currentVersion?.storagePath || openingId === record.id || deleting} onClick={() => void onOpen(record)}>
+        {openingId === record.id ? (previewable ? "Opening…" : "Downloading…") : (previewable ? "Open" : "Download")}
+      </button>
+      {onDelete && <button className="quiet record-delete" type="button" disabled={deleting || openingId === record.id} onClick={onDelete}>{deleting ? "Deleting…" : "Delete"}</button>}
+    </div>
   </div>;
 }
 
@@ -397,6 +497,20 @@ function isPdfFile(file: File) {
 
 function isTextFile(file: File) {
   return file.type.startsWith("text/") || /\.(md|txt)$/i.test(file.name);
+}
+
+function mergeFollowUps(existing: RecordFollowUp[], extracted: RecordFollowUp[]) {
+  const byKey = new Map(existing.map((followup) => [followUpKey(followup), followup]));
+  const merged = [...existing];
+  for (const followup of extracted) {
+    if (byKey.has(followUpKey(followup))) continue;
+    merged.push(followup);
+  }
+  return merged;
+}
+
+function followUpKey(followup: Pick<RecordFollowUp, "kind" | "title">) {
+  return `${followup.kind}:${followup.title.toLowerCase().replace(/\s+/g, " ").trim()}`;
 }
 
 function addToSet(items: Set<string>, value: string) {
