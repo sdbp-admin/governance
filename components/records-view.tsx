@@ -317,13 +317,13 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
 }
 
 function MeetingMemory({ outcomes }: { outcomes: RecordFollowUp[] }) {
-  const groups: Array<{ kind: RecordFollowUpKind; label: string; items: RecordFollowUp[] }> = [
+  const allGroups: Array<{ kind: RecordFollowUpKind; label: string; items: RecordFollowUp[] }> = [
     { kind: "action", label: "Actions", items: outcomes.filter((item) => item.kind === "action") },
     { kind: "project", label: "Projects", items: outcomes.filter((item) => item.kind === "project") },
     { kind: "tension", label: "Tensions", items: outcomes.filter((item) => item.kind === "tension") },
     { kind: "governance", label: "Governance / roles", items: outcomes.filter((item) => item.kind === "governance") },
-  ].filter((group) => group.items.length > 0);
-
+  ];
+  const groups = allGroups.filter((group) => group.items.length > 0);
   const summary = groups.map((group) => `${group.items.length} ${group.label.toLowerCase()}`).join(" · ");
 
   return <details className="minutes-memory">
