@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { FormEvent, useState } from "react";
 import type { Action, AttentionItem, Project, Tension } from "@/lib/domain";
 import { formatShortDate, humanKind, personInitial, personName } from "@/lib/prototype-utils";
 
@@ -66,13 +66,40 @@ export function ProjectUpdateEditor({ project, onSave, onNoChange, onRaiseTensio
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="workflow-editor" role="dialog" aria-modal="true" aria-labelledby="project-update-title"><div className="editor-head"><div><span className="section-kicker">Weekly project update</span><h2 id="project-update-title">{project.title}</h2></div><button className="quiet editor-close" onClick={onClose} aria-label="Close project update">×</button></div><p className="editor-note">Has anything meaningfully changed since the last update? Keep this short. The app needs the current reality, not a report.</p><label className="field"><span>Current project state</span><textarea rows={5} value={summary} onChange={(event) => setSummary(event.target.value)} /></label><div className="workflow-choice-row"><button className="secondary" onClick={onNoChange}>No change</button><button className="secondary" onClick={onRaiseTension}>Raise a tension instead</button><button className="primary" disabled={!summary.trim()} onClick={() => onSave(project.id, summary)}>Save update</button></div></section></div>;
 }
 
-export function WorkView({ projects, actions, tensions, currentUserId, onCompleteAction, onCompleteProject }: { projects: Project[]; actions: Action[]; tensions: Tension[]; currentUserId: string; onCompleteAction: (actionId: string) => void; onCompleteProject: (projectId: string) => void }) {
+export function WorkView({ projects, actions, tensions, currentUserId, onCompleteAction, onCompleteProject, onAddAction, persistedActionIds = [] }: {
+  projects: Project[];
+  actions: Action[];
+  tensions: Tension[];
+  currentUserId: string;
+  onCompleteAction: (actionId: string) => void;
+  onCompleteProject: (projectId: string) => void;
+  onAddAction?: (title: string) => Promise<boolean>;
+  persistedActionIds?: string[];
+}) {
+  const [showComposer, setShowComposer] = useState(false);
+  const [newAction, setNewAction] = useState("");
+  const [saving, setSaving] = useState(false);
   const openActions = actions.filter((action) => action.status !== "done" && action.status !== "cancelled");
+  const persisted = new Set(persistedActionIds);
+
+  async function submitAction(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const title = newAction.trim();
+    if (!title || !onAddAction) return;
+    setSaving(true);
+    const saved = await onAddAction(title);
+    setSaving(false);
+    if (saved) {
+      setNewAction("");
+      setShowComposer(false);
+    }
+  }
+
   return <div className="work-layout"><section className="work-main"><div className="section-head"><div><span className="section-kicker">Current outcomes</span><h2>Active projects</h2></div></div><div className="project-grid">{projects.filter((project) => project.status === "active").map((project, index) => {
     const sourceTension = tensions.find((tension) => tension.id === project.sourceTensionId);
     return <article className={`project-card ${index === 0 ? "project-featured" : ""}`} key={project.id}><div className="project-accent" aria-hidden="true" /><span className="kind">{project.role ?? "SDBP project"}</span><h3>{project.title}</h3><p>{project.summary}</p>{sourceTension && <small className="action-context">From tension: {sourceTension.title}</small>}<div className="project-meta"><span><strong>{personName(project.ownerId)}</strong><small>owner</small></span><span><strong>{formatShortDate(project.lastUpdate)}</strong><small>last updated</small></span><span><strong>{formatShortDate(project.nextPrompt)}</strong><small>next prompt</small></span></div>{project.sourceTensionId && project.ownerId === currentUserId && <div className="actions compact-actions"><button className="secondary small" onClick={() => onCompleteProject(project.id)}>Mark outcome achieved</button></div>}</article>;
-  })}</div></section><aside className="action-rail"><div className="section-head"><div><span className="section-kicker">Concrete next steps</span><h2>Actions</h2></div></div><div className="action-stack">{openActions.length ? openActions.map((action) => {
+  })}</div></section><aside className="action-rail"><div className="section-head"><div><span className="section-kicker">Concrete next steps</span><h2>Actions</h2></div>{onAddAction && <button className="text-action" onClick={() => setShowComposer((value) => !value)}>{showComposer ? "Cancel" : "+ Add action"}</button>}</div>{onAddAction && <p className="live-action-note">Your own standalone actions are now saved to the board database. My Attention is reconstructed from their status.</p>}{showComposer && onAddAction && <div className="live-action-create"><form onSubmit={submitAction}><input autoFocus value={newAction} onChange={(event) => setNewAction(event.target.value)} placeholder="Concrete next step" aria-label="New action title" /><div className="actions compact-actions"><button className="primary small" type="submit" disabled={saving || !newAction.trim()}>{saving ? "Saving…" : "Save action"}</button></div></form></div>}<div className="action-stack">{openActions.length ? openActions.map((action) => {
     const sourceTension = tensions.find((tension) => tension.id === action.sourceTensionId);
-    return <article className="action-slip" key={action.id}><span className="action-status">{action.status}</span><h3>{action.title}</h3><p>{action.source}</p>{sourceTension && <small className="action-context">From tension: {sourceTension.title}</small>}<div className="action-owner"><span className="mini-avatar">{personInitial(action.ownerId)}</span>{personName(action.ownerId)}</div>{action.status === "open" && action.ownerId === currentUserId && <button className="secondary small action-done" onClick={() => onCompleteAction(action.id)}>Mark done</button>}</article>;
+    return <article className="action-slip" key={action.id}><span className="action-status">{action.status}</span><h3>{action.title}</h3>{action.source && <p>{action.source}</p>}{sourceTension && <small className="action-context">From tension: {sourceTension.title}</small>}<div className="action-owner"><span className="mini-avatar">{personInitial(action.ownerId)}</span>{personName(action.ownerId)}</div>{persisted.has(action.id) && <span className="persisted-mark">Saved</span>}{action.status === "open" && action.ownerId === currentUserId && <button className="secondary small action-done" onClick={() => onCompleteAction(action.id)}>Mark done</button>}</article>;
   }) : <div className="calm-empty compact-empty"><span>✓</span><h3>No open actions</h3><p>Completed actions leave this list.</p></div>}</div></aside></div>;
 }
