@@ -308,6 +308,10 @@ export async function updateTension(tensionId: string, patch: Partial<{ status: 
   if (patch.status === "resolved") values.resolved_at = new Date().toISOString();
   const { error } = await supabase.from("tensions").update(values).eq("id", tensionId);
   if (error) throw error;
+
+  if (shouldNotifyTensionChange(patch)) {
+    await notifyTensionChange(tensionId);
+  }
 }
 
 export async function createGovernanceProposal(input: { tensionId: string; title: string; proposal: string; proposerId: string }) {
@@ -364,4 +368,21 @@ function unique(values: string[]) {
 
 function isPresidentRole(role: RoleDefinition) {
   return role.category === "board" && role.title.trim().toLowerCase() === "president";
+}
+
+function shouldNotifyTensionChange(patch: Partial<{ status: Tension["status"]; latestNote: string | null }>) {
+  if (patch.status === "awaiting_confirmation") return true;
+  const note = patch.latestNote ?? "";
+  return note.startsWith("Needs input or help from ") || note.startsWith("Needs a real conversation with ");
+}
+
+async function notifyTensionChange(tensionId: string) {
+  try {
+    const { error } = await supabase.functions.invoke("tension-notify", {
+      body: { tensionId },
+    });
+    if (error) console.warn("Tension email notification failed", error);
+  } catch (error) {
+    console.warn("Tension email notification failed", error);
+  }
 }
