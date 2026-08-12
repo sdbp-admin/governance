@@ -1,5 +1,5 @@
-import { AuthenticatedApp } from "@/components/authenticated-app";
+import { AuthenticatedLaunch } from "@/components/authenticated-launch";
 
 export default function Page() {
-  return <AuthenticatedApp />;
+  return <AuthenticatedLaunch />;
 }
