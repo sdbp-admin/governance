@@ -2,14 +2,12 @@
 
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import type { GovernanceProposal, Tension } from "@/lib/domain";
-import { extractMinutesFollowUpsFromPdf } from "@/lib/pdf-minutes";
 import { formatShortDate } from "@/lib/prototype-utils";
-import { MINUTES_GPT_PROMPT, parseMinutesFollowUps, type RecordFollowUp, type RecordFollowUpKind } from "@/lib/records-followups";
+import { MINUTES_GPT_PROMPT } from "@/lib/records-followups";
 import {
   createRecordSignedUrl,
   deleteRecord,
   loadRecords,
-  updateRecordFollowUps,
   uploadRecord,
   uploadRecordVersion,
   type RecordSummary,
@@ -31,7 +29,6 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
   const [error, setError] = useState("");
   const [uploadingType, setUploadingType] = useState<RecordType | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
-  const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
 
@@ -53,19 +50,7 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
 
     loadRecords()
       .then((items) => {
-        if (cancelled) return;
-        setRecords(items);
-
-        const needsBackfill = items.filter((record) =>
-          record.recordType === "board_minutes" &&
-          record.followups.length === 0 &&
-          isPdfRecord(record) &&
-          Boolean(record.currentVersion?.storagePath),
-        );
-
-        for (const record of needsBackfill) {
-          void backfillPdfOutcomes(record, () => cancelled);
-        }
+        if (!cancelled) setRecords(items);
       })
       .catch((loadError) => {
         if (!cancelled) setError(readError(loadError));
@@ -76,31 +61,6 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
 
     return () => { cancelled = true; };
   }, [profileId]);
-
-  async function backfillPdfOutcomes(record: RecordSummary, isCancelled: () => boolean) {
-    const storagePath = record.currentVersion?.storagePath;
-    if (!storagePath) return;
-
-    setProcessingIds((items) => addToSet(items, record.id));
-    try {
-      const url = await createRecordSignedUrl(storagePath);
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("Could not read the stored minutes PDF.");
-
-      const extracted = await extractMinutesFollowUpsFromPdf(await response.arrayBuffer());
-      const outcomes = mergeOutcomes(record.followups, extracted);
-      if (outcomes.length === 0) return;
-
-      await updateRecordFollowUps(record.id, outcomes);
-      if (!isCancelled()) {
-        setRecords((items) => items.map((item) => item.id === record.id ? { ...item, followups: outcomes } : item));
-      }
-    } catch {
-      // The document remains authoritative even if an older PDF cannot be summarized.
-    } finally {
-      if (!isCancelled()) setProcessingIds((items) => removeFromSet(items, record.id));
-    }
-  }
 
   async function copyMinutesPrompt() {
     try {
@@ -131,34 +91,16 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
         return;
       }
 
-      let outcomes: RecordFollowUp[] = [];
-      if (recordType === "board_minutes") {
-        try {
-          if (isPdfFile(file)) {
-            outcomes = await extractMinutesFollowUpsFromPdf(file);
-          } else if (isTextFile(file)) {
-            outcomes = parseMinutesFollowUps(await file.text());
-          }
-        } catch {
-          outcomes = [];
-        }
-      }
-
       const created = await uploadRecord({
         title: recordType === "statutes" ? "SDBP Statutes" : titleFromFilename(file.name),
         recordType,
         effectiveOn: dateFromFilename(file.name),
-        followups: outcomes,
         file,
         profileId,
       });
 
       setRecords((items) => [created, ...items]);
-      onNotice?.(recordType === "statutes"
-        ? "SDBP Statutes stored."
-        : outcomes.length > 0
-          ? "Board minutes stored. Meeting outcomes are available with the record."
-          : "Board minutes stored.");
+      onNotice?.(recordType === "statutes" ? "SDBP Statutes stored." : "Board minutes stored.");
     } catch (storeError) {
       setError(readError(storeError));
     } finally {
@@ -219,7 +161,7 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
 
   async function deleteMinutes(record: RecordSummary) {
     const title = displayRecordTitle(record.title);
-    const confirmed = window.confirm(`Delete “${title}”?\n\nThis permanently removes the minutes document and its extracted meeting summary from Records.`);
+    const confirmed = window.confirm(`Delete “${title}”?\n\nThis permanently removes the minutes document from Records.`);
     if (!confirmed) return;
 
     setDeletingIds((items) => addToSet(items, record.id));
@@ -239,7 +181,7 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
     <div className="records-intro records-intro-live">
       <span className="section-kicker">Organisational memory</span>
       <strong>Keep the authoritative document. Keep the workflow light.</strong>
-      <p>Drop approved documents where they belong. The app keeps them accessible and shows what came out of the meeting.</p>
+      <p>Drop approved documents where they belong. The app keeps them accessible without interpreting them.</p>
     </div>
 
     {!profileId && <div className="records-status warning">Live Records require an authenticated board profile.</div>}
@@ -290,9 +232,6 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
               onDelete={() => void deleteMinutes(record)}
               deleting={deletingIds.has(record.id)}
             />
-            {processingIds.has(record.id)
-              ? <small className="minutes-memory-processing">Reading meeting outcomes…</small>
-              : record.followups.length > 0 && <MeetingMemory outcomes={record.followups} />}
           </div>)}
           {minutes.length > 5 && <small>{minutes.length - 5} earlier {minutes.length - 5 === 1 ? "record" : "records"} also stored.</small>}
         </div>}
@@ -314,31 +253,6 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
       </article>
     </div>
   </>;
-}
-
-function MeetingMemory({ outcomes }: { outcomes: RecordFollowUp[] }) {
-  const allGroups: Array<{ kind: RecordFollowUpKind; label: string; items: RecordFollowUp[] }> = [
-    { kind: "action", label: "Actions", items: outcomes.filter((item) => item.kind === "action") },
-    { kind: "project", label: "Projects", items: outcomes.filter((item) => item.kind === "project") },
-    { kind: "tension", label: "Tensions", items: outcomes.filter((item) => item.kind === "tension") },
-    { kind: "governance", label: "Governance / roles", items: outcomes.filter((item) => item.kind === "governance") },
-  ];
-  const groups = allGroups.filter((group) => group.items.length > 0);
-  const summary = groups.map((group) => `${group.items.length} ${group.label.toLowerCase()}`).join(" · ");
-
-  return <details className="minutes-memory">
-    <summary>{summary}</summary>
-    <div className="minutes-memory-panel">
-      <strong>From these minutes</strong>
-      {groups.map((group) => <section key={group.kind}>
-        <span className={`minutes-memory-kind ${group.kind}`}>{group.label}</span>
-        <ul>{group.items.map((item) => <li key={item.id}>
-          <span>{item.title}</span>
-          {(item.owner || item.due) && <small>{item.owner ? item.owner : "Owner unclear"}{item.due ? ` · ${item.due}` : ""}</small>}
-        </li>)}</ul>
-      </section>)}
-    </div>
-  </details>;
 }
 
 function RecordDropZone({ label, hint, disabled, onFile }: { label: string; hint: string; disabled: boolean; onFile: (file: File) => Promise<void> }) {
@@ -424,30 +338,6 @@ function decodeFilename(value: string) {
 
 function isPdfRecord(record: RecordSummary) {
   return record.currentVersion?.mimeType === "application/pdf" || /\.pdf$/i.test(record.currentVersion?.storagePath ?? "");
-}
-
-function isPdfFile(file: File) {
-  return file.type === "application/pdf" || /\.pdf$/i.test(file.name);
-}
-
-function isTextFile(file: File) {
-  return file.type.startsWith("text/") || /\.(md|txt)$/i.test(file.name);
-}
-
-function mergeOutcomes(existing: RecordFollowUp[], extracted: RecordFollowUp[]) {
-  const byKey = new Set(existing.map(outcomeKey));
-  const merged = [...existing];
-  for (const outcome of extracted) {
-    const key = outcomeKey(outcome);
-    if (byKey.has(key)) continue;
-    merged.push(outcome);
-    byKey.add(key);
-  }
-  return merged;
-}
-
-function outcomeKey(outcome: Pick<RecordFollowUp, "kind" | "title">) {
-  return `${outcome.kind}:${outcome.title.toLowerCase().replace(/\s+/g, " ").trim()}`;
 }
 
 function addToSet(items: Set<string>, value: string) {
