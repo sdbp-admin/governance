@@ -208,6 +208,10 @@ export async function saveRole(role: RoleDefinition) {
   });
   if (roleError) throw roleError;
 
+  // The President holder is transferred through the dedicated presidency flow.
+  // Ordinary role editing may change the descriptive fields, but never the holder.
+  if (isPresidentRole(role)) return;
+
   const { error: deleteError } = await supabase.from("role_assignments").delete().eq("role_id", role.id).is("ends_on", null);
   if (deleteError) throw deleteError;
 
@@ -356,4 +360,8 @@ function dateOnly(value: string) {
 
 function unique(values: string[]) {
   return [...new Set(values.filter(Boolean))];
+}
+
+function isPresidentRole(role: RoleDefinition) {
+  return role.category === "board" && role.title.trim().toLowerCase() === "president";
 }
