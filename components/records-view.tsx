@@ -34,7 +34,9 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
 
   const accepted = governanceProposals.filter((proposal) => proposal.stage === "accepted");
   const statutes = records.filter((record) => record.recordType === "statutes");
-  const minutes = records.filter((record) => record.recordType === "board_minutes");
+  const minutes = records
+    .filter((record) => record.recordType === "board_minutes")
+    .sort(compareMinutesByMeetingDate);
   const currentStatutes = statutes[0];
 
   useEffect(() => {
@@ -322,6 +324,16 @@ function titleFromFilename(filename: string) {
 function dateFromFilename(filename: string) {
   const match = decodeFilename(filename).match(/(?:^|\D)(\d{4}-\d{2}-\d{2})(?:\D|$)/);
   return match?.[1];
+}
+
+function compareMinutesByMeetingDate(a: RecordSummary, b: RecordSummary) {
+  const aDate = a.currentVersion?.effectiveOn;
+  const bDate = b.currentVersion?.effectiveOn;
+
+  if (aDate && bDate) return bDate.localeCompare(aDate) || b.createdAt.localeCompare(a.createdAt);
+  if (aDate) return -1;
+  if (bDate) return 1;
+  return b.createdAt.localeCompare(a.createdAt);
 }
 
 function displayRecordTitle(title: string) {
