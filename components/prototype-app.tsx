@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { actions, myAttention, people, projects, roleDefinitions, tensions } from "@/lib/mock-data";
 import type { Action, AttentionItem, GovernanceProposal, GovernanceStage, Project, RoleDefinition, Tension } from "@/lib/domain";
+import type { RecordFollowUp } from "@/lib/records-followups";
 import { NEXT_WEEK, PROTOTYPE_TODAY, humanGovernanceStage, personInitial, personName } from "@/lib/prototype-utils";
 import { createOwnAction, loadOwnActions, setPersistedActionStatus } from "@/lib/supabase/actions";
 import { AttentionView, Header, ProjectUpdateEditor, WorkView, labels, navMeta, type View } from "@/components/attention-work";
@@ -281,6 +282,89 @@ export function Prototype({ liveProfile }: { liveProfile?: LiveProfile }) {
     announce(`Tension raised: “${tension.title}”.`);
   }
 
+  async function captureMinutesFollowUp(sourceTitle: string, followup: RecordFollowUp) {
+    const source = `Board minutes · ${sourceTitle}`;
+
+    if (followup.kind === "action") {
+      const explicitOwnerId = minutesOwnerId(followup.owner);
+      if (followup.owner && !explicitOwnerId) {
+        announce(`Could not capture action: owner “${followup.owner}” is not in the current app roster.`);
+        return false;
+      }
+      const ownerId = explicitOwnerId ?? currentUserId;
+
+      if (liveProfile && ownerId === LIVE_PROTOTYPE_PERSON_ID) {
+        try {
+          const action = await createOwnAction(liveProfile.id, LIVE_PROTOTYPE_PERSON_ID, followup.title, { due: followup.due, source });
+          setPersistedActionIds((ids) => ids.includes(action.id) ? ids : [action.id, ...ids]);
+          setWorkActions((items) => [action, ...items.filter((candidate) => candidate.id !== action.id)]);
+        } catch (error) {
+          announce(`Action was not saved: ${error instanceof Error ? error.message : "database error"}`);
+          return false;
+        }
+      } else {
+        const action: Action = {
+          id: `minutes-action-${crypto.randomUUID()}`,
+          title: followup.title,
+          ownerId,
+          status: ownerId === currentUserId ? "open" : "proposed",
+          due: followup.due,
+          source,
+        };
+        setWorkActions((items) => [action, ...items]);
+      }
+
+      announce(ownerId === currentUserId ? `Action captured from minutes: “${followup.title}”.` : `Action proposed to ${personName(ownerId)} from minutes.`);
+      return true;
+    }
+
+    if (followup.kind === "project") {
+      const explicitOwnerId = minutesOwnerId(followup.owner);
+      if (followup.owner && !explicitOwnerId) {
+        announce(`Could not capture project: owner “${followup.owner}” is not in the current app roster.`);
+        return false;
+      }
+      const ownerId = explicitOwnerId ?? currentUserId;
+      const project: Project = {
+        id: `minutes-project-${crypto.randomUUID()}`,
+        title: followup.title,
+        ownerId,
+        status: "active",
+        lastUpdate: PROTOTYPE_TODAY,
+        nextPrompt: NEXT_WEEK,
+        summary: `Captured from ${sourceTitle}.`,
+      };
+      setWorkProjects((items) => [project, ...items]);
+      upsertAttention({ ownerId, kind: "project_update", targetId: project.id, title: project.title, reason: `Project captured from ${sourceTitle}. Keep its current status visible.`, primaryAction: "Update project", status: "needs_action" });
+      announce(`Project captured from minutes: “${followup.title}”.`);
+      return true;
+    }
+
+    if (followup.kind === "tension") {
+      const tension: Tension = {
+        id: `minutes-tension-${crypto.randomUUID()}`,
+        title: followup.title,
+        raiserId: currentUserId,
+        status: "open",
+        latestNote: `Captured for review from ${sourceTitle}.`,
+      };
+      addTension(tension);
+      return true;
+    }
+
+    const tension: Tension = {
+      id: `minutes-governance-${crypto.randomUUID()}`,
+      title: followup.title,
+      raiserId: currentUserId,
+      status: "governance",
+      latestNote: `Governance follow-up captured from ${sourceTitle}. No governance decision has been made yet.`,
+    };
+    setWorkTensions((items) => [tension, ...items]);
+    upsertAttention({ ownerId: currentUserId, kind: "governance", targetId: tension.id, title: tension.title, reason: `Governance question captured from ${sourceTitle}. Prepare a proposal only if a structural change is actually needed.`, primaryAction: "Prepare proposal", status: "needs_action" });
+    announce(`Governance follow-up captured as a tension: “${followup.title}”.`);
+    return true;
+  }
+
   function markTensionResolved(id: string) {
     const tension = workTensions.find((candidate) => candidate.id === id);
     if (!tension || tension.status !== "open") return;
@@ -488,10 +572,19 @@ export function Prototype({ liveProfile }: { liveProfile?: LiveProfile }) {
       {view === "tensions" && <TensionsView tensions={workTensions} projects={workProjects} currentUserId={currentUserId} selectedTensionId={selectedTensionId} draftSeed={tensionDraftSeed} onAddTension={addTension} onMarkResolved={markTensionResolved} onResolve={resolveTension} onKeepOpen={keepOpen} onMove={moveTension} onCreateAction={createAction} onCreateProject={createProject} />}
       {view === "organisation" && <OrganisationView roles={roles} setRoles={setRoles} onSaved={(title) => announce(`Role saved: “${title}”.`)} onDeleted={(title) => announce(`Role removed: “${title}”.`)} />}
       {view === "governance" && governanceView}
-      {view === "records" && <RecordsView governanceProposals={governanceProposals} tensions={workTensions} />}
+      {view === "records" && <RecordsView governanceProposals={governanceProposals} tensions={workTensions} onCaptureFollowUp={captureMinutesFollowUp} onNotice={announce} />}
       {view === "pulse" && <PulseView attention={attention} actions={workActions} tensions={workTensions} />}
     </main>
     {notice && <div className="save-toast" role="status"><span>✓</span>{notice}</div>}
     {projectUpdate && <ProjectUpdateEditor project={projectUpdate} onSave={saveProject} onNoChange={() => { const item = attention.find((candidate) => candidate.kind === "project_update" && candidate.targetId === projectUpdate.id && candidate.ownerId === currentUserId); if (item) noChange(item); setProjectUpdateId(null); }} onRaiseTension={() => raiseFromProject(projectUpdate.id)} onClose={() => setProjectUpdateId(null)} />}
   </div>;
+}
+
+function minutesOwnerId(owner: string | undefined) {
+  if (!owner) return undefined;
+  const normalized = owner.trim().toLowerCase();
+  return people.find((person) => {
+    const name = person.name.toLowerCase();
+    return normalized === name || normalized.startsWith(`${name} `) || name.startsWith(`${normalized} `);
+  })?.id;
 }
