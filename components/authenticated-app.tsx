@@ -72,7 +72,6 @@ export function AuthenticatedApp() {
         return;
       }
 
-      // Run the database lookup after the auth callback has returned.
       window.setTimeout(() => void resolveUser(), 0);
     });
 
@@ -155,10 +154,10 @@ export function AuthenticatedApp() {
 
   return <>
     {!meetingMode && profile && <div className="auth-session-chip" role="status">
-      <div><strong>Signed in as {profile.name}</strong><small>Database access is live · prototype users remain simulated for now</small></div>
+      <div><strong>Signed in as {profile.name}</strong><small>Database access is live · standalone Actions are now persisted for the signed-in user</small></div>
       <button onClick={() => void signOut()}>Sign out</button>
     </div>}
-    <Prototype />
+    {profile && <Prototype liveProfile={profile} />}
   </>;
 }
 
