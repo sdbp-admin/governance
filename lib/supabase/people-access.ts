@@ -48,3 +48,14 @@ export async function deactivateWorkspacePerson(personId: string) {
   const { error } = await supabase.rpc("deactivate_workspace_person", { target_person_id: personId });
   if (error) throw error;
 }
+
+export async function isCurrentPresident() {
+  const { data, error } = await supabase.rpc("is_current_president");
+  if (error) throw error;
+  return Boolean(data);
+}
+
+export async function transferPresidency(personId: string) {
+  const { error } = await supabase.rpc("transfer_presidency", { target_person_id: personId });
+  if (error) throw error;
+}
