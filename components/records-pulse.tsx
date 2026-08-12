@@ -7,7 +7,7 @@ import { PROTOTYPE_TODAY, formatTensionStatus, personName } from "@/lib/prototyp
 import { RecordsView as LiveRecordsView } from "@/components/records-view";
 import { supabase } from "@/lib/supabase/client";
 
-export function RecordsView({ governanceProposals, tensions, onCaptureFollowUp, onNotice }: {
+export function RecordsView({ governanceProposals, tensions, onNotice }: {
   governanceProposals: GovernanceProposal[];
   tensions: Tension[];
   onCaptureFollowUp?: (sourceTitle: string, followup: RecordFollowUp) => Promise<boolean>;
@@ -40,7 +40,6 @@ export function RecordsView({ governanceProposals, tensions, onCaptureFollowUp, 
     governanceProposals={governanceProposals}
     tensions={tensions}
     profileId={profileId}
-    onCaptureFollowUp={onCaptureFollowUp}
     onNotice={onNotice}
   />;
 }
