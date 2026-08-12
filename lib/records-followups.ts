@@ -57,6 +57,7 @@ Principles:
 - Distinguish a concrete next action from a multi-step project.
 - Do not infer formal board membership, office, decision authority, conflict-of-interest status, statutory duties or legal requirements from casual discussion. If such a question is raised but not verified from an authoritative source, record it as a question or matter to verify.
 - Governance follow-up must come from the meeting itself: include it only when the transcript explicitly raises a governance/statutory/process issue or when an agreed proposal clearly changes an ongoing role, accountability, domain or standing policy. Do not create new governance tasks merely because they seem sensible.
+- If a new role, accountability, policy or structural change was explicitly decided, record that decision clearly under Governance follow-up.
 - Keep the minutes readable for a board member who was not present.
 - Remove conversational repetition while preserving material disagreement, uncertainty and context.
 - Avoid duplicating the same point across several sections. Put each item in the most useful section and cross-reference only when necessary.
@@ -104,19 +105,7 @@ Use this structure:
 
 Keep the coaching concrete. Refer to meeting topics or moments rather than making generic statements. Under "Practices to try next meeting", choose one clearly labelled PRIMARY PRACTICE: the single facilitation experiment most likely to improve the next meeting. You may add up to two clearly labelled SECONDARY PRACTICES. Do not give the facilitator a long improvement list.
 
-SDBP PROCESSING NOTES — NOT PART OF EITHER DOCUMENT
-
-After both documents, repeat only explicit organisational follow-ups using zero or more blocks in exactly this format:
-
-[SDBP FOLLOW-UP]
-TYPE: ACTION
-TITLE: Concrete next step
-OWNER: Person name or Unclear
-DUE: YYYY-MM-DD or Unclear
-[/SDBP FOLLOW-UP]
-
-For projects use TYPE: PROJECT. For unresolved matters use TYPE: TENSION. For structural role/accountability/policy matters use TYPE: GOVERNANCE.
-OWNER and DUE may be omitted when not applicable. Do not create a follow-up block unless the transcript supports it explicitly. Do not convert analytical suggestions from the coaching document into organisational follow-ups.
+Do not add machine-processing notes, follow-up blocks or a third document. The official minutes themselves are the organisational record the SDBP app will read.
 
 TRANSCRIPT:\n`;
 
