@@ -347,6 +347,7 @@ export function Prototype({ liveProfile }: { liveProfile?: LiveProfile }) {
         raiserId: currentUserId,
         status: "open",
         latestNote: `Captured for review from ${sourceTitle}.`,
+        createdAt: PROTOTYPE_TODAY,
       };
       addTension(tension);
       return true;
@@ -358,6 +359,7 @@ export function Prototype({ liveProfile }: { liveProfile?: LiveProfile }) {
       raiserId: currentUserId,
       status: "governance",
       latestNote: `Governance follow-up captured from ${sourceTitle}. No governance decision has been made yet.`,
+      createdAt: PROTOTYPE_TODAY,
     };
     setWorkTensions((items) => [tension, ...items]);
     upsertAttention({ ownerId: currentUserId, kind: "governance", targetId: tension.id, title: tension.title, reason: `Governance question captured from ${sourceTitle}. Prepare a proposal only if a structural change is actually needed.`, primaryAction: "Prepare proposal", status: "needs_action" });
