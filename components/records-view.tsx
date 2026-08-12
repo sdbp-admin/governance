@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type DragEvent } from "react";
 import type { GovernanceProposal, Tension } from "@/lib/domain";
 import { extractMinutesFollowUpsFromPdf } from "@/lib/pdf-minutes";
 import { formatShortDate } from "@/lib/prototype-utils";
-import { MINUTES_GPT_PROMPT, parseMinutesFollowUps, type RecordFollowUp, type RecordFollowUpStatus } from "@/lib/records-followups";
+import { MINUTES_GPT_PROMPT, parseMinutesFollowUps, type RecordFollowUp, type RecordFollowUpKind } from "@/lib/records-followups";
 import {
   createRecordSignedUrl,
   deleteRecord,
@@ -21,21 +21,18 @@ type Props = {
   tensions: Tension[];
   profileId?: string;
   onNotice?: (message: string) => void;
-  onCaptureFollowUp?: (sourceTitle: string, followup: RecordFollowUp) => Promise<boolean>;
 };
 
 const RECORD_ACCEPT = ".pdf,.txt,.md,.doc,.docx,application/pdf,text/plain,text/markdown,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
-export function RecordsView({ governanceProposals, tensions, profileId, onNotice, onCaptureFollowUp }: Props) {
+export function RecordsView({ governanceProposals, tensions, profileId, onNotice }: Props) {
   const [records, setRecords] = useState<RecordSummary[]>([]);
   const [loading, setLoading] = useState(Boolean(profileId));
   const [error, setError] = useState("");
   const [uploadingType, setUploadingType] = useState<RecordType | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
-  const [reviewingIds, setReviewingIds] = useState<Set<string>>(new Set());
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
-  const [expandedFollowUps, setExpandedFollowUps] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
 
   const accepted = governanceProposals.filter((proposal) => proposal.stage === "accepted");
@@ -61,13 +58,13 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
 
         const needsBackfill = items.filter((record) =>
           record.recordType === "board_minutes" &&
+          record.followups.length === 0 &&
           isPdfRecord(record) &&
-          Boolean(record.currentVersion?.storagePath) &&
-          (record.followups.length === 0 || !record.followups.some((followup) => followup.kind === "action")),
+          Boolean(record.currentVersion?.storagePath),
         );
 
         for (const record of needsBackfill) {
-          void backfillPdfFollowUps(record, () => cancelled);
+          void backfillPdfOutcomes(record, () => cancelled);
         }
       })
       .catch((loadError) => {
@@ -80,7 +77,7 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
     return () => { cancelled = true; };
   }, [profileId]);
 
-  async function backfillPdfFollowUps(record: RecordSummary, isCancelled: () => boolean) {
+  async function backfillPdfOutcomes(record: RecordSummary, isCancelled: () => boolean) {
     const storagePath = record.currentVersion?.storagePath;
     if (!storagePath) return;
 
@@ -91,15 +88,15 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
       if (!response.ok) throw new Error("Could not read the stored minutes PDF.");
 
       const extracted = await extractMinutesFollowUpsFromPdf(await response.arrayBuffer());
-      const followups = mergeFollowUps(record.followups, extracted);
-      if (followups.length === record.followups.length) return;
+      const outcomes = mergeOutcomes(record.followups, extracted);
+      if (outcomes.length === 0) return;
 
-      await updateRecordFollowUps(record.id, followups);
+      await updateRecordFollowUps(record.id, outcomes);
       if (!isCancelled()) {
-        setRecords((items) => items.map((item) => item.id === record.id ? { ...item, followups } : item));
+        setRecords((items) => items.map((item) => item.id === record.id ? { ...item, followups: outcomes } : item));
       }
     } catch {
-      // Keep Records usable if an older PDF cannot be parsed; the document itself remains authoritative.
+      // The document remains authoritative even if an older PDF cannot be summarized.
     } finally {
       if (!isCancelled()) setProcessingIds((items) => removeFromSet(items, record.id));
     }
@@ -134,16 +131,16 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
         return;
       }
 
-      let followups: RecordFollowUp[] = [];
+      let outcomes: RecordFollowUp[] = [];
       if (recordType === "board_minutes") {
         try {
           if (isPdfFile(file)) {
-            followups = await extractMinutesFollowUpsFromPdf(file);
+            outcomes = await extractMinutesFollowUpsFromPdf(file);
           } else if (isTextFile(file)) {
-            followups = parseMinutesFollowUps(await file.text());
+            outcomes = parseMinutesFollowUps(await file.text());
           }
         } catch {
-          followups = [];
+          outcomes = [];
         }
       }
 
@@ -151,7 +148,7 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
         title: recordType === "statutes" ? "SDBP Statutes" : titleFromFilename(file.name),
         recordType,
         effectiveOn: dateFromFilename(file.name),
-        followups,
+        followups: outcomes,
         file,
         profileId,
       });
@@ -159,8 +156,8 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
       setRecords((items) => [created, ...items]);
       onNotice?.(recordType === "statutes"
         ? "SDBP Statutes stored."
-        : followups.length > 0
-          ? `Board minutes stored. ${followups.length} follow-ups are ready to review.`
+        : outcomes.length > 0
+          ? "Board minutes stored. Meeting outcomes are available with the record."
           : "Board minutes stored.");
     } catch (storeError) {
       setError(readError(storeError));
@@ -222,7 +219,7 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
 
   async function deleteMinutes(record: RecordSummary) {
     const title = displayRecordTitle(record.title);
-    const confirmed = window.confirm(`Delete “${title}”?\n\nThis permanently removes the minutes document from Records. Work already accepted from these minutes will remain.`);
+    const confirmed = window.confirm(`Delete “${title}”?\n\nThis permanently removes the minutes document and its extracted meeting summary from Records.`);
     if (!confirmed) return;
 
     setDeletingIds((items) => addToSet(items, record.id));
@@ -230,7 +227,6 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
     try {
       await deleteRecord(record.id);
       setRecords((items) => items.filter((item) => item.id !== record.id));
-      setExpandedFollowUps((items) => removeFromSet(items, record.id));
       onNotice?.(`Deleted minutes: “${title}”.`);
     } catch (deleteError) {
       setError(readError(deleteError));
@@ -239,54 +235,11 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
     }
   }
 
-  async function reviewFollowUp(record: RecordSummary, followup: RecordFollowUp, status: Extract<RecordFollowUpStatus, "captured" | "not_needed">) {
-    if (reviewingIds.has(followup.id)) return;
-    if (status === "captured" && !onCaptureFollowUp) {
-      setError("This follow-up cannot be captured into the current app state.");
-      return;
-    }
-
-    setReviewingIds((items) => addToSet(items, followup.id));
-    setError("");
-    const updated = record.followups.map((item) => item.id === followup.id ? { ...item, status } : item);
-
-    try {
-      await updateRecordFollowUps(record.id, updated);
-
-      if (status === "captured") {
-        const captured = await onCaptureFollowUp!(displayRecordTitle(record.title), followup);
-        if (!captured) {
-          await updateRecordFollowUps(record.id, record.followups);
-          return;
-        }
-      }
-
-      setRecords((items) => items.map((item) => item.id === record.id ? { ...item, followups: updated } : item));
-      if (!updated.some((item) => item.status === "unreviewed")) {
-        setExpandedFollowUps((items) => removeFromSet(items, record.id));
-      }
-      onNotice?.(status === "captured" ? `Follow-up captured: “${followup.title}”.` : "Suggestion dismissed.");
-    } catch (reviewError) {
-      try {
-        await updateRecordFollowUps(record.id, record.followups);
-      } catch {
-        // Keep the original error visible; a subsequent refresh will reconcile the stored review state.
-      }
-      setError(readError(reviewError));
-    } finally {
-      setReviewingIds((items) => removeFromSet(items, followup.id));
-    }
-  }
-
-  function toggleFollowUps(recordId: string) {
-    setExpandedFollowUps((items) => items.has(recordId) ? removeFromSet(items, recordId) : addToSet(items, recordId));
-  }
-
   return <>
     <div className="records-intro records-intro-live">
       <span className="section-kicker">Organisational memory</span>
       <strong>Keep the authoritative document. Keep the workflow light.</strong>
-      <p>Drop approved documents where they belong. The app handles storage, access and versioning in the background.</p>
+      <p>Drop approved documents where they belong. The app keeps them accessible and shows what came out of the meeting.</p>
     </div>
 
     {!profileId && <div className="records-status warning">Live Records require an authenticated board profile.</div>}
@@ -329,35 +282,18 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
 
         {minutes.length > 0 && <div className="recent-minutes">
           <strong>Recent minutes</strong>
-          {minutes.slice(0, 5).map((record) => {
-            const isExpanded = expandedFollowUps.has(record.id);
-            const isProcessing = processingIds.has(record.id);
-            const unreviewed = record.followups.filter((followup) => followup.status === "unreviewed");
-            const reviewed = record.followups.length > 0 && unreviewed.length === 0;
-            return <div className="minute-record" key={record.id}>
-              <StoredDocument
-                record={record}
-                openingId={openingId}
-                onOpen={openRecord}
-                onDelete={() => void deleteMinutes(record)}
-                deleting={deletingIds.has(record.id)}
-              />
-              {isProcessing && <small className="followup-processing">Updating follow-ups…</small>}
-              {!isProcessing && unreviewed.length > 0 && <>
-                <button className="followup-toggle" type="button" onClick={() => toggleFollowUps(record.id)}>
-                  <span>{unreviewed.length} {unreviewed.length === 1 ? "follow-up" : "follow-ups"} to review</span>
-                  <span aria-hidden="true">{isExpanded ? "−" : "+"}</span>
-                </button>
-                {isExpanded && <FollowUpReview
-                  followups={unreviewed}
-                  reviewingIds={reviewingIds}
-                  onCapture={(followup) => void reviewFollowUp(record, followup, "captured")}
-                  onDismiss={(followup) => void reviewFollowUp(record, followup, "not_needed")}
-                />}
-              </>}
-              {!isProcessing && reviewed && <div className="followup-reviewed"><span>✓</span> Follow-ups reviewed</div>}
-            </div>;
-          })}
+          {minutes.slice(0, 5).map((record) => <div className="minute-record" key={record.id}>
+            <StoredDocument
+              record={record}
+              openingId={openingId}
+              onOpen={openRecord}
+              onDelete={() => void deleteMinutes(record)}
+              deleting={deletingIds.has(record.id)}
+            />
+            {processingIds.has(record.id)
+              ? <small className="minutes-memory-processing">Reading meeting outcomes…</small>
+              : record.followups.length > 0 && <MeetingMemory outcomes={record.followups} />}
+          </div>)}
           {minutes.length > 5 && <small>{minutes.length - 5} earlier {minutes.length - 5 === 1 ? "record" : "records"} also stored.</small>}
         </div>}
       </article>
@@ -380,30 +316,29 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
   </>;
 }
 
-function FollowUpReview({ followups, reviewingIds, onCapture, onDismiss }: {
-  followups: RecordFollowUp[];
-  reviewingIds: Set<string>;
-  onCapture: (followup: RecordFollowUp) => void;
-  onDismiss: (followup: RecordFollowUp) => void;
-}) {
-  return <div className="followup-review">
-    <small>Suggested from the approved minutes. Accepting moves it into the normal app workflow; dismissing only clears the suggestion.</small>
-    {followups.map((followup) => {
-      const busy = reviewingIds.has(followup.id);
-      const claimMine = (followup.kind === "action" || followup.kind === "project") && !followup.owner;
-      return <div className="followup-item" key={followup.id}>
-        <span className={`followup-kind ${followup.kind}`}>{followup.kind}</span>
-        <div className="followup-copy">
-          <strong>{followup.title}</strong>
-          {(followup.owner || followup.due) && <small>{followup.owner ? `Owner: ${followup.owner}` : "Owner: unclear"}{followup.due ? ` · Due: ${followup.due}` : ""}</small>}
-        </div>
-        <div className="followup-actions">
-          <button type="button" className="followup-accept" disabled={busy} onClick={() => onCapture(followup)}>{busy ? "Saving…" : claimMine ? "Accept as mine" : "Accept"}</button>
-          <button type="button" className="followup-dismiss" disabled={busy} onClick={() => onDismiss(followup)}>Dismiss</button>
-        </div>
-      </div>;
-    })}
-  </div>;
+function MeetingMemory({ outcomes }: { outcomes: RecordFollowUp[] }) {
+  const groups: Array<{ kind: RecordFollowUpKind; label: string; items: RecordFollowUp[] }> = [
+    { kind: "action", label: "Actions", items: outcomes.filter((item) => item.kind === "action") },
+    { kind: "project", label: "Projects", items: outcomes.filter((item) => item.kind === "project") },
+    { kind: "tension", label: "Tensions", items: outcomes.filter((item) => item.kind === "tension") },
+    { kind: "governance", label: "Governance / roles", items: outcomes.filter((item) => item.kind === "governance") },
+  ].filter((group) => group.items.length > 0);
+
+  const summary = groups.map((group) => `${group.items.length} ${group.label.toLowerCase()}`).join(" · ");
+
+  return <details className="minutes-memory">
+    <summary>{summary}</summary>
+    <div className="minutes-memory-panel">
+      <strong>From these minutes</strong>
+      {groups.map((group) => <section key={group.kind}>
+        <span className={`minutes-memory-kind ${group.kind}`}>{group.label}</span>
+        <ul>{group.items.map((item) => <li key={item.id}>
+          <span>{item.title}</span>
+          {(item.owner || item.due) && <small>{item.owner ? item.owner : "Owner unclear"}{item.due ? ` · ${item.due}` : ""}</small>}
+        </li>)}</ul>
+      </section>)}
+    </div>
+  </details>;
 }
 
 function RecordDropZone({ label, hint, disabled, onFile }: { label: string; hint: string; disabled: boolean; onFile: (file: File) => Promise<void> }) {
@@ -499,18 +434,20 @@ function isTextFile(file: File) {
   return file.type.startsWith("text/") || /\.(md|txt)$/i.test(file.name);
 }
 
-function mergeFollowUps(existing: RecordFollowUp[], extracted: RecordFollowUp[]) {
-  const byKey = new Map(existing.map((followup) => [followUpKey(followup), followup]));
+function mergeOutcomes(existing: RecordFollowUp[], extracted: RecordFollowUp[]) {
+  const byKey = new Set(existing.map(outcomeKey));
   const merged = [...existing];
-  for (const followup of extracted) {
-    if (byKey.has(followUpKey(followup))) continue;
-    merged.push(followup);
+  for (const outcome of extracted) {
+    const key = outcomeKey(outcome);
+    if (byKey.has(key)) continue;
+    merged.push(outcome);
+    byKey.add(key);
   }
   return merged;
 }
 
-function followUpKey(followup: Pick<RecordFollowUp, "kind" | "title">) {
-  return `${followup.kind}:${followup.title.toLowerCase().replace(/\s+/g, " ").trim()}`;
+function outcomeKey(outcome: Pick<RecordFollowUp, "kind" | "title">) {
+  return `${outcome.kind}:${outcome.title.toLowerCase().replace(/\s+/g, " ").trim()}`;
 }
 
 function addToSet(items: Set<string>, value: string) {
