@@ -24,7 +24,9 @@ export function toPrototypeAction(row: ActionRow, uiOwnerId: string): Action {
   };
 }
 
-export async function loadOwnActions(ownerId: string, uiOwnerId: string) {
+export async function loadOwnActions(ownerId: string | undefined, uiOwnerId: string) {
+  if (!ownerId) return [];
+
   const { data, error } = await supabase
     .from("actions")
     .select(ACTION_COLUMNS)
