@@ -32,6 +32,22 @@
 .recent-minutes > strong { display:block; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; font-size:10px; }
 .recent-minutes > small { display:block; color:var(--muted); margin-top:9px; }
 .recent-minutes .stored-record-row { margin-top:8px; }
+.minute-record { display:grid; }
+.followup-processing { display:block; color:var(--muted); margin:7px 2px 0; }
+.followup-toggle { margin-top:7px; border:0; background:transparent; color:var(--brand-blue); padding:4px 2px; display:flex; justify-content:space-between; align-items:center; gap:12px; font:inherit; font-size:12px; font-weight:700; cursor:pointer; text-align:left; }
+.followup-toggle:hover { text-decoration:underline; }
+.followup-review { margin-top:5px; display:grid; gap:7px; padding:10px; border-radius:12px; background:rgba(255,255,255,.66); border:1px solid var(--border); }
+.followup-review > small { color:var(--muted); line-height:1.4; margin-bottom:2px; }
+.followup-item { display:grid; grid-template-columns:auto 1fr; gap:8px; align-items:start; padding-top:7px; border-top:1px solid rgba(0,0,0,.06); }
+.followup-item:first-of-type { border-top:0; padding-top:0; }
+.followup-item > div { min-width:0; display:grid; gap:3px; }
+.followup-item strong { font-size:12px; line-height:1.35; color:var(--brand-navy); }
+.followup-item small { color:var(--muted); line-height:1.35; }
+.followup-kind { font-size:9px; line-height:1; text-transform:uppercase; letter-spacing:.045em; padding:5px 6px; border-radius:7px; background:#eef3f4; color:var(--muted); font-weight:800; }
+.followup-kind.action { background:#e9f5f9; color:#176c88; }
+.followup-kind.tension { background:#fff2e5; color:#9c5a16; }
+.followup-kind.governance { background:#eff2df; color:#627616; }
+.followup-kind.project { background:#f0ecf8; color:#65518a; }
 
 .governance-record-list { display:grid; gap:9px; margin-top:5px; }
 .governance-record-row { display:grid; gap:8px; padding:12px; border-radius:13px; background:rgba(255,255,255,.8); border:1px solid var(--border); }
