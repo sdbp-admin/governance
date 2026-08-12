@@ -12,16 +12,34 @@ export type RecordFollowUp = {
 
 const FOLLOW_UP_BLOCK = /\[SDBP FOLLOW-UP\]([\s\S]*?)\[\/SDBP FOLLOW-UP\]/gi;
 
-export const MINUTES_GPT_PROMPT = `Turn the transcript below into concise SDBP meeting minutes.
+export const MINUTES_GPT_PROMPT = `Use the meeting transcript below to create two clearly separate documents:
 
-Use these principles:
+1. the authoritative SDBP meeting minutes;
+2. a non-authoritative facilitation coaching document for learning and improving how SDBP meetings are run.
+
+Do not merge coaching observations into the official minutes.
+
+First determine the meeting date from the transcript if it is explicit. Do not guess it.
+Use these filenames:
+- if the date is known: YYYY-MM-DD SDBP Board Minutes
+- if the date is unknown: Undated SDBP Board Minutes
+- if the date is known: YYYY-MM-DD SDBP Facilitation Coaching
+- if the date is unknown: Undated SDBP Facilitation Coaching
+
+DOCUMENT 1 — OFFICIAL MINUTES
+
+Purpose: preserve organisational reality, decisions, commitments and unresolved matters accurately and concisely.
+
+Principles:
 - Record current reality, decisions, commitments, unresolved matters and relevant context.
 - Do not invent decisions, owners, deadlines, participants or agreement.
-- Do not turn a suggestion or discussion into a commitment.
+- List only participants who are demonstrably present in the transcript.
+- Do not turn a suggestion, idea or discussion into a commitment.
 - If ownership or a deadline is unclear, write "Unclear".
 - Distinguish a concrete next action from a multi-step project.
 - If something appears to require changing an ongoing role, accountability, domain or standing policy, describe it as a possible governance follow-up rather than changing the structure yourself.
 - Keep the minutes readable for a board member who was not present.
+- Remove conversational repetition while preserving material disagreement, uncertainty and context.
 
 Use this structure:
 # SDBP Meeting Minutes
@@ -37,7 +55,36 @@ Context / project (if relevant):
 ## Governance follow-up
 ## Other relevant records or documents
 
-At the very end, repeat only explicit organisational follow-ups using zero or more blocks in exactly this format:
+DOCUMENT 2 — FACILITATION COACHING
+
+Purpose: help whoever facilitates SDBP meetings become more effective over time. This is a learning document, not an organisational record and not a performance score.
+
+Review only facilitation behaviour and process evidence visible in the transcript. Do not speculate about motives, personality or competence. If the facilitator cannot be identified reliably from the transcript, say so and review the meeting process without attributing observations to a person.
+
+Pay particular attention to:
+- whether the purpose and agenda stayed clear;
+- whether status updates remained concise and useful;
+- whether tensions were surfaced and processed rather than buried in discussion;
+- whether operational updates, decisions, actions, projects and governance matters were distinguished clearly;
+- whether the group moved into solutions before the underlying tension or question was clear;
+- repetition, tangents or discussion that continued after enough clarity existed to move forward;
+- whether ownership, next steps and deadlines became explicit where appropriate;
+- whether matters that needed a synchronous conversation or governance process were recognised as such;
+- moments where a simple facilitator intervention could have shortened the meeting or improved clarity;
+- facilitation practices that worked well and should be repeated.
+
+Use this structure:
+# SDBP Facilitation Coaching
+## What worked
+## Where the process lost clarity or time
+## Facilitation interventions that could have helped
+## Practices to try next meeting
+
+Keep the coaching concrete. Refer to meeting topics or moments rather than making generic statements. Recommend no more than three practical improvements for the next meeting.
+
+SDBP PROCESSING NOTES — NOT PART OF EITHER DOCUMENT
+
+After both documents, repeat only explicit organisational follow-ups using zero or more blocks in exactly this format:
 
 [SDBP FOLLOW-UP]
 TYPE: ACTION
