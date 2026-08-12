@@ -8,6 +8,12 @@ const SECTION_HEADERS = [
   "Other relevant records or documents",
 ];
 
+type PositionedText = {
+  text: string;
+  x: number;
+  y: number;
+};
+
 export async function extractMinutesFollowUpsFromPdf(source: File | ArrayBuffer): Promise<RecordFollowUp[]> {
   const pdfjs = await import("pdfjs-dist");
   pdfjs.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -18,21 +24,29 @@ export async function extractMinutesFollowUpsFromPdf(source: File | ArrayBuffer)
 
   try {
     let text = "";
+    const positionedActions: RecordFollowUp[] = [];
+
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
       const page = await pdf.getPage(pageNumber);
       const content = await page.getTextContent();
       let pageText = "";
+      const positioned: PositionedText[] = [];
 
       for (const item of content.items) {
         if (!("str" in item)) continue;
         pageText += item.str;
         pageText += item.hasEOL ? "\n" : " ";
+
+        if (item.str.trim() && Array.isArray(item.transform)) {
+          positioned.push({ text: item.str.trim(), x: item.transform[4], y: item.transform[5] });
+        }
       }
 
+      positionedActions.push(...extractPositionedActionRows(positioned));
       text += `${pageText}\n`;
     }
 
-    return extractMinutesFollowUpsFromText(text);
+    return dedupeFollowUps([...positionedActions, ...extractMinutesFollowUpsFromText(text)]);
   } finally {
     await loadingTask.destroy();
   }
@@ -49,6 +63,71 @@ export function extractMinutesFollowUpsFromText(text: string): RecordFollowUp[] 
   const governance = extractBullets(section(normalized, "Governance follow-up", "Other relevant records or documents"), "governance");
 
   return dedupeFollowUps([...actions, ...tensions, ...governance]);
+}
+
+function extractPositionedActionRows(items: PositionedText[]): RecordFollowUp[] {
+  const actionHeaders = items.filter((item) => item.text === "Action");
+
+  for (const actionHeader of actionHeaders) {
+    const ownerHeader = items.find((item) => item.text === "Owner" && Math.abs(item.y - actionHeader.y) <= 3);
+    const dueHeader = items.find((item) => item.text === "Due" && Math.abs(item.y - actionHeader.y) <= 3);
+    if (!ownerHeader || !dueHeader || !(actionHeader.x < ownerHeader.x && ownerHeader.x < dueHeader.x)) continue;
+
+    const projectsHeader = items
+      .filter((item) => item.text === "Projects" && item.y < actionHeader.y - 4)
+      .sort((a, b) => b.y - a.y)[0];
+    const lowerBoundary = projectsHeader?.y ?? Number.NEGATIVE_INFINITY;
+    const ownerStart = ownerHeader.x - 10;
+    const dueStart = dueHeader.x - 10;
+
+    const body = items.filter((item) =>
+      item.y < actionHeader.y - 4 &&
+      item.y > lowerBoundary + 4,
+    );
+
+    const anchorYs = uniqueApproximateYs(
+      body
+        .filter((item) => item.x >= dueStart && isDueValue(item.text))
+        .map((item) => item.y),
+    ).sort((a, b) => b - a);
+
+    if (anchorYs.length === 0) continue;
+
+    const rows: RecordFollowUp[] = [];
+    for (let index = 0; index < anchorYs.length; index += 1) {
+      const anchorY = anchorYs[index];
+      const nextY = anchorYs[index + 1] ?? lowerBoundary;
+      const rowItems = body.filter((item) => item.y <= anchorY + 3 && item.y > nextY + 3);
+
+      const action = joinPositioned(rowItems.filter((item) => item.x < ownerStart));
+      if (!action) continue;
+
+      const owner = joinPositioned(rowItems.filter((item) => item.x >= ownerStart && item.x < dueStart && Math.abs(item.y - anchorY) <= 3));
+      const due = joinPositioned(rowItems.filter((item) => item.x >= dueStart && Math.abs(item.y - anchorY) <= 3));
+      rows.push(makeFollowUp("action", action, owner || undefined, due || undefined));
+    }
+
+    if (rows.length > 0) return rows;
+  }
+
+  return [];
+}
+
+function uniqueApproximateYs(values: number[]) {
+  const result: number[] = [];
+  for (const value of values.sort((a, b) => b - a)) {
+    if (!result.some((candidate) => Math.abs(candidate - value) <= 2)) result.push(value);
+  }
+  return result;
+}
+
+function joinPositioned(items: PositionedText[]) {
+  return normalizeWhitespace(
+    [...items]
+      .sort((a, b) => Math.abs(a.y - b.y) > 2 ? b.y - a.y : a.x - b.x)
+      .map((item) => item.text)
+      .join(" "),
+  );
 }
 
 function normalizePdfText(text: string) {
@@ -160,12 +239,14 @@ function conciseTitle(value: string) {
 
 function makeFollowUp(kind: RecordFollowUpKind, rawTitle: string, owner?: string, due?: string): RecordFollowUp {
   const title = normalizeWhitespace(rawTitle).replace(/[.;]+$/, "");
+  const normalizedOwner = owner && owner.toLowerCase() !== "unclear" ? normalizeWhitespace(owner) : undefined;
+  const normalizedDue = due && /^\d{4}-\d{2}-\d{2}$/.test(due) ? due : undefined;
   return {
     id: `followup-${crypto.randomUUID()}`,
     kind,
     title,
-    owner: owner && owner !== "Unclear" ? owner : undefined,
-    due: due && /^\d{4}-\d{2}-\d{2}$/.test(due) ? due : undefined,
+    owner: normalizedOwner,
+    due: normalizedDue,
     status: "unreviewed",
   };
 }
@@ -184,7 +265,7 @@ function looksLikeOwner(value: string, participants: Set<string>) {
 function dedupeFollowUps(items: RecordFollowUp[]) {
   const seen = new Set<string>();
   return items.filter((item) => {
-    const key = `${item.kind}:${item.title.toLowerCase()}`;
+    const key = `${item.kind}:${normalizeWhitespace(item.title).toLowerCase()}`;
     if (!item.title || seen.has(key)) return false;
     seen.add(key);
     return true;
