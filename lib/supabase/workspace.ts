@@ -169,7 +169,7 @@ export async function invitePerson(name: string, email: string) {
 
   const { data: existing, error: existingError } = await supabase
     .from("people")
-    .select("id")
+    .select("id,active")
     .ilike("email", cleanEmail)
     .maybeSingle();
   if (existingError) throw existingError;
@@ -177,6 +177,12 @@ export async function invitePerson(name: string, email: string) {
   if (!existing) {
     const { error: insertError } = await supabase.from("people").insert({ name: cleanName, email: cleanEmail, active: true });
     if (insertError) throw insertError;
+  } else if (!existing.active) {
+    const { error: reactivateError } = await supabase.rpc("reactivate_workspace_person", {
+      target_email: cleanEmail,
+      target_name: cleanName,
+    });
+    if (reactivateError) throw reactivateError;
   }
 
   const redirectTo = `${window.location.origin}/governance/`;
