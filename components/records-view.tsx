@@ -120,13 +120,20 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
     const storagePath = record.currentVersion?.storagePath;
     if (!storagePath) return;
 
+    const opened = window.open("about:blank", "_blank");
+    if (opened) opened.opener = null;
+
     setOpeningId(record.id);
     setError("");
     try {
       const url = await createRecordSignedUrl(storagePath);
-      const opened = window.open(url, "_blank", "noopener,noreferrer");
-      if (!opened) window.location.assign(url);
+      if (!opened) {
+        setError("Your browser blocked the new tab. Allow pop-ups for this site and try again.");
+        return;
+      }
+      opened.location.href = url;
     } catch (openError) {
+      opened?.close();
       setError(readError(openError));
     } finally {
       setOpeningId(null);
