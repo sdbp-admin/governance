@@ -120,6 +120,11 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
     const storagePath = record.currentVersion?.storagePath;
     if (!storagePath) return;
 
+    if (!isPdfRecord(record)) {
+      await downloadRecord(record);
+      return;
+    }
+
     const opened = window.open("about:blank", "_blank");
     if (opened) opened.opener = null;
 
@@ -135,6 +140,28 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
     } catch (openError) {
       opened?.close();
       setError(readError(openError));
+    } finally {
+      setOpeningId(null);
+    }
+  }
+
+  async function downloadRecord(record: RecordSummary) {
+    const storagePath = record.currentVersion?.storagePath;
+    if (!storagePath) return;
+
+    setOpeningId(record.id);
+    setError("");
+    try {
+      const url = await createRecordSignedUrl(storagePath, true);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = displayRecordTitle(record.title);
+      link.rel = "noopener";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (downloadError) {
+      setError(readError(downloadError));
     } finally {
       setOpeningId(null);
     }
@@ -176,11 +203,11 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
         <button className="primary minutes-prompt-button" type="button" onClick={() => void copyMinutesPrompt()}>
           {copied ? "Prompt copied" : "Copy minutes + coaching prompt"}
         </button>
-        <small className="minutes-prompt-note">Creates official minutes plus a separate facilitation coaching document for learning.</small>
+        <small className="minutes-prompt-note">Creates two PDFs: official minutes plus a separate facilitation coaching document for learning.</small>
 
         <RecordDropZone
           label={uploadingType === "board_minutes" ? "Storing minutes…" : "Drop approved minutes here"}
-          hint="or click to choose the document"
+          hint="PDF preferred · or click to choose the document"
           disabled={!profileId || loading || uploadingType !== null}
           onFile={(file) => storeFile("board_minutes", file)}
         />
@@ -251,21 +278,38 @@ function RecordDropZone({ label, hint, disabled, onFile }: { label: string; hint
 }
 
 function StoredDocument({ record, openingId, onOpen, label }: { record: RecordSummary; openingId: string | null; onOpen: (record: RecordSummary) => Promise<void>; label?: string }) {
+  const previewable = isPdfRecord(record);
   return <div className="stored-record-row">
-    <div><small>{label}</small><strong>{record.title}</strong></div>
+    <div><small>{label}</small><strong>{displayRecordTitle(record.title)}</strong></div>
     <button className="quiet" type="button" disabled={!record.currentVersion?.storagePath || openingId === record.id} onClick={() => void onOpen(record)}>
-      {openingId === record.id ? "Opening…" : "Open"}
+      {openingId === record.id ? (previewable ? "Opening…" : "Downloading…") : (previewable ? "Open" : "Download")}
     </button>
   </div>;
 }
 
 function titleFromFilename(filename: string) {
-  return filename.replace(/\.[^/.]+$/, "").trim() || "SDBP Board Minutes";
+  return decodeFilename(filename).replace(/\.[^/.]+$/, "").trim() || "SDBP Board Minutes";
 }
 
 function dateFromFilename(filename: string) {
-  const match = filename.match(/(?:^|\D)(\d{4}-\d{2}-\d{2})(?:\D|$)/);
+  const match = decodeFilename(filename).match(/(?:^|\D)(\d{4}-\d{2}-\d{2})(?:\D|$)/);
   return match?.[1];
+}
+
+function displayRecordTitle(title: string) {
+  return decodeFilename(title);
+}
+
+function decodeFilename(value: string) {
+  try {
+    return decodeURIComponent(value.replace(/\+/g, " "));
+  } catch {
+    return value.replace(/%20/gi, " ");
+  }
+}
+
+function isPdfRecord(record: RecordSummary) {
+  return record.currentVersion?.mimeType === "application/pdf" || /\.pdf$/i.test(record.currentVersion?.storagePath ?? "");
 }
 
 function isTextFile(file: File) {
