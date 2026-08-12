@@ -56,6 +56,7 @@ export function Prototype({ liveProfile }: { liveProfile?: LiveProfile }) {
   const deferred = attention.filter((item) => item.ownerId === currentUserId && item.status === "deferred");
   const projectUpdate = workProjects.find((project) => project.id === projectUpdateId) ?? null;
   const facilitatorId = roles.find((role) => role.title.toLowerCase() === "process steward")?.holderIds[0];
+  const liveProfileId = liveProfile?.id;
 
   useEffect(() => {
     try {
@@ -86,12 +87,12 @@ export function Prototype({ liveProfile }: { liveProfile?: LiveProfile }) {
   }, [liveProfile]);
 
   useEffect(() => {
-    if (!ready || !liveProfile) return;
+    if (!ready || !liveProfileId) return;
     let cancelled = false;
 
     async function loadPersistedActions() {
       try {
-        const persisted = await loadOwnActions(liveProfile.id, LIVE_PROTOTYPE_PERSON_ID);
+        const persisted = await loadOwnActions(liveProfileId, LIVE_PROTOTYPE_PERSON_ID);
         if (cancelled) return;
         setPersistedActionIds(persisted.map((action) => action.id));
         setWorkActions((items) => [
@@ -105,7 +106,7 @@ export function Prototype({ liveProfile }: { liveProfile?: LiveProfile }) {
 
     void loadPersistedActions();
     return () => { cancelled = true; };
-  }, [ready, liveProfile]);
+  }, [ready, liveProfileId]);
 
   useEffect(() => {
     if (!ready) return;
