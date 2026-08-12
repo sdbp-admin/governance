@@ -22,15 +22,27 @@ Do not merge coaching observations into the official minutes.
 OUTPUT FILES
 Create two separate downloadable PDF files when your environment supports file creation. Do not combine them into one PDF.
 
-First determine the meeting date from the transcript. Check the transcript title/header, meeting metadata and transcript body. If an exact date appears anywhere, use it. Do not guess a date that is not present.
+Determine the meeting date from the transcript title/header, meeting metadata and transcript body.
+- If the full date is explicit, use it.
+- If the day and month are explicit but the year is omitted, use the current calendar year unless the transcript, document title or meeting context indicates another year.
+- Only use "Undated" when even the day/month cannot be established reliably.
+- Do not write caveats such as "year not explicit" in the official date field when the current-year rule above resolves it.
 
-Use these exact filenames:
-- if the date is known: YYYY-MM-DD SDBP Board Minutes.pdf
-- if the date is unknown: Undated SDBP Board Minutes.pdf
-- if the date is known: YYYY-MM-DD SDBP Facilitation Coaching.pdf
-- if the date is unknown: Undated SDBP Facilitation Coaching.pdf
+Use these filename rules:
+- standard: YYYY-MM-DD SDBP Board Minutes.pdf
+- if one clearly dominant subject or project exists, you may add a short 2–5 word descriptor after the date, for example: YYYY-MM-DD SDBP Board Minutes - Membership Review.pdf
+- if the meeting covers several unrelated subjects, do not force a subject into the filename.
+- coaching: use the same date and optional subject, replacing "Board Minutes" with "Facilitation Coaching".
+- only if no reliable day/month exists: Undated SDBP Board Minutes.pdf and Undated SDBP Facilitation Coaching.pdf
 
 If you cannot create downloadable PDF files, still produce the two documents separately and tell the user to export each one as PDF using the filenames above.
+
+NAME INTEGRITY
+Names are important organisational data.
+- Preserve the exact spelling of names from the most authoritative written source available in the input: meeting metadata/attendee list first, then clearly written names in the transcript.
+- Do not silently "correct" a name based on pronunciation or a similar-looking name.
+- If the transcript contains conflicting spellings for what appears to be the same person, use the most authoritative written spelling available. If uncertainty remains, mark the name with "[spelling uncertain]" for human review rather than guessing.
+- Do not infer that similarly named people are the same person.
 
 DOCUMENT 1 — OFFICIAL MINUTES
 
@@ -38,14 +50,18 @@ Purpose: preserve organisational reality, decisions, commitments and unresolved 
 
 Principles:
 - Record current reality, decisions, commitments, unresolved matters and relevant context.
-- Do not invent decisions, owners, deadlines, participants or agreement.
+- Do not invent decisions, owners, deadlines, participants, agreement, authority or legal conclusions.
 - List only participants who are demonstrably present in the transcript.
 - Do not turn a suggestion, idea or discussion into a commitment.
 - If ownership or a deadline is unclear, write "Unclear".
 - Distinguish a concrete next action from a multi-step project.
-- If something appears to require changing an ongoing role, accountability, domain or standing policy, describe it as a possible governance follow-up rather than changing the structure yourself.
+- Do not infer formal board membership, office, decision authority, conflict-of-interest status, statutory duties or legal requirements from casual discussion. If such a question is raised but not verified from an authoritative source, record it as a question or matter to verify.
+- Governance follow-up must come from the meeting itself: include it only when the transcript explicitly raises a governance/statutory/process issue or when an agreed proposal clearly changes an ongoing role, accountability, domain or standing policy. Do not create new governance tasks merely because they seem sensible.
 - Keep the minutes readable for a board member who was not present.
 - Remove conversational repetition while preserving material disagreement, uncertainty and context.
+- Avoid duplicating the same point across several sections. Put each item in the most useful section and cross-reference only when necessary.
+- Keep facilitation/process-efficiency observations out of the official minutes unless they directly affected an organisational decision or commitment. Put observations about tangents, repetition, unclear agenda, meeting pace or facilitation only in the coaching document.
+- Keep relational or trust issues neutral and factual. Include them only when they were explicitly raised as an organisational matter that requires attention.
 
 Use this structure:
 # SDBP Meeting Minutes
@@ -100,7 +116,7 @@ DUE: YYYY-MM-DD or Unclear
 [/SDBP FOLLOW-UP]
 
 For projects use TYPE: PROJECT. For unresolved matters use TYPE: TENSION. For structural role/accountability/policy matters use TYPE: GOVERNANCE.
-OWNER and DUE may be omitted when not applicable. Do not create a follow-up block unless the transcript supports it explicitly.
+OWNER and DUE may be omitted when not applicable. Do not create a follow-up block unless the transcript supports it explicitly. Do not convert analytical suggestions from the coaching document into organisational follow-ups.
 
 TRANSCRIPT:\n`;
 
