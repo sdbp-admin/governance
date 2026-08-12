@@ -4,10 +4,13 @@ import { useEffect, useRef, useState, type DragEvent } from "react";
 import type { GovernanceProposal, Tension } from "@/lib/domain";
 import { formatShortDate } from "@/lib/prototype-utils";
 import { MINUTES_GPT_PROMPT } from "@/lib/records-followups";
+import { loadActivity, type ActivityEntry } from "@/lib/supabase/activity";
 import {
+  archiveRecord,
   createRecordSignedUrl,
-  deleteRecord,
+  loadArchivedRecords,
   loadRecords,
+  restoreRecord,
   uploadRecord,
   uploadRecordVersion,
   type RecordSummary,
@@ -25,11 +28,14 @@ const RECORD_ACCEPT = ".pdf,.txt,.md,.doc,.docx,application/pdf,text/plain,text/
 
 export function RecordsView({ governanceProposals, tensions, profileId, onNotice }: Props) {
   const [records, setRecords] = useState<RecordSummary[]>([]);
+  const [archivedRecords, setArchivedRecords] = useState<RecordSummary[]>([]);
+  const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [loading, setLoading] = useState(Boolean(profileId));
   const [error, setError] = useState("");
   const [uploadingType, setUploadingType] = useState<RecordType | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
-  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
+  const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
 
   const accepted = governanceProposals.filter((proposal) => proposal.stage === "accepted");
@@ -43,6 +49,8 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
     if (!profileId) {
       setLoading(false);
       setRecords([]);
+      setArchivedRecords([]);
+      setActivity([]);
       return;
     }
 
@@ -50,9 +58,12 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
     setLoading(true);
     setError("");
 
-    loadRecords()
-      .then((items) => {
-        if (!cancelled) setRecords(items);
+    Promise.all([loadRecords(), loadArchivedRecords(), loadActivity()])
+      .then(([active, archived, recentActivity]) => {
+        if (cancelled) return;
+        setRecords(active);
+        setArchivedRecords(archived);
+        setActivity(recentActivity);
       })
       .catch((loadError) => {
         if (!cancelled) setError(readError(loadError));
@@ -63,6 +74,13 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
 
     return () => { cancelled = true; };
   }, [profileId]);
+
+  async function refreshRecordsAndActivity() {
+    const [active, archived, recentActivity] = await Promise.all([loadRecords(), loadArchivedRecords(), loadActivity()]);
+    setRecords(active);
+    setArchivedRecords(archived);
+    setActivity(recentActivity);
+  }
 
   async function copyMinutesPrompt() {
     try {
@@ -82,18 +100,18 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
 
     try {
       if (recordType === "statutes" && currentStatutes) {
-        const updated = await uploadRecordVersion({
+        await uploadRecordVersion({
           recordId: currentStatutes.id,
           file,
           profileId,
           effectiveOn: dateFromFilename(file.name),
         });
-        setRecords((items) => items.map((record) => record.id === updated.id ? updated : record));
+        await refreshRecordsAndActivity();
         onNotice?.("SDBP Statutes updated. The previous version remains retained.");
         return;
       }
 
-      const created = await uploadRecord({
+      await uploadRecord({
         title: recordType === "statutes" ? "SDBP Statutes" : titleFromFilename(file.name),
         recordType,
         effectiveOn: dateFromFilename(file.name),
@@ -101,7 +119,7 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
         profileId,
       });
 
-      setRecords((items) => [created, ...items]);
+      await refreshRecordsAndActivity();
       onNotice?.(recordType === "statutes" ? "SDBP Statutes stored." : "Board minutes stored.");
     } catch (storeError) {
       setError(readError(storeError));
@@ -161,21 +179,36 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
     }
   }
 
-  async function deleteMinutes(record: RecordSummary) {
+  async function removeMinutes(record: RecordSummary) {
     const title = displayRecordTitle(record.title);
-    const confirmed = window.confirm(`Delete “${title}”?\n\nThis permanently removes the minutes document from Records.`);
+    const confirmed = window.confirm(`Remove “${title}” from Records?\n\nThe document will be hidden, not destroyed. The removal is recorded in Activity and any board member can restore it.`);
     if (!confirmed) return;
 
-    setDeletingIds((items) => addToSet(items, record.id));
+    setRemovingIds((items) => addToSet(items, record.id));
     setError("");
     try {
-      await deleteRecord(record.id);
-      setRecords((items) => items.filter((item) => item.id !== record.id));
-      onNotice?.(`Deleted minutes: “${title}”.`);
-    } catch (deleteError) {
-      setError(readError(deleteError));
+      await archiveRecord(record.id);
+      await refreshRecordsAndActivity();
+      onNotice?.(`Removed minutes: “${title}”. It can be restored from Records.`);
+    } catch (removeError) {
+      setError(readError(removeError));
     } finally {
-      setDeletingIds((items) => removeFromSet(items, record.id));
+      setRemovingIds((items) => removeFromSet(items, record.id));
+    }
+  }
+
+  async function restoreArchived(record: RecordSummary) {
+    const title = displayRecordTitle(record.title);
+    setRestoringIds((items) => addToSet(items, record.id));
+    setError("");
+    try {
+      await restoreRecord(record.id);
+      await refreshRecordsAndActivity();
+      onNotice?.(`Restored: “${title}”.`);
+    } catch (restoreError) {
+      setError(readError(restoreError));
+    } finally {
+      setRestoringIds((items) => removeFromSet(items, record.id));
     }
   }
 
@@ -231,8 +264,8 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
               record={record}
               openingId={openingId}
               onOpen={openRecord}
-              onDelete={() => void deleteMinutes(record)}
-              deleting={deletingIds.has(record.id)}
+              onDelete={() => void removeMinutes(record)}
+              deleting={removingIds.has(record.id)}
             />
           </div>)}
           {minutes.length > 5 && <small>{minutes.length - 5} earlier {minutes.length - 5 === 1 ? "record" : "records"} also stored.</small>}
@@ -254,6 +287,29 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
         })}</div> : <div className="records-card-empty"><span>○</span><strong>No accepted governance yet</strong><small>Accepted proposals will appear here automatically.</small></div>}
       </article>
     </div>
+
+    <section className="section records-activity-section">
+      <div className="section-head"><div><span className="section-kicker">Transparency</span><h2>Recent activity</h2></div><small className="activity-principle">Actions change the organisation. The ledger shows who changed what.</small></div>
+
+      {archivedRecords.length > 0 && <div className="removed-records-panel">
+        <div className="removed-records-head"><div><strong>Removed documents</strong><small>Hidden from normal Records, retained for recovery.</small></div><span>{archivedRecords.length}</span></div>
+        <div className="removed-records-list">{archivedRecords.map((record) => <div className="removed-record-row" key={record.id}>
+          <div><strong>{displayRecordTitle(record.title)}</strong><small>Removed {record.deletedAt ? formatActivityDate(record.deletedAt) : "recently"}</small></div>
+          <div className="stored-record-actions">
+            <button className="quiet" type="button" disabled={!record.currentVersion?.storagePath || openingId === record.id || restoringIds.has(record.id)} onClick={() => void openRecord(record)}>{openingId === record.id ? "Opening…" : "Open"}</button>
+            <button className="secondary small" type="button" disabled={restoringIds.has(record.id)} onClick={() => void restoreArchived(record)}>{restoringIds.has(record.id) ? "Restoring…" : "Restore"}</button>
+          </div>
+        </div>)}</div>
+      </div>}
+
+      <div className="activity-ledger">
+        {activity.length > 0 ? activity.map((entry) => <div className="activity-row" key={entry.id}>
+          <span className="activity-dot" aria-hidden="true" />
+          <div className="activity-copy"><strong>{entry.actorName}</strong><span>{entry.summary}</span></div>
+          <time dateTime={entry.createdAt}>{formatActivityDate(entry.createdAt)}</time>
+        </div>) : <div className="records-card-empty activity-empty"><span>○</span><strong>No activity recorded yet</strong><small>New consequential changes will appear here after the activity ledger is enabled.</small></div>}
+      </div>
+    </section>
   </>;
 }
 
@@ -312,7 +368,7 @@ function StoredDocument({ record, openingId, onOpen, label, onDelete, deleting =
       <button className="quiet" type="button" disabled={!record.currentVersion?.storagePath || openingId === record.id || deleting} onClick={() => void onOpen(record)}>
         {openingId === record.id ? (previewable ? "Opening…" : "Downloading…") : (previewable ? "Open" : "Download")}
       </button>
-      {onDelete && <button className="quiet record-delete" type="button" disabled={deleting || openingId === record.id} onClick={onDelete}>{deleting ? "Deleting…" : "Delete"}</button>}
+      {onDelete && <button className="quiet record-delete" type="button" disabled={deleting || openingId === record.id} onClick={onDelete}>{deleting ? "Removing…" : "Remove"}</button>}
     </div>
   </div>;
 }
@@ -350,6 +406,10 @@ function decodeFilename(value: string) {
 
 function isPdfRecord(record: RecordSummary) {
   return record.currentVersion?.mimeType === "application/pdf" || /\.pdf$/i.test(record.currentVersion?.storagePath ?? "");
+}
+
+function formatActivityDate(value: string) {
+  return new Intl.DateTimeFormat("en", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
 
 function addToSet(items: Set<string>, value: string) {
