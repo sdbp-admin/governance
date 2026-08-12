@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Prototype } from "@/components/prototype";
 import { supabase } from "@/lib/supabase/client";
 import { canInvitePeople, loadWorkspace, type WorkspacePerson } from "@/lib/supabase/workspace";
-import { deactivateWorkspacePerson, resendWorkspaceInvitation } from "@/lib/supabase/people-access";
+import { deactivateWorkspacePerson, isCurrentPresident, resendWorkspaceInvitation, transferPresidency } from "@/lib/supabase/people-access";
 
 type Profile = { id: string; name: string; email: string };
 type AuthStatus = "loading" | "signed_out" | "signed_in" | "not_invited" | "error";
@@ -24,8 +24,11 @@ export function AuthenticatedLaunch() {
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const [canManageAccess, setCanManageAccess] = useState(false);
+  const [canTransferPresidency, setCanTransferPresidency] = useState(false);
   const [accessOpen, setAccessOpen] = useState(false);
   const [accessPeople, setAccessPeople] = useState<WorkspacePerson[]>([]);
+  const [accessPresidentId, setAccessPresidentId] = useState<string | null>(null);
+  const [transferTargetId, setTransferTargetId] = useState("");
   const [accessLoading, setAccessLoading] = useState(false);
   const [accessBusyId, setAccessBusyId] = useState<string | null>(null);
   const [accessError, setAccessError] = useState("");
@@ -41,6 +44,7 @@ export function AuthenticatedLaunch() {
       setProfile(null);
       setPasswordRequired(false);
       setCanManageAccess(false);
+      setCanTransferPresidency(false);
       setStatus("signed_out");
       return;
     }
@@ -76,6 +80,7 @@ export function AuthenticatedLaunch() {
       setProfile(null);
       setPasswordRequired(false);
       setCanManageAccess(false);
+      setCanTransferPresidency(false);
       setStatus("not_invited");
       return;
     }
@@ -86,9 +91,12 @@ export function AuthenticatedLaunch() {
     setStatus("signed_in");
 
     try {
-      setCanManageAccess(await canInvitePeople());
+      const [manageAccess, currentPresident] = await Promise.all([canInvitePeople(), isCurrentPresident()]);
+      setCanManageAccess(manageAccess);
+      setCanTransferPresidency(currentPresident);
     } catch {
       setCanManageAccess(false);
+      setCanTransferPresidency(false);
     }
 
     const passwordMarked = user.user_metadata?.sdbp_password_set === true;
@@ -127,6 +135,7 @@ export function AuthenticatedLaunch() {
         setProfile(null);
         setPasswordRequired(false);
         setCanManageAccess(false);
+        setCanTransferPresidency(false);
         setStatus("signed_out");
         return;
       }
@@ -194,16 +203,19 @@ export function AuthenticatedLaunch() {
 
   async function signOut() {
     await supabase.auth.signOut();
-    setProfile(null); setPassword(""); setMessage(""); setError(""); setPasswordRequired(false); setPasswordEditor(false); setCanManageAccess(false); setAccessOpen(false); setStatus("signed_out");
+    setProfile(null); setPassword(""); setMessage(""); setError(""); setPasswordRequired(false); setPasswordEditor(false); setCanManageAccess(false); setCanTransferPresidency(false); setAccessOpen(false); setStatus("signed_out");
   }
 
   async function openAccessManager() {
     setAccessOpen(true);
     setAccessLoading(true);
     setAccessError("");
+    setTransferTargetId("");
     try {
       const workspace = await loadWorkspace();
       setAccessPeople(workspace.people);
+      const presidentRole = workspace.roles.find((role) => role.category === "board" && role.title.trim().toLowerCase() === "president");
+      setAccessPresidentId(presidentRole?.holderIds[0] ?? null);
     } catch (accessLoadError) {
       setAccessError(readError(accessLoadError));
     } finally {
@@ -225,8 +237,7 @@ export function AuthenticatedLaunch() {
   }
 
   async function removeAccess(person: WorkspacePerson) {
-    if (!profile || person.id === profile.id) return;
-    const label = person.linked ? "member" : "invitation";
+    if (!profile || person.id === profile.id || person.id === accessPresidentId) return;
     const explanation = person.linked
       ? `Remove ${person.name} from the SDBP workspace? Their organisational history will remain, but they will lose access.`
       : `Remove the invitation for ${person.name}? The invitation link will no longer grant workspace access.`;
@@ -246,6 +257,29 @@ export function AuthenticatedLaunch() {
     }
   }
 
+  async function transferPresident() {
+    if (!profile || !transferTargetId || !canTransferPresidency) return;
+    const target = accessPeople.find((person) => person.id === transferTargetId);
+    if (!target) return;
+    if (!window.confirm(`Transfer the SDBP presidency to ${target.name}? Organisational admin rights will move with the President role.`)) return;
+
+    setAccessBusyId(target.id);
+    setAccessError("");
+    try {
+      await transferPresidency(target.id);
+      setAccessPresidentId(target.id);
+      setTransferTargetId("");
+      setMessage(`${target.name} is now President.`);
+      await resolveUser();
+      window.dispatchEvent(new Event("focus"));
+      setAccessOpen(false);
+    } catch (transferError) {
+      setAccessError(readError(transferError));
+    } finally {
+      setAccessBusyId(null);
+    }
+  }
+
   if (status === "loading") return <AuthShell><div className="auth-state"><span className="auth-spinner" /><h1>Opening SDBP</h1><p>Checking your access.</p></div></AuthShell>;
 
   if (passwordEditor && status === "signed_in") {
@@ -259,20 +293,28 @@ export function AuthenticatedLaunch() {
 
   if (status === "error") return <AuthShell><div className="auth-card"><span className="section-kicker">Connection</span><h1>We could not open the workspace.</h1><p>{error}</p><div className="auth-actions"><button className="primary" onClick={() => void resolveUser()}>Try again</button><button className="secondary" onClick={() => void signOut()}>Sign out</button></div></div></AuthShell>;
 
-  return <>{profile && <div className="auth-session-chip"><div><strong>{profile.name}</strong><small>{message || "Shared SDBP workspace"}</small></div><div className="auth-session-actions">{canManageAccess && <button onClick={() => void openAccessManager()}>People access</button>}<button onClick={() => { setMessage(""); setError(""); setPasswordEditor(true); }}>Password</button><button onClick={() => void signOut()}>Sign out</button></div></div>}{profile && <Prototype liveProfile={profile} />}{profile && accessOpen && <AccessManager people={accessPeople} currentProfileId={profile.id} loading={accessLoading} busyId={accessBusyId} error={accessError} onResend={resendInvitation} onRemove={removeAccess} onClose={() => setAccessOpen(false)} />}</>;
+  return <>{profile && <div className="auth-session-chip"><div><strong>{profile.name}</strong><small>{message || "Shared SDBP workspace"}</small></div><div className="auth-session-actions">{canManageAccess && <button onClick={() => void openAccessManager()}>People access</button>}<button onClick={() => { setMessage(""); setError(""); setPasswordEditor(true); }}>Password</button><button onClick={() => void signOut()}>Sign out</button></div></div>}{profile && <Prototype liveProfile={profile} />}{profile && accessOpen && <AccessManager people={accessPeople} currentProfileId={profile.id} presidentId={accessPresidentId} canTransferPresidency={canTransferPresidency} transferTargetId={transferTargetId} setTransferTargetId={setTransferTargetId} loading={accessLoading} busyId={accessBusyId} error={accessError} onTransfer={transferPresident} onResend={resendInvitation} onRemove={removeAccess} onClose={() => setAccessOpen(false)} />}</>;
 }
 
-function AccessManager({ people, currentProfileId, loading, busyId, error, onResend, onRemove, onClose }: {
+function AccessManager({ people, currentProfileId, presidentId, canTransferPresidency, transferTargetId, setTransferTargetId, loading, busyId, error, onTransfer, onResend, onRemove, onClose }: {
   people: WorkspacePerson[];
   currentProfileId: string;
+  presidentId: string | null;
+  canTransferPresidency: boolean;
+  transferTargetId: string;
+  setTransferTargetId: (id: string) => void;
   loading: boolean;
   busyId: string | null;
   error: string;
+  onTransfer: () => Promise<void>;
   onResend: (person: WorkspacePerson) => Promise<void>;
   onRemove: (person: WorkspacePerson) => Promise<void>;
   onClose: () => void;
 }) {
-  return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="workflow-editor compact-modal" role="dialog" aria-modal="true"><div className="editor-head"><div><span className="section-kicker">People access</span><h2>Invitations and members</h2></div><button className="quiet editor-close" onClick={onClose}>×</button></div><p className="editor-note">Removing a member revokes workspace access but keeps their past organisational work and records intact.</p>{loading ? <div className="auth-state"><span className="auth-spinner" /><p>Loading people…</p></div> : <div className="access-people-list">{people.map((person) => <article className="access-person-row" key={person.id}><div><strong>{person.name}</strong><small>{person.email}</small><span>{person.linked ? "Active member" : "Invitation pending"}</span></div><div className="auth-actions">{!person.linked && <button className="secondary small" disabled={busyId === person.id} onClick={() => void onResend(person)}>{busyId === person.id ? "Sending…" : "Resend invitation"}</button>}{person.id !== currentProfileId && <button className="danger small" disabled={busyId === person.id} onClick={() => void onRemove(person)}>{person.linked ? "Remove member" : "Remove invitation"}</button>}</div></article>)}</div>}{error && <div className="auth-message error">{error}</div>}<div className="editor-actions"><div /><button className="secondary" onClick={onClose}>Close</button></div></section></div>;
+  const president = people.find((person) => person.id === presidentId);
+  const transferOptions = people.filter((person) => person.linked && person.id !== presidentId);
+
+  return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="workflow-editor compact-modal" role="dialog" aria-modal="true"><div className="editor-head"><div><span className="section-kicker">People access</span><h2>Invitations and members</h2></div><button className="quiet editor-close" onClick={onClose}>×</button></div><p className="editor-note">The President manages organisational access. Removing a member revokes workspace access but keeps their past organisational work and records intact.</p>{loading ? <div className="auth-state"><span className="auth-spinner" /><p>Loading people…</p></div> : <><div className="presidency-panel"><div><span className="kind">President</span><strong>{president?.name ?? "Not assigned"}</strong><small>Organisational admin rights follow this role.</small></div>{canTransferPresidency && transferOptions.length > 0 && <div className="presidency-transfer"><select value={transferTargetId} onChange={(event) => setTransferTargetId(event.target.value)}><option value="">Select new President</option>{transferOptions.map((person) => <option value={person.id} key={person.id}>{person.name}</option>)}</select><button className="secondary small" disabled={!transferTargetId || Boolean(busyId)} onClick={() => void onTransfer()}>Transfer presidency</button></div>}</div><div className="access-people-list">{people.map((person) => <article className="access-person-row" key={person.id}><div><strong>{person.name}</strong><small>{person.email}</small><span>{person.linked ? "Active member" : "Invitation pending"}{person.id === presidentId ? " · President" : ""}</span></div><div className="auth-actions">{!person.linked && <button className="secondary small" disabled={busyId === person.id} onClick={() => void onResend(person)}>{busyId === person.id ? "Sending…" : "Resend invitation"}</button>}{person.id !== currentProfileId && person.id !== presidentId && <button className="danger small" disabled={busyId === person.id} onClick={() => void onRemove(person)}>{person.linked ? "Remove member" : "Remove invitation"}</button>}</div></article>)}</div></>}{error && <div className="auth-message error">{error}</div>}<div className="editor-actions"><div /><button className="secondary" onClick={onClose}>Close</button></div></section></div>;
 }
 
 function AuthShell({ children }: { children: React.ReactNode }) {
