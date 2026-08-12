@@ -34,7 +34,7 @@ export async function extractMinutesFollowUpsFromPdf(source: File | ArrayBuffer)
 
     return extractMinutesFollowUpsFromText(text);
   } finally {
-    await pdf.destroy();
+    await loadingTask.destroy();
   }
 }
 
