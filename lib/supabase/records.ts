@@ -24,6 +24,7 @@ export type RecordSummary = {
   participants: string[];
   followups: RecordFollowUp[];
   createdAt: string;
+  deletedAt?: string;
   currentVersion?: RecordVersionSummary;
 };
 
@@ -36,6 +37,7 @@ type RecordRow = {
   participants: string[] | null;
   followups: RecordFollowUp[] | null;
   created_at: string;
+  deleted_at: string | null;
   record_versions: Array<{
     id: string;
     version_label: string;
@@ -47,13 +49,25 @@ type RecordRow = {
   }>;
 };
 
-const RECORD_SELECT = "id,title,record_type,description,source,participants,followups,created_at,record_versions(id,version_label,status,effective_on,storage_path,mime_type,created_at)";
+const RECORD_SELECT = "id,title,record_type,description,source,participants,followups,created_at,deleted_at,record_versions(id,version_label,status,effective_on,storage_path,mime_type,created_at)";
 
 export async function loadRecords(): Promise<RecordSummary[]> {
   const { data, error } = await supabase
     .from("records")
     .select(RECORD_SELECT)
+    .is("deleted_at", null)
     .order("created_at", { ascending: false });
+
+  if (error) throw error;
+  return (data as RecordRow[]).map(mapRecord);
+}
+
+export async function loadArchivedRecords(): Promise<RecordSummary[]> {
+  const { data, error } = await supabase
+    .from("records")
+    .select(RECORD_SELECT)
+    .not("deleted_at", "is", null)
+    .order("deleted_at", { ascending: false });
 
   if (error) throw error;
   return (data as RecordRow[]).map(mapRecord);
@@ -201,29 +215,24 @@ export async function updateRecordFollowUps(recordId: string, followups: RecordF
   if (error) throw error;
 }
 
-export async function deleteRecord(recordId: string) {
-  const { data: versions, error: versionsError } = await supabase
-    .from("record_versions")
-    .select("storage_path")
-    .eq("record_id", recordId);
-
-  if (versionsError) throw versionsError;
-
-  const paths = (versions ?? [])
-    .map((version) => version.storage_path as string | null)
-    .filter((path): path is string => Boolean(path));
-
-  const { error: deleteError } = await supabase
+export async function archiveRecord(recordId: string) {
+  const { error } = await supabase
     .from("records")
-    .delete()
-    .eq("id", recordId);
+    .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq("id", recordId)
+    .is("deleted_at", null);
 
-  if (deleteError) throw deleteError;
+  if (error) throw error;
+}
 
-  if (paths.length > 0) {
-    const { error: storageError } = await supabase.storage.from(RECORDS_BUCKET).remove(paths);
-    if (storageError) console.warn("Record row deleted, but one or more stored files could not be removed.", storageError);
-  }
+export async function restoreRecord(recordId: string) {
+  const { error } = await supabase
+    .from("records")
+    .update({ deleted_at: null, updated_at: new Date().toISOString() })
+    .eq("id", recordId)
+    .not("deleted_at", "is", null);
+
+  if (error) throw error;
 }
 
 export async function createRecordSignedUrl(storagePath: string, download = false) {
@@ -259,6 +268,7 @@ function mapRecord(row: RecordRow): RecordSummary {
     participants: row.participants ?? [],
     followups: row.followups ?? [],
     createdAt: row.created_at,
+    deletedAt: row.deleted_at ?? undefined,
     currentVersion: current ? {
       id: current.id,
       versionLabel: current.version_label,
