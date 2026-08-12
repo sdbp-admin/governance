@@ -37,6 +37,15 @@ Use these filename rules:
 
 If you cannot create downloadable PDF files, still produce the two documents separately and tell the user to export each one as PDF using the filenames above.
 
+SOURCE AUTHORITY
+Use actual speaker dialogue as the only substantive evidence for decisions, commitments, owners, deadlines, tensions and agreements.
+- Treat Fathom meeting titles, timestamps, speaker labels, participant metadata and recording metadata as structural metadata. They may help establish date, participants, speaker attribution and sequence, but they are not evidence that a substantive decision, commitment or tension exists.
+- Treat Fathom-generated action items, highlights, summaries, chapter descriptions, key points and other annotations as non-authoritative. Never copy them into the minutes as facts unless the underlying spoken dialogue independently supports them.
+- Every recorded decision, commitment, owner, deadline or tension must be supported by the actual spoken exchange.
+- If Fathom annotations conflict with the spoken dialogue, the spoken dialogue wins.
+- A person's name appearing in a Fathom-generated action item or summary does not establish that the person accepted or owns that action.
+- If the spoken dialogue does not clearly establish an owner, deadline, decision or commitment, write "Unclear" or omit it as appropriate. Do not infer it from Fathom annotations.
+
 NAME INTEGRITY
 Names are important organisational data.
 - Preserve the exact spelling of names from the most authoritative written source available in the input: meeting metadata/attendee list first, then clearly written names in the transcript.
@@ -52,7 +61,7 @@ Principles:
 - Record current reality, decisions, commitments, unresolved matters and relevant context.
 - Do not invent decisions, owners, deadlines, participants, agreement, authority or legal conclusions.
 - List only participants who are demonstrably present in the transcript.
-- Do not turn a suggestion, idea or discussion into a commitment.
+- Do not turn discussion, a suggestion, a Fathom-generated action item, or another person's proposal into a commitment. A commitment requires explicit spoken acceptance, volunteering, an assignment that was clearly accepted, or an unambiguous group decision in the dialogue.
 - If ownership or a deadline is unclear, write "Unclear".
 - Distinguish a concrete next action from a multi-step project.
 - Do not infer formal board membership, office, decision authority, conflict-of-interest status, statutory duties or legal requirements from casual discussion. If such a question is raised but not verified from an authoritative source, record it as a question or matter to verify.
@@ -105,7 +114,7 @@ Use this structure:
 
 Keep the coaching concrete. Refer to meeting topics or moments rather than making generic statements. Under "Practices to try next meeting", choose one clearly labelled PRIMARY PRACTICE: the single facilitation experiment most likely to improve the next meeting. You may add up to two clearly labelled SECONDARY PRACTICES. Do not give the facilitator a long improvement list.
 
-Do not add machine-processing notes, follow-up blocks or a third document. The official minutes themselves are the organisational record the SDBP app will read.
+Do not add machine-processing notes, follow-up blocks or a third document. The official minutes themselves are the organisational record.
 
 TRANSCRIPT:\n`;
 
