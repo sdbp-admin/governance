@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { actions, myAttention, people, projects, roleDefinitions, tensions } from "@/lib/mock-data";
 import type { Action, AttentionItem, GovernanceProposal, GovernanceStage, Project, RoleDefinition, Tension } from "@/lib/domain";
 import { NEXT_WEEK, PROTOTYPE_TODAY, humanGovernanceStage, personInitial, personName } from "@/lib/prototype-utils";
+import { createOwnAction, loadOwnActions, setPersistedActionStatus } from "@/lib/supabase/actions";
 import { AttentionView, Header, ProjectUpdateEditor, WorkView, labels, navMeta, type View } from "@/components/attention-work";
 import { TensionsView } from "@/components/tensions-view";
 import { OrganisationView } from "@/components/organisation-view";
@@ -25,17 +26,25 @@ type GovernanceMessage = {
   proposal?: GovernanceProposal;
 };
 
-const STORAGE = "sdbp-governance-prototype-v6";
+export type LiveProfile = {
+  id: string;
+  name: string;
+  email: string;
+};
 
-export function Prototype() {
+const STORAGE = "sdbp-governance-prototype-v7";
+const LIVE_PROTOTYPE_PERSON_ID = "ingmar";
+
+export function Prototype({ liveProfile }: { liveProfile?: LiveProfile }) {
   const [view, setView] = useState<View>("attention");
-  const [currentUserId, setCurrentUserId] = useState("edo");
+  const [currentUserId, setCurrentUserId] = useState(liveProfile ? LIVE_PROTOTYPE_PERSON_ID : "edo");
   const [attention, setAttention] = useState<AttentionItem[]>(myAttention);
   const [workProjects, setWorkProjects] = useState<Project[]>(projects);
   const [workActions, setWorkActions] = useState<Action[]>(actions);
   const [workTensions, setWorkTensions] = useState<Tension[]>(tensions);
   const [roles, setRoles] = useState<RoleDefinition[]>(roleDefinitions);
   const [governanceProposals, setGovernanceProposals] = useState<GovernanceProposal[]>([]);
+  const [persistedActionIds, setPersistedActionIds] = useState<string[]>([]);
   const [projectUpdateId, setProjectUpdateId] = useState<string | null>(null);
   const [selectedTensionId, setSelectedTensionId] = useState<string | null>(null);
   const [tensionDraftSeed, setTensionDraftSeed] = useState("");
@@ -60,7 +69,10 @@ export function Prototype() {
         if (Array.isArray(snapshot.tensions)) setWorkTensions(snapshot.tensions);
         if (Array.isArray(snapshot.roles)) setRoles(snapshot.roles);
         if (Array.isArray(snapshot.governanceProposals)) setGovernanceProposals(snapshot.governanceProposals);
+      } else if (liveProfile) {
+        setCurrentUserId(LIVE_PROTOTYPE_PERSON_ID);
       }
+
       const meetingId = new URLSearchParams(window.location.search).get("meeting");
       if (meetingId) {
         setMeetingProposalId(meetingId);
@@ -71,7 +83,29 @@ export function Prototype() {
     } finally {
       setReady(true);
     }
-  }, []);
+  }, [liveProfile]);
+
+  useEffect(() => {
+    if (!ready || !liveProfile) return;
+    let cancelled = false;
+
+    async function loadPersistedActions() {
+      try {
+        const persisted = await loadOwnActions(liveProfile.id, LIVE_PROTOTYPE_PERSON_ID);
+        if (cancelled) return;
+        setPersistedActionIds(persisted.map((action) => action.id));
+        setWorkActions((items) => [
+          ...persisted,
+          ...items.filter((action) => action.ownerId !== LIVE_PROTOTYPE_PERSON_ID),
+        ]);
+      } catch (error) {
+        if (!cancelled) setNotice(`Could not load saved actions: ${error instanceof Error ? error.message : "unknown database error"}`);
+      }
+    }
+
+    void loadPersistedActions();
+    return () => { cancelled = true; };
+  }, [ready, liveProfile]);
 
   useEffect(() => {
     if (!ready) return;
@@ -189,17 +223,27 @@ export function Prototype() {
     if (item.kind === "project_update" && item.targetId) { setProjectUpdateId(item.targetId); return; }
     if (item.kind === "action" && item.targetId) {
       const action = workActions.find((candidate) => candidate.id === item.targetId);
-      if (action?.status === "proposed") acceptAction(item);
-      else if (action?.status === "open") completeAction(action.id);
+      if (action?.status === "proposed") void acceptAction(item);
+      else if (action?.status === "open") void completeAction(action.id);
       return;
     }
     if (item.kind === "tension" && item.targetId) { openTensions("", item.targetId); return; }
     if (item.kind === "governance") setView("governance");
   }
 
-  function acceptAction(item: AttentionItem) {
+  async function acceptAction(item: AttentionItem) {
     const action = workActions.find((candidate) => candidate.id === item.targetId);
     if (!action || action.ownerId !== currentUserId || action.status !== "proposed") return;
+
+    if (persistedActionIds.includes(action.id)) {
+      try {
+        await setPersistedActionStatus(action.id, "open");
+      } catch (error) {
+        announce(`Action was not saved: ${error instanceof Error ? error.message : "database error"}`);
+        return;
+      }
+    }
+
     setWorkActions((items) => items.map((candidate) => candidate.id === action.id ? { ...candidate, status: "open" } : candidate));
     setAttention((items) => items.map((candidate) => candidate.id === item.id ? {
       ...candidate,
@@ -295,9 +339,33 @@ export function Prototype() {
     announce(ownerId === currentUserId ? `Action created: “${action.title}”.` : `Action proposed to ${personName(ownerId)}.`);
   }
 
-  function completeAction(id: string) {
+  async function createStandaloneAction(title: string) {
+    if (!liveProfile || currentUserId !== LIVE_PROTOTYPE_PERSON_ID) return false;
+    try {
+      const action = await createOwnAction(liveProfile.id, LIVE_PROTOTYPE_PERSON_ID, title);
+      setPersistedActionIds((ids) => ids.includes(action.id) ? ids : [action.id, ...ids]);
+      setWorkActions((items) => [action, ...items.filter((candidate) => candidate.id !== action.id)]);
+      announce(`Action saved to the board database: “${action.title}”.`);
+      return true;
+    } catch (error) {
+      announce(`Action was not saved: ${error instanceof Error ? error.message : "database error"}`);
+      return false;
+    }
+  }
+
+  async function completeAction(id: string) {
     const action = workActions.find((candidate) => candidate.id === id);
     if (!action || action.ownerId !== currentUserId || action.status !== "open") return;
+
+    if (persistedActionIds.includes(action.id)) {
+      try {
+        await setPersistedActionStatus(action.id, "done");
+      } catch (error) {
+        announce(`Action was not saved: ${error instanceof Error ? error.message : "database error"}`);
+        return;
+      }
+    }
+
     setWorkActions((items) => items.map((candidate) => candidate.id === id ? { ...candidate, status: "done" } : candidate));
     completeTarget("action", id);
 
@@ -311,7 +379,7 @@ export function Prototype() {
       }
     }
 
-    announce(`Action completed: “${action.title}”.`);
+    announce(persistedActionIds.includes(action.id) ? `Action completed and saved: “${action.title}”.` : `Action completed: “${action.title}”.`);
   }
 
   function createProject(id: string, title: string) {
@@ -415,7 +483,7 @@ export function Prototype() {
   return <div className="shell"><aside className="sidebar"><div className="brand-lockup"><div className="brand-mark" aria-hidden="true"><span /><span /></div><div className="brand">SDBP Governance<small>Structure · rhythm · memory</small></div></div><nav className="nav">{(Object.keys(labels) as View[]).map((key) => <button key={key} className={view === key ? "active" : ""} onClick={() => setView(key)}><strong>{labels[key]}</strong><small>{navMeta[key]}</small></button>)}</nav><div className="sidebar-foot"><div className="avatar">{personInitial(currentUserId)}</div><label className="prototype-user"><span>Test as</span><select value={currentUserId} onChange={(event) => switchUser(event.target.value)}>{people.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select><small>Prototype aid for normal handoffs</small></label></div></aside>
     <main className="main"><Header view={view} attentionCount={activeAttention.length} currentUserId={currentUserId} />
       {view === "attention" && <AttentionView items={activeAttention} deferred={deferred} onPrimary={handleAttentionPrimary} onNoChange={noChange} deferItem={deferItem} restoreItem={restoreItem} onRaiseTension={() => openTensions()} />}
-      {view === "work" && <WorkView projects={workProjects} actions={workActions} tensions={workTensions} currentUserId={currentUserId} onCompleteAction={completeAction} onCompleteProject={completeProject} />}
+      {view === "work" && <WorkView projects={workProjects} actions={workActions} tensions={workTensions} currentUserId={currentUserId} onCompleteAction={completeAction} onCompleteProject={completeProject} onAddAction={liveProfile && currentUserId === LIVE_PROTOTYPE_PERSON_ID ? createStandaloneAction : undefined} persistedActionIds={persistedActionIds} />}
       {view === "tensions" && <TensionsView tensions={workTensions} projects={workProjects} currentUserId={currentUserId} selectedTensionId={selectedTensionId} draftSeed={tensionDraftSeed} onAddTension={addTension} onMarkResolved={markTensionResolved} onResolve={resolveTension} onKeepOpen={keepOpen} onMove={moveTension} onCreateAction={createAction} onCreateProject={createProject} />}
       {view === "organisation" && <OrganisationView roles={roles} setRoles={setRoles} onSaved={(title) => announce(`Role saved: “${title}”.`)} onDeleted={(title) => announce(`Role removed: “${title}”.`)} />}
       {view === "governance" && governanceView}
