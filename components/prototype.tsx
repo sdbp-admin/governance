@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { LaunchApp } from "@/components/launch-app";
+import { TacticalMeeting } from "@/components/tactical-meeting";
+import styles from "@/components/tactical-meeting.module.css";
 import { supabase } from "@/lib/supabase/client";
 
 type LiveProfile = { id: string; name: string; email: string };
@@ -12,6 +14,15 @@ type ProposalMatch = {
 };
 
 export function Prototype({ liveProfile }: { liveProfile?: LiveProfile }) {
+  const [tacticalMode, setTacticalMode] = useState(false);
+  const [governanceMeetingMode, setGovernanceMeetingMode] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setTacticalMode(params.get("tactical") === "1");
+    setGovernanceMeetingMode(Boolean(params.get("meeting")));
+  }, []);
+
   useEffect(() => {
     function launchMeetingInNewTab(event: MouseEvent) {
       const target = event.target;
@@ -67,6 +78,7 @@ export function Prototype({ liveProfile }: { liveProfile?: LiveProfile }) {
         }
 
         const url = new URL(window.location.href);
+        url.searchParams.delete("tactical");
         url.searchParams.set("meeting", proposal.id);
         meetingWindow.location.replace(url.toString());
       })().catch((launchError) => {
@@ -79,7 +91,27 @@ export function Prototype({ liveProfile }: { liveProfile?: LiveProfile }) {
     return () => document.removeEventListener("click", launchMeetingInNewTab, true);
   }, []);
 
-  return <LaunchApp liveProfile={liveProfile} />;
+  function launchTacticalMeeting() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("meeting");
+    url.searchParams.set("tactical", "1");
+    const meetingWindow = window.open(url.toString(), "_blank");
+    if (!meetingWindow) {
+      window.alert("Your browser blocked the new tactical meeting tab. Allow pop-ups for this site and try again.");
+      return;
+    }
+    meetingWindow.opener = window;
+  }
+
+  if (tacticalMode && liveProfile) return <TacticalMeeting liveProfile={liveProfile} />;
+
+  return <>
+    <LaunchApp liveProfile={liveProfile} />
+    {liveProfile && !governanceMeetingMode && <button className={styles.launcher} type="button" onClick={launchTacticalMeeting} title="Open a live facilitation view in a separate tab">
+      <strong>Start tactical meeting</strong>
+      <span>For a live online meeting</span>
+    </button>}
+  </>;
 }
 
 function stageLabel(stage: string) {
