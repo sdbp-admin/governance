@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import type { GovernanceProposal, Tension } from "@/lib/domain";
 import { formatShortDate } from "@/lib/prototype-utils";
-import { MINUTES_GPT_PROMPT, parseMinutesFollowUps } from "@/lib/records-followups";
+import { MINUTES_GPT_PROMPT, parseMinutesFollowUps, type RecordFollowUp } from "@/lib/records-followups";
 import {
   createRecordSignedUrl,
   loadRecords,
@@ -89,7 +89,7 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
         return;
       }
 
-      let followups = [];
+      let followups: RecordFollowUp[] = [];
       if (recordType === "board_minutes" && isTextFile(file)) {
         try {
           followups = parseMinutesFollowUps(await file.text());
