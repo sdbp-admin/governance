@@ -7,6 +7,7 @@ import "./meeting.css";
 import "./auth.css";
 import "./persistence.css";
 import "./records.css";
+import "./launch.css";
 
 export const metadata: Metadata = {
   title: "SDBP Governance",
