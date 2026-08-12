@@ -26,7 +26,7 @@ export type Project = {
   id: string;
   title: string;
   ownerId: string;
-  participantIds: string[];
+  participantIds?: string[];
   role?: string;
   status: "active" | "paused" | "complete";
   lastUpdate: string;
