@@ -1,28 +1,36 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Action, AttentionItem, GovernanceProposal, Tension } from "@/lib/domain";
-import { PROTOTYPE_TODAY, formatShortDate, formatTensionStatus, personName } from "@/lib/prototype-utils";
+import { PROTOTYPE_TODAY, formatTensionStatus, personName } from "@/lib/prototype-utils";
+import { RecordsView as LiveRecordsView } from "@/components/records-view";
+import { supabase } from "@/lib/supabase/client";
 
 export function RecordsView({ governanceProposals, tensions }: { governanceProposals: GovernanceProposal[]; tensions: Tension[] }) {
-  const accepted = governanceProposals.filter((proposal) => proposal.stage === "accepted");
-  const records = [
-    { label: "Legal backbone", title: "SDBP Statutes", text: "Authoritative current version, version history and searchable provisions.", action: "Search statutes", mark: "§" },
-    { label: "What happened", title: "Board minutes", text: "Meeting records and the decisions or commitments that followed.", action: "Open minutes", mark: "M" },
-  ];
+  const [profileId, setProfileId] = useState<string | undefined>();
 
-  return <>
-    <div className="records-intro"><span className="section-kicker">Organisational memory</span><strong>Accepted governance is recorded here immediately.</strong><p>File uploads and authoritative long-term storage are not connected yet. In this prototype, accepted governance decisions remain in the browser session and appear below as governance agreements.</p></div>
-    <div className="records-grid">
-      {records.map((record, index) => <article className={`record-card record-${index + 1}`} key={record.title}><div className="record-mark">{record.mark}</div><span className="kind">{record.label}</span><h2>{record.title}</h2><p>{record.text}</p><button className="secondary" disabled>{record.action}</button></article>)}
-      <article className="record-card record-3"><div className="record-mark">G</div><span className="kind">How we work</span><h2>Governance agreements</h2><p>Accepted governance decisions and standing agreements, linked back to the tension that produced them.</p>
-        {accepted.length > 0 ? <div className="soft-list">{accepted.map((proposal) => {
-          const sourceTension = tensions.find((tension) => tension.id === proposal.tensionId);
-          return <div className="soft-row" key={proposal.id}><div><strong>{proposal.title}</strong><small>{proposal.proposal}</small>{sourceTension && <small>Source tension: {sourceTension.title}</small>}</div><span className="definition-status defined">{proposal.acceptedAt ? formatShortDate(proposal.acceptedAt) : "accepted"}</span></div>;
-        })}</div> : <div className="calm-empty compact-empty"><span>○</span><h3>No accepted governance yet</h3><p>An accepted proposal from a Governance Meeting will appear here automatically.</p></div>}
-      </article>
-    </div>
-  </>;
+  useEffect(() => {
+    let cancelled = false;
+
+    async function resolveProfile() {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) return;
+
+      const { data } = await supabase
+        .from("people")
+        .select("id")
+        .eq("auth_user_id", userData.user.id)
+        .eq("active", true)
+        .maybeSingle();
+
+      if (!cancelled && data?.id) setProfileId(data.id as string);
+    }
+
+    void resolveProfile();
+    return () => { cancelled = true; };
+  }, []);
+
+  return <LiveRecordsView governanceProposals={governanceProposals} tensions={tensions} profileId={profileId} />;
 }
 
 export function PulseView({ attention, actions, tensions }: { attention: AttentionItem[]; actions: Action[]; tensions: Tension[] }) {
