@@ -120,14 +120,76 @@ export async function uploadRecord(input: {
     throw error;
   }
 
-  const { data: complete, error: completeError } = await supabase
-    .from("records")
-    .select(RECORD_SELECT)
-    .eq("id", record.id)
-    .single();
+  return loadRecord(record.id);
+}
 
-  if (completeError) throw completeError;
-  return mapRecord(complete as RecordRow);
+export async function uploadRecordVersion(input: {
+  recordId: string;
+  file: File;
+  profileId: string;
+  effectiveOn?: string;
+}): Promise<RecordSummary> {
+  const { data: versions, error: versionsError } = await supabase
+    .from("record_versions")
+    .select("id,version_label,status")
+    .eq("record_id", input.recordId)
+    .order("created_at", { ascending: false });
+
+  if (versionsError) throw versionsError;
+
+  const current = versions?.find((version) => version.status === "current");
+  const numericLabels = (versions ?? [])
+    .map((version) => Number.parseInt(version.version_label, 10))
+    .filter((value) => Number.isFinite(value));
+  const nextVersion = String((numericLabels.length ? Math.max(...numericLabels) : versions?.length ?? 0) + 1);
+  const safeName = sanitizeFilename(input.file.name);
+  const storagePath = `${input.recordId}/${crypto.randomUUID()}-${safeName}`;
+  let uploaded = false;
+  let superseded = false;
+
+  try {
+    const { error: uploadError } = await supabase.storage
+      .from(RECORDS_BUCKET)
+      .upload(storagePath, input.file, {
+        contentType: input.file.type || undefined,
+        upsert: false,
+      });
+
+    if (uploadError) throw uploadError;
+    uploaded = true;
+
+    if (current) {
+      const { error: supersedeError } = await supabase
+        .from("record_versions")
+        .update({ status: "superseded" })
+        .eq("id", current.id);
+      if (supersedeError) throw supersedeError;
+      superseded = true;
+    }
+
+    const { error: versionError } = await supabase
+      .from("record_versions")
+      .insert({
+        record_id: input.recordId,
+        version_label: nextVersion,
+        status: "current",
+        effective_on: input.effectiveOn || null,
+        storage_path: storagePath,
+        mime_type: input.file.type || null,
+        uploaded_by: input.profileId,
+        supersedes_version_id: current?.id ?? null,
+      });
+
+    if (versionError) throw versionError;
+  } catch (error) {
+    if (superseded && current) {
+      await supabase.from("record_versions").update({ status: "current" }).eq("id", current.id);
+    }
+    if (uploaded) await supabase.storage.from(RECORDS_BUCKET).remove([storagePath]);
+    throw error;
+  }
+
+  return loadRecord(input.recordId);
 }
 
 export async function updateRecordFollowUps(recordId: string, followups: RecordFollowUp[]) {
@@ -146,6 +208,17 @@ export async function createRecordSignedUrl(storagePath: string, download = fals
 
   if (error) throw error;
   return data.signedUrl;
+}
+
+async function loadRecord(recordId: string) {
+  const { data, error } = await supabase
+    .from("records")
+    .select(RECORD_SELECT)
+    .eq("id", recordId)
+    .single();
+
+  if (error) throw error;
+  return mapRecord(data as RecordRow);
 }
 
 function mapRecord(row: RecordRow): RecordSummary {
