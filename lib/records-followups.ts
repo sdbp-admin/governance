@@ -19,12 +19,18 @@ export const MINUTES_GPT_PROMPT = `Use the meeting transcript below to create tw
 
 Do not merge coaching observations into the official minutes.
 
-First determine the meeting date from the transcript if it is explicit. Do not guess it.
-Use these filenames:
-- if the date is known: YYYY-MM-DD SDBP Board Minutes
-- if the date is unknown: Undated SDBP Board Minutes
-- if the date is known: YYYY-MM-DD SDBP Facilitation Coaching
-- if the date is unknown: Undated SDBP Facilitation Coaching
+OUTPUT FILES
+Create two separate downloadable PDF files when your environment supports file creation. Do not combine them into one PDF.
+
+First determine the meeting date from the transcript. Check the transcript title/header, meeting metadata and transcript body. If an exact date appears anywhere, use it. Do not guess a date that is not present.
+
+Use these exact filenames:
+- if the date is known: YYYY-MM-DD SDBP Board Minutes.pdf
+- if the date is unknown: Undated SDBP Board Minutes.pdf
+- if the date is known: YYYY-MM-DD SDBP Facilitation Coaching.pdf
+- if the date is unknown: Undated SDBP Facilitation Coaching.pdf
+
+If you cannot create downloadable PDF files, still produce the two documents separately and tell the user to export each one as PDF using the filenames above.
 
 DOCUMENT 1 — OFFICIAL MINUTES
 
