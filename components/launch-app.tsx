@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Action, AttentionItem, GovernanceProposal, GovernanceStage, Project, RoleDefinition, Tension } from "@/lib/domain";
+import type { AttentionItem, GovernanceProposal, GovernanceStage, Project, RoleDefinition, Tension } from "@/lib/domain";
 import { RecordsView } from "@/components/records-view";
 import { CompassModal, HelpTip } from "@/components/guidance";
 import {
@@ -28,8 +28,8 @@ import {
 
 type View = "attention" | "work" | "tensions" | "organisation" | "governance" | "records" | "pulse";
 type LiveProfile = { id: string; name: string; email: string };
-
 type NoticeFn = (message: string) => void;
+type TensionNeed = "input" | "sync";
 
 const EMPTY_WORKSPACE: WorkspaceData = { people: [], roles: [], projects: [], actions: [], tensions: [], governanceProposals: [] };
 
@@ -180,32 +180,31 @@ export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
   }
 
   async function keepTensionOpen(tension: Tension) {
-    await run(() => updateTension(tension.id, { status: "open", resolutionProposedBy: null, latestNote: `${personName(currentUserId)} confirmed the tension still exists.` }), "Tension kept open.");
+    await run(() => updateTension(tension.id, { status: "open", resolutionProposedBy: null, latestNote: tension.latestNote ?? null }), "Tension kept open.");
   }
 
-  async function tensionAction(tension: Tension, title: string, ownerId: string) {
-    const status: Action["status"] = ownerId === currentUserId ? "open" : "proposed";
-    const ok = await run(async () => {
-      await createAction({ title, ownerId, status, source: tension.title, sourceTensionId: tension.id });
-      await updateTension(tension.id, { latestNote: `Related action created: “${title}”. The tension remains open until the real situation is resolved.` });
-    }, ownerId === currentUserId ? "Action created." : `Action proposed to ${personName(ownerId)}.`);
-    return ok;
+  async function recordTensionNeed(tension: Tension, kind: TensionNeed, peopleIds: string[], detail: string) {
+    const names = peopleIds.map(personName).filter((name) => name !== "Unknown");
+    if (!names.length) return false;
+    const prefix = kind === "input" ? `Needs input or help from ${names.join(", ")}` : `Needs a real conversation with ${names.join(", ")}`;
+    const note = detail.trim() ? `${prefix} — ${detail.trim()}` : `${prefix}.`;
+    const status: Tension["status"] = kind === "sync" ? "needs_sync" : "open";
+    return run(
+      () => updateTension(tension.id, { status, resolutionProposedBy: null, latestNote: note }),
+      kind === "sync" ? "Conversation noted. Arrange it however is easiest." : "Need noted. Reach out however is easiest.",
+    );
   }
 
-  async function tensionProject(tension: Tension, title: string) {
-    const ok = await run(async () => {
-      await createProject({ title, ownerId: currentUserId, participantIds: [currentUserId], sourceTensionId: tension.id, summary: "" });
-      await updateTension(tension.id, { latestNote: `Related project created: “${title}”. The tension remains open until the real situation is resolved.` });
-    }, "Project created.");
-    return ok;
-  }
-
-  async function moveTension(tension: Tension, status: "governance" | "needs_sync") {
-    const note = status === "governance"
-      ? "This tension needs a change to an ongoing role, responsibility, authority or standing way of working."
-      : "This tension needs a real-time conversation.";
-    const ok = await run(() => updateTension(tension.id, { status, resolutionProposedBy: null, latestNote: note }), status === "governance" ? "Moved to Governance." : "Marked for a real-time conversation.");
-    if (ok && status === "governance") setView("governance");
+  async function moveTensionToGovernance(tension: Tension) {
+    const ok = await run(
+      () => updateTension(tension.id, {
+        status: "governance",
+        resolutionProposedBy: null,
+        latestNote: "This tension needs a change to an ongoing role, responsibility, authority or standing way of working.",
+      }),
+      "Moved to Governance.",
+    );
+    if (ok) setView("governance");
   }
 
   async function resolveWithNote(tension: Tension, note: string) {
@@ -261,7 +260,7 @@ export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
 
       {view === "attention" && <AttentionView items={attention} onPrimary={handleAttention} onRaiseTension={() => setView("tensions")} />}
       {view === "work" && <WorkView workspace={workspace} currentUserId={currentUserId} personName={personName} personInitial={personInitial} onAddAction={addOwnAction} onAddProject={addProject} onCompleteAction={(id) => run(() => setActionStatus(id, "done"), "Action completed.")} onCompleteProject={markProjectComplete} onUpdateProject={setProjectEditorId} />}
-      {view === "tensions" && <TensionsView workspace={workspace} currentUserId={currentUserId} personName={personName} onRaise={raiseTension} onMarkResolved={markTensionResolved} onKeepOpen={keepTensionOpen} onAction={tensionAction} onProject={tensionProject} onMove={moveTension} onResolve={resolveWithNote} />}
+      {view === "tensions" && <TensionsView workspace={workspace} currentUserId={currentUserId} personName={personName} onRaise={raiseTension} onMarkResolved={markTensionResolved} onKeepOpen={keepTensionOpen} onNeed={recordTensionNeed} onMoveGovernance={moveTensionToGovernance} onResolve={resolveWithNote} />}
       {view === "organisation" && <OrganisationView workspace={workspace} currentUserId={currentUserId} canInvite={inviteAllowed} personName={personName} onInvite={async (name, email) => { const ok = await run(() => invitePerson(name, email), `Invitation sent to ${email}.`); return ok; }} onSaveRole={async (role) => run(() => saveRole(role), "Role saved.")} onDeleteRole={async (id) => run(() => deleteRole(id), "Role removed.")} onOpenProject={() => setView("work")} />}
       {view === "governance" && <GovernanceView workspace={workspace} currentUserId={currentUserId} personName={personName} onCreateProposal={addProposal} onStartMeeting={startMeeting} onGoTensions={() => setView("tensions")} />}
       {view === "records" && <RecordsView governanceProposals={workspace.governanceProposals} tensions={workspace.tensions} profileId={liveProfile.id} onNotice={announce} />}
@@ -304,7 +303,8 @@ function deriveAttention(workspace: WorkspaceData, userId: string, personName: (
   for (const tension of workspace.tensions) {
     if (tension.raiserId !== userId) continue;
     if (tension.status === "awaiting_confirmation") items.push({ id: `tension-${tension.id}`, ownerId: userId, kind: "tension", targetId: tension.id, title: tension.title, reason: `${personName(tension.resolutionProposedBy ?? "")} believes this is resolved. Check the real situation.`, primaryAction: "Review tension", status: "needs_action" });
-    if (tension.status === "open") items.push({ id: `tension-${tension.id}`, ownerId: userId, kind: "tension", targetId: tension.id, title: tension.title, reason: "You raised this tension and it is still open.", primaryAction: "Process tension", status: "needs_action" });
+    if (tension.status === "open") items.push({ id: `tension-${tension.id}`, ownerId: userId, kind: "tension", targetId: tension.id, title: tension.title, reason: tension.latestNote ? "This tension is still open. Did you get what you needed?" : "You raised this tension and it is still open.", primaryAction: tension.latestNote ? "Review tension" : "Process tension", status: "needs_action" });
+    if (tension.status === "needs_sync") items.push({ id: `tension-${tension.id}`, ownerId: userId, kind: "tension", targetId: tension.id, title: tension.title, reason: "You marked this for a real conversation. Did you get what you needed?", primaryAction: "Review tension", status: "needs_action" });
     if (tension.status === "governance" && !workspace.governanceProposals.some((proposal) => proposal.tensionId === tension.id)) items.push({ id: `governance-${tension.id}`, ownerId: userId, kind: "governance", targetId: tension.id, title: tension.title, reason: "This structural tension needs a proposal before it can be processed in Governance.", primaryAction: "Prepare proposal", status: "needs_action" });
   }
 
@@ -367,41 +367,75 @@ function ProjectUpdateModal({ project, onSave, onNoChange, onClose }: { project:
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="workflow-editor compact-modal"><div className="editor-head"><div><span className="section-kicker">Project update</span><h2>{project.title}</h2></div><button className="quiet editor-close" onClick={onClose}>×</button></div><p className="editor-note">Has anything meaningfully changed? Keep this short. The app needs current reality, not a report.</p><label className="field"><span>Current state</span><textarea rows={5} value={summary} onChange={(event) => setSummary(event.target.value)} /></label><div className="workflow-choice-row"><button className="secondary" onClick={() => void onNoChange(project.id)}>No change</button><button className="primary" onClick={() => void onSave(project.id, summary)}>Save update</button></div></section></div>;
 }
 
-function TensionsView({ workspace, currentUserId, personName, onRaise, onMarkResolved, onKeepOpen, onAction, onProject, onMove, onResolve }: {
+function TensionsView({ workspace, currentUserId, personName, onRaise, onMarkResolved, onKeepOpen, onNeed, onMoveGovernance, onResolve }: {
   workspace: WorkspaceData;
   currentUserId: string;
   personName: (id: string) => string;
   onRaise: (title: string, projectId?: string) => Promise<boolean>;
   onMarkResolved: (tension: Tension) => Promise<void>;
   onKeepOpen: (tension: Tension) => Promise<void>;
-  onAction: (tension: Tension, title: string, ownerId: string) => Promise<boolean>;
-  onProject: (tension: Tension, title: string) => Promise<boolean>;
-  onMove: (tension: Tension, status: "governance" | "needs_sync") => Promise<void>;
+  onNeed: (tension: Tension, kind: TensionNeed, peopleIds: string[], detail: string) => Promise<boolean>;
+  onMoveGovernance: (tension: Tension) => Promise<void>;
   onResolve: (tension: Tension, note: string) => Promise<void>;
 }) {
   const [draft, setDraft] = useState("");
   const [processingId, setProcessingId] = useState<string | null>(null);
   const active = workspace.tensions.filter((tension) => tension.status !== "resolved");
+
   return <>
     <div className="tension-composer"><div className="composer-copy"><span className="section-kicker">Raise a tension</span><h2>What could be better?</h2><p>You do not need to know the solution yet.</p></div><div className="composer-input"><textarea rows={3} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Something is unclear, blocked or could work better…" /><button className="primary" disabled={!draft.trim()} onClick={async () => { if (await onRaise(draft)) setDraft(""); }}>Raise tension</button></div></div>
-    <section className="section"><div className="section-head"><div><span className="section-kicker">Open</span><h2>Tensions that still exist</h2></div><span className="counter">{active.length}</span></div>{active.length ? <div className="tension-stream">{active.map((tension) => <article className="tension-card" key={tension.id}><div className="tension-line" /><div className="tension-content"><div className="tension-meta"><span>Raised by {personName(tension.raiserId)}</span><span>{tensionLabel(tension.status)}</span></div><h3>{tension.title}</h3>{tension.latestNote && <p>{tension.latestNote}</p>}{tension.status === "awaiting_confirmation" && tension.raiserId === currentUserId && <div className="tension-process-panel"><span className="kind">Resolution check</span><h4>{personName(tension.resolutionProposedBy ?? "")} believes this is resolved. Is it resolved for you?</h4><div className="process-actions"><button className="secondary" onClick={() => void onKeepOpen(tension)}>No, keep open</button><button className="primary" onClick={() => void onResolve(tension, `${personName(currentUserId)} confirmed the tension is resolved.`)}>Yes, resolved</button></div></div>}{processingId === tension.id && tension.raiserId === currentUserId && tension.status === "open" && <TensionProcess tension={tension} people={workspace.people} currentUserId={currentUserId} onClose={() => setProcessingId(null)} onAction={onAction} onProject={onProject} onMove={onMove} onResolve={onResolve} />}</div>{processingId !== tension.id && tension.status === "open" && <div className="actions compact-actions">{tension.raiserId === currentUserId && <button className="secondary" onClick={() => setProcessingId(tension.id)}>What do you need? →</button>}<button className="quiet" onClick={() => void onMarkResolved(tension)}>Resolve</button></div>}</article>)}</div> : <div className="calm-empty compact-empty"><span>✓</span><h3>No open tensions</h3></div>}</section>
+
+    <section className="section"><div className="section-head"><div><span className="section-kicker">Open</span><h2>Tensions that still exist</h2></div><span className="counter">{active.length}</span></div>{active.length ? <div className="tension-stream">{active.map((tension) => {
+      const mine = tension.raiserId === currentUserId;
+      const processable = tension.status === "open" || tension.status === "needs_sync";
+      const hasNeed = Boolean(tension.latestNote);
+      return <article className="tension-card" key={tension.id}><div className="tension-line" /><div className="tension-content"><div className="tension-meta"><span>Raised by {personName(tension.raiserId)}</span><span>{tensionLabel(tension.status)}</span></div><h3>{tension.title}</h3>{tension.latestNote && <p>{tension.latestNote}</p>}
+        {tension.status === "awaiting_confirmation" && mine && <div className="tension-process-panel"><span className="kind">Resolution check</span><h4>{personName(tension.resolutionProposedBy ?? "")} believes this is resolved. Is it resolved for you?</h4><div className="process-actions"><button className="secondary" onClick={() => void onKeepOpen(tension)}>No, keep open</button><button className="primary" onClick={() => void onResolve(tension, `${personName(currentUserId)} confirmed the tension is resolved.`)}>Yes, resolved</button></div></div>}
+        {processingId === tension.id && mine && processable && <TensionProcess tension={tension} people={workspace.people} currentUserId={currentUserId} onClose={() => setProcessingId(null)} onNeed={onNeed} onMoveGovernance={onMoveGovernance} />}
+        {mine && processable && hasNeed && processingId !== tension.id && <div className="tension-resolution-check"><span className="kind">Check the real situation</span><h4>Did you get what you need?</h4><p>If yes, close the tension. If not, contact the people you need or adjust what would help.</p><div className="process-actions"><button className="secondary" onClick={() => setProcessingId(tension.id)}>Not yet · adjust</button><button className="primary" onClick={() => void onResolve(tension, `${personName(currentUserId)} got what was needed and resolved the tension.`)}>Yes, resolved</button></div></div>}
+      </div>
+      {processingId !== tension.id && processable && !hasNeed && <div className="actions compact-actions">{mine && <button className="secondary" onClick={() => setProcessingId(tension.id)}>What do you need? →</button>}<button className="quiet" onClick={() => void onMarkResolved(tension)}>Resolve</button></div>}
+      {processingId !== tension.id && processable && hasNeed && !mine && <div className="actions compact-actions"><button className="quiet" onClick={() => void onMarkResolved(tension)}>Looks resolved</button></div>}
+      </article>;
+    })}</div> : <div className="calm-empty compact-empty"><span>✓</span><h3>No open tensions</h3></div>}</section>
   </>;
 }
 
-function TensionProcess({ tension, people, currentUserId, onClose, onAction, onProject, onMove, onResolve }: { tension: Tension; people: WorkspacePerson[]; currentUserId: string; onClose: () => void; onAction: (tension: Tension, title: string, ownerId: string) => Promise<boolean>; onProject: (tension: Tension, title: string) => Promise<boolean>; onMove: (tension: Tension, status: "governance" | "needs_sync") => Promise<void>; onResolve: (tension: Tension, note: string) => Promise<void> }) {
-  const [choice, setChoice] = useState<"action" | "project" | "governance" | "sync" | "resolved" | null>(null);
-  const [title, setTitle] = useState("");
-  const [ownerId, setOwnerId] = useState(currentUserId);
-  return <div className="tension-process-panel"><span className="kind">Process tension</span><h4>What do you need from the organisation?</h4><div className="outcome-grid compact-outcomes">{[
-    ["action", "Action"], ["project", "Project"], ["governance", "Change how we work"], ["sync", "Real-time conversation"], ["resolved", "Nothing further"],
-  ].map(([id, label]) => <button key={id} className={choice === id ? "outcome-option selected" : "outcome-option"} onClick={() => setChoice(id as typeof choice)}><strong>{label}</strong></button>)}</div>
-    {choice === "action" && <div className="outcome-form outcome-form-grid"><label className="field"><span>Action</span><input value={title} onChange={(event) => setTitle(event.target.value)} /></label><label className="field"><span>Owner</span><select value={ownerId} onChange={(event) => setOwnerId(event.target.value)}>{people.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label><button className="primary small" disabled={!title.trim()} onClick={async () => { if (await onAction(tension, title, ownerId)) onClose(); }}>Create action</button></div>}
-    {choice === "project" && <div className="outcome-form"><label className="field"><span>Project outcome</span><input value={title} onChange={(event) => setTitle(event.target.value)} /></label><button className="primary small" disabled={!title.trim()} onClick={async () => { if (await onProject(tension, title)) onClose(); }}>Create project</button></div>}
-    {choice === "governance" && <div className="outcome-form"><p>Use this when an ongoing role, responsibility, authority or standing way of working needs to change.</p><button className="primary small" onClick={() => void onMove(tension, "governance")}>Move to Governance</button></div>}
-    {choice === "sync" && <div className="outcome-form"><p>Some tensions need people in the same conversation. The app keeps the tension visible.</p><button className="primary small" onClick={() => void onMove(tension, "needs_sync")}>Needs conversation</button></div>}
-    {choice === "resolved" && <div className="outcome-form"><button className="primary small" onClick={() => void onResolve(tension, "No further action is needed. The tension is resolved.")}>Resolve tension</button></div>}
+function TensionProcess({ tension, people, currentUserId, onClose, onNeed, onMoveGovernance }: {
+  tension: Tension;
+  people: WorkspacePerson[];
+  currentUserId: string;
+  onClose: () => void;
+  onNeed: (tension: Tension, kind: TensionNeed, peopleIds: string[], detail: string) => Promise<boolean>;
+  onMoveGovernance: (tension: Tension) => Promise<void>;
+}) {
+  const [choice, setChoice] = useState<TensionNeed | "governance" | null>(tension.status === "needs_sync" ? "sync" : null);
+  const [peopleIds, setPeopleIds] = useState<string[]>([]);
+  const [detail, setDetail] = useState("");
+  const availablePeople = people.filter((person) => person.id !== currentUserId);
+
+  async function saveNeed(kind: TensionNeed) {
+    if (!peopleIds.length) return;
+    if (await onNeed(tension, kind, peopleIds, detail)) onClose();
+  }
+
+  return <div className="tension-process-panel"><span className="kind">Process tension</span><h4>What do you need now?</h4><p className="tension-process-intro">The app does not need to turn this into work. Call, message, email or speak to someone if that is enough. Keep only what matters visible here.</p>
+    <div className="outcome-grid compact-outcomes">{[
+      ["input", "Input or help"], ["governance", "Change how we work"], ["sync", "Real conversation"],
+    ].map(([id, label]) => <button key={id} className={choice === id ? "outcome-option selected" : "outcome-option"} onClick={() => setChoice(id as typeof choice)}><strong>{label}</strong></button>)}</div>
+
+    {choice === "input" && <div className="outcome-form"><p>Choose the people who may help. Then reach out in whatever way is quickest. This only keeps the tension and the need visible.</p><NeedPeoplePicker people={availablePeople} selected={peopleIds} setSelected={setPeopleIds} /><label className="field"><span>What do you need? <em>optional</em></span><textarea rows={3} value={detail} onChange={(event) => setDetail(event.target.value)} placeholder="A short reminder, not a message you have to send through the app." /></label><button className="primary small" disabled={!peopleIds.length} onClick={() => void saveNeed("input")}>Keep this visible</button></div>}
+
+    {choice === "sync" && <div className="outcome-form"><p>Some things are faster in a real conversation. Choose who should be involved, then arrange the call or conversation however you normally would.</p><NeedPeoplePicker people={availablePeople} selected={peopleIds} setSelected={setPeopleIds} /><label className="field"><span>What needs to be worked through? <em>optional</em></span><textarea rows={3} value={detail} onChange={(event) => setDetail(event.target.value)} /></label><button className="primary small" disabled={!peopleIds.length} onClick={() => void saveNeed("sync")}>Keep conversation visible</button></div>}
+
+    {choice === "governance" && <div className="outcome-form"><p>Use this when the tension points to an ongoing role, responsibility, authority or standing way of working that should change.</p><button className="primary small" onClick={() => void onMoveGovernance(tension)}>Move to Governance</button></div>}
+
     <div className="process-actions"><button className="quiet" onClick={onClose}>Close</button></div>
   </div>;
+}
+
+function NeedPeoplePicker({ people, selected, setSelected }: { people: WorkspacePerson[]; selected: string[]; setSelected: (ids: string[]) => void }) {
+  return <div className="field"><span>Who do you need?</span><div className="people-picker">{people.map((person) => <label key={person.id}><input type="checkbox" checked={selected.includes(person.id)} onChange={(event) => setSelected(event.target.checked ? [...new Set([...selected, person.id])] : selected.filter((id) => id !== person.id))} />{person.name}</label>)}</div></div>;
 }
 
 function OrganisationView({ workspace, currentUserId, canInvite, personName, onInvite, onSaveRole, onDeleteRole, onOpenProject }: {
@@ -482,14 +516,19 @@ function GovernanceMeeting({ proposal, tension, personName, onChange, onAccept, 
     await onChange(next);
   }
 
-  return <div className="governance-meeting-surface"><div className="meeting-window-head"><div><span className="section-kicker">Governance meeting</span><h1>{proposal.title}</h1><p>{tension?.title ?? "Structural proposal"}</p></div><button className="quiet" onClick={onClose}>Close meeting</button></div><article className="governance-proposal-card"><div className="governance-proposal-head"><div><span className="kind">Proposed by {personName(proposal.proposerId)}</span><h3>{stageName(proposal.stage)}</h3></div><span className="governance-stage-badge">{Math.max(index + 1, 1)} / 6</span></div><div className="governance-proposal-text"><strong>Current proposal</strong><p>{proposal.proposal}</p></div><div className="governance-round"><p className="meeting-guidance">{stageDescription(proposal.stage)}</p>
+  return <div className="governance-meeting-surface"><div className="meeting-window-head"><div><span className="section-kicker">Governance meeting</span><h1>{proposal.title}</h1><p>{tension?.title ?? "Structural proposal"}</p></div><button className="quiet" onClick={onClose}>Close meeting</button></div><article className="governance-proposal-card"><div className="governance-proposal-head"><div><span className="kind">Proposed by {personName(proposal.proposerId)}</span><h3>{stageName(proposal.stage)}</h3></div><span className="governance-stage-badge">{Math.max(index + 1, 1)} / 6</span></div><div className="governance-proposal-text"><strong>Current proposal</strong><p>{proposal.proposal}</p></div><div className="governance-round"><GovernanceStepGuide stage={proposal.stage} />
     {proposal.stage === "present_proposal" && <MeetingNav onNext={() => void move("clarifying_questions")} next="Start clarifying questions" />}
     {proposal.stage === "clarifying_questions" && <><MeetingNote value={note} setValue={setNote} label="Useful clarification (optional)" /><MeetingNav onPrevious={() => void move("present_proposal")} onNext={() => void move("reaction_round")} next="Start reaction round" /></>}
     {proposal.stage === "reaction_round" && <><MeetingNote value={note} setValue={setNote} label="Useful reactions to retain (optional)" /><MeetingNav onPrevious={() => void move("clarifying_questions")} onNext={() => void move("clarify")} next="Give proposer option to clarify" /></>}
     {proposal.stage === "clarify" && <><label className="field"><span>Proposal</span><textarea rows={5} value={proposalText} onChange={(event) => setProposalText(event.target.value)} /></label><MeetingNav onPrevious={() => void move("reaction_round")} onNext={() => void move("objection_round", proposalText)} next="Open objection round" /></>}
-    {proposal.stage === "objection_round" && <><div className="objection-essential"><strong>An objection is not a preference, disagreement, or a better idea.</strong><p>It identifies a concrete way this proposal could harm SDBP or reduce its capacity to fulfil its purpose or responsibilities.</p><HelpTip label="How do we test an objection?"><strong>Test the reasoning, not the person.</strong><br />Ask whether the harm is caused or worsened by adopting this proposal, whether it matters to SDBP or a role the objector represents, and whether there would be too little time to adapt before significant harm occurs.</HelpTip></div><ol className="objection-tests"><li><span>1</span><p>What concrete harm or loss of capacity would this proposal create?</p></li><li><span>2</span><p>Is that problem caused or made worse by adopting this proposal?</p></li><li><span>3</span><p>Is it significant enough that the proposal should not proceed as written?</p></li></ol><MeetingNote value={note} setValue={setNote} label="Objection to integrate (optional)" /><div className="process-actions"><button className="quiet" onClick={() => void move("clarify")}>Previous</button><button className="secondary" onClick={() => void move("integration")}>Objection needs integration</button><button className="primary" onClick={() => void onAccept({ ...proposal, meetingNotes: { ...proposal.meetingNotes, objection_round: note.trim() } })}>No objections · accept</button></div></>}
+    {proposal.stage === "objection_round" && <><div className="objection-essential"><strong>An objection is not a preference, disagreement, or a better idea.</strong><p>It identifies a concrete way this proposal could harm SDBP or move it backward.</p><HelpTip label="How do we test an objection?"><strong>Test the reasoning, not the person.</strong><br />Ask whether the harm is caused or worsened by adopting this proposal, whether it matters to SDBP or a role the objector represents, and whether there would be too little time to adapt before significant harm occurs.</HelpTip></div><ol className="objection-tests"><li><span>1</span><p>What concrete harm or loss of capacity would this proposal create?</p></li><li><span>2</span><p>Is that problem caused or made worse by adopting this proposal?</p></li><li><span>3</span><p>Is it significant enough that the proposal should not proceed as written?</p></li></ol><MeetingNote value={note} setValue={setNote} label="Objection to integrate (optional)" /><div className="process-actions"><button className="quiet" onClick={() => void move("clarify")}>Previous</button><button className="secondary" onClick={() => void move("integration")}>Objection needs integration</button><button className="primary" onClick={() => void onAccept({ ...proposal, meetingNotes: { ...proposal.meetingNotes, objection_round: note.trim() } })}>No objections · accept</button></div></>}
     {proposal.stage === "integration" && <><label className="field"><span>Integrated proposal</span><textarea rows={5} value={proposalText} onChange={(event) => setProposalText(event.target.value)} /></label><MeetingNote value={note} setValue={setNote} label="What was integrated?" /><MeetingNav onPrevious={() => void move("objection_round")} onNext={() => void move("objection_round", proposalText)} next="Return to objection round" /></>}
   </div></article></div>;
+}
+
+function GovernanceStepGuide({ stage }: { stage: GovernanceStage }) {
+  const guide = governanceGuide(stage);
+  return <div className="meeting-step-guide"><span className="kind">What is happening now</span><h4>{guide.heading}</h4><p>{guide.body}</p><div className="facilitator-cue"><strong>Facilitator</strong><span>{guide.facilitator}</span></div></div>;
 }
 
 function MeetingNote({ value, setValue, label }: { value: string; setValue: (value: string) => void; label: string }) {
@@ -520,4 +559,47 @@ function tensionLabel(status: Tension["status"]) { if (status === "awaiting_conf
 function splitLines(value: string) { return value.split("\n").map((line) => line.trim()).filter(Boolean); }
 function readError(error: unknown) { return error instanceof Error ? error.message : "Something could not be saved."; }
 function stageName(stage: GovernanceStage) { return ({ prepared: "Prepared", present_proposal: "Present proposal", clarifying_questions: "Clarifying questions", reaction_round: "Reaction round", clarify: "Option to clarify", objection_round: "Objection round", integration: "Integration", accepted: "Accepted" } as Record<GovernanceStage, string>)[stage]; }
-function stageDescription(stage: GovernanceStage) { return ({ prepared: "Prepare the proposal before the meeting.", present_proposal: "The proposer describes the tension and presents the proposal. The group listens for understanding.", clarifying_questions: "Ask factual questions needed to understand the tension or proposal. Opinions and reactions wait.", reaction_round: "Each person may react. The proposer listens without debating the reactions.", clarify: "The proposer may clarify or change the proposal after hearing the reactions.", objection_round: "Ask whether anyone sees concrete harm in adopting the proposal as written.", integration: "Change the proposal enough to resolve the objection while still addressing the original tension.", accepted: "The proposal has been adopted." } as Record<GovernanceStage, string>)[stage]; }
+function governanceGuide(stage: GovernanceStage) {
+  return ({
+    prepared: {
+      heading: "Prepare the proposal before processing it.",
+      body: "A governance proposal changes something that should remain true after today. Keep it concrete enough that everyone can understand exactly what would change.",
+      facilitator: "Check that the proposal addresses a real structural tension before starting the process.",
+    },
+    present_proposal: {
+      heading: "Start with the tension, then the proposal.",
+      body: "The proposer explains the gap they are trying to resolve and presents the proposal. Everyone else listens for understanding. This is not the moment to improve, debate or negotiate it.",
+      facilitator: "Make sure the group understands what is being proposed before moving on; do not open discussion yet.",
+    },
+    clarifying_questions: {
+      heading: "Questions only. Reactions wait.",
+      body: "Ask for information you genuinely need to understand the tension or proposal. Do not hide an opinion, alternative or objection inside a question. The purpose is shared understanding, not persuasion.",
+      facilitator: "Stop discussion early. If a question contains a reaction, ask the person to save it for the next round.",
+    },
+    reaction_round: {
+      heading: "Let the proposer hear the room without turning it into debate.",
+      body: "Each person may react to what they heard. Better ideas, concerns and support can all be voiced here, but they are input for the proposer — not instructions and not decisions.",
+      facilitator: "Protect the round: one reaction at a time, no replies between participants, and no debate with the proposer.",
+    },
+    clarify: {
+      heading: "The proposer still owns the proposal.",
+      body: "After hearing the reactions, the proposer may clarify, amend or leave the proposal unchanged. They do not need to satisfy every preference; they decide what still best addresses the original tension.",
+      facilitator: "Ask the proposer what, if anything, they want to change. Do not ask the group to redesign the proposal.",
+    },
+    objection_round: {
+      heading: "Now test whether adopting the proposal would cause real harm.",
+      body: "This round is not another chance to argue for a preferred solution. An objection must identify a concrete problem caused or materially worsened by adopting the proposal as written.",
+      facilitator: "Test objections one at a time against the visible criteria. The process tests the reasoning, not the person.",
+    },
+    integration: {
+      heading: "Resolve the objection without losing the reason for the proposal.",
+      body: "The proposer and objector work together to adjust the proposal enough to remove the valid harm while still addressing the original tension. Integration is not a new design round for the whole group.",
+      facilitator: "Keep the conversation between proposer and objector, using the group only when their input is genuinely needed.",
+    },
+    accepted: {
+      heading: "The proposal is now part of SDBP governance.",
+      body: "What was accepted becomes part of the organisation's current way of working until a future tension changes it again.",
+      facilitator: "Make sure the accepted wording is clear and recorded before closing the item.",
+    },
+  } as Record<GovernanceStage, { heading: string; body: string; facilitator: string }>)[stage];
+}
