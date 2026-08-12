@@ -2,11 +2,13 @@
 
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import type { GovernanceProposal, Tension } from "@/lib/domain";
+import { extractMinutesFollowUpsFromPdf } from "@/lib/pdf-minutes";
 import { formatShortDate } from "@/lib/prototype-utils";
 import { MINUTES_GPT_PROMPT, parseMinutesFollowUps, type RecordFollowUp } from "@/lib/records-followups";
 import {
   createRecordSignedUrl,
   loadRecords,
+  updateRecordFollowUps,
   uploadRecord,
   uploadRecordVersion,
   type RecordSummary,
@@ -28,6 +30,8 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
   const [error, setError] = useState("");
   const [uploadingType, setUploadingType] = useState<RecordType | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
+  const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
+  const [expandedFollowUps, setExpandedFollowUps] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
 
   const accepted = governanceProposals.filter((proposal) => proposal.stage === "accepted");
@@ -48,7 +52,19 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
 
     loadRecords()
       .then((items) => {
-        if (!cancelled) setRecords(items);
+        if (cancelled) return;
+        setRecords(items);
+
+        const needsBackfill = items.filter((record) =>
+          record.recordType === "board_minutes" &&
+          record.followups.length === 0 &&
+          isPdfRecord(record) &&
+          Boolean(record.currentVersion?.storagePath),
+        );
+
+        for (const record of needsBackfill) {
+          void backfillPdfFollowUps(record, () => cancelled);
+        }
       })
       .catch((loadError) => {
         if (!cancelled) setError(readError(loadError));
@@ -59,6 +75,30 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
 
     return () => { cancelled = true; };
   }, [profileId]);
+
+  async function backfillPdfFollowUps(record: RecordSummary, isCancelled: () => boolean) {
+    const storagePath = record.currentVersion?.storagePath;
+    if (!storagePath) return;
+
+    setProcessingIds((items) => addToSet(items, record.id));
+    try {
+      const url = await createRecordSignedUrl(storagePath);
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Could not read the stored minutes PDF.");
+
+      const followups = await extractMinutesFollowUpsFromPdf(await response.arrayBuffer());
+      if (followups.length === 0) return;
+
+      await updateRecordFollowUps(record.id, followups);
+      if (!isCancelled()) {
+        setRecords((items) => items.map((item) => item.id === record.id ? { ...item, followups } : item));
+      }
+    } catch {
+      // Keep Records usable if an older PDF cannot be parsed; the document itself remains authoritative.
+    } finally {
+      if (!isCancelled()) setProcessingIds((items) => removeFromSet(items, record.id));
+    }
+  }
 
   async function copyMinutesPrompt() {
     try {
@@ -90,9 +130,13 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
       }
 
       let followups: RecordFollowUp[] = [];
-      if (recordType === "board_minutes" && isTextFile(file)) {
+      if (recordType === "board_minutes") {
         try {
-          followups = parseMinutesFollowUps(await file.text());
+          if (isPdfFile(file)) {
+            followups = await extractMinutesFollowUpsFromPdf(file);
+          } else if (isTextFile(file)) {
+            followups = parseMinutesFollowUps(await file.text());
+          }
         } catch {
           followups = [];
         }
@@ -108,7 +152,11 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
       });
 
       setRecords((items) => [created, ...items]);
-      onNotice?.(recordType === "statutes" ? "SDBP Statutes stored." : "Board minutes stored.");
+      onNotice?.(recordType === "statutes"
+        ? "SDBP Statutes stored."
+        : followups.length > 0
+          ? `Board minutes stored. ${followups.length} follow-ups are ready to review.`
+          : "Board minutes stored.");
     } catch (storeError) {
       setError(readError(storeError));
     } finally {
@@ -167,6 +215,10 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
     }
   }
 
+  function toggleFollowUps(recordId: string) {
+    setExpandedFollowUps((items) => items.has(recordId) ? removeFromSet(items, recordId) : addToSet(items, recordId));
+  }
+
   return <>
     <div className="records-intro records-intro-live">
       <span className="section-kicker">Organisational memory</span>
@@ -214,7 +266,21 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
 
         {minutes.length > 0 && <div className="recent-minutes">
           <strong>Recent minutes</strong>
-          {minutes.slice(0, 5).map((record) => <StoredDocument key={record.id} record={record} openingId={openingId} onOpen={openRecord} />)}
+          {minutes.slice(0, 5).map((record) => {
+            const isExpanded = expandedFollowUps.has(record.id);
+            const isProcessing = processingIds.has(record.id);
+            return <div className="minute-record" key={record.id}>
+              <StoredDocument record={record} openingId={openingId} onOpen={openRecord} />
+              {isProcessing && <small className="followup-processing">Finding follow-ups…</small>}
+              {!isProcessing && record.followups.length > 0 && <>
+                <button className="followup-toggle" type="button" onClick={() => toggleFollowUps(record.id)}>
+                  <span>{record.followups.length} follow-ups to review</span>
+                  <span aria-hidden="true">{isExpanded ? "−" : "+"}</span>
+                </button>
+                {isExpanded && <FollowUpReview followups={record.followups} />}
+              </>}
+            </div>;
+          })}
           {minutes.length > 5 && <small>{minutes.length - 5} earlier {minutes.length - 5 === 1 ? "record" : "records"} also stored.</small>}
         </div>}
       </article>
@@ -235,6 +301,19 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
       </article>
     </div>
   </>;
+}
+
+function FollowUpReview({ followups }: { followups: RecordFollowUp[] }) {
+  return <div className="followup-review">
+    <small>Suggested from the approved minutes. Nothing is created automatically.</small>
+    {followups.map((followup) => <div className="followup-item" key={followup.id}>
+      <span className={`followup-kind ${followup.kind}`}>{followup.kind}</span>
+      <div>
+        <strong>{followup.title}</strong>
+        {(followup.owner || followup.due) && <small>{followup.owner ? `Owner: ${followup.owner}` : "Owner: unclear"}{followup.due ? ` · Due: ${followup.due}` : ""}</small>}
+      </div>
+    </div>)}
+  </div>;
 }
 
 function RecordDropZone({ label, hint, disabled, onFile }: { label: string; hint: string; disabled: boolean; onFile: (file: File) => Promise<void> }) {
@@ -312,8 +391,24 @@ function isPdfRecord(record: RecordSummary) {
   return record.currentVersion?.mimeType === "application/pdf" || /\.pdf$/i.test(record.currentVersion?.storagePath ?? "");
 }
 
+function isPdfFile(file: File) {
+  return file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+}
+
 function isTextFile(file: File) {
   return file.type.startsWith("text/") || /\.(md|txt)$/i.test(file.name);
+}
+
+function addToSet(items: Set<string>, value: string) {
+  const next = new Set(items);
+  next.add(value);
+  return next;
+}
+
+function removeFromSet(items: Set<string>, value: string) {
+  const next = new Set(items);
+  next.delete(value);
+  return next;
 }
 
 function readError(error: unknown) {
