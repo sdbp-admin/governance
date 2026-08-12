@@ -44,6 +44,12 @@
 .access-person-row small { color:var(--muted); overflow-wrap:anywhere; }
 .access-person-row span { margin-top:3px; color:var(--muted); font-size:11px; }
 .access-person-row .auth-actions { flex:0 0 auto; display:flex; gap:7px; }
+.presidency-panel { display:flex; justify-content:space-between; align-items:center; gap:18px; margin:16px 0 4px; padding:15px 16px; border:1px solid #cbdce2; border-radius:14px; background:#f7fbfc; }
+.presidency-panel > div:first-child { display:grid; gap:3px; }
+.presidency-panel strong { color:var(--brand-navy); font-size:16px; }
+.presidency-panel small { color:var(--muted); }
+.presidency-transfer { display:flex; align-items:center; gap:8px; }
+.presidency-transfer select { min-width:190px; border:1px solid var(--border); border-radius:9px; padding:8px 10px; background:#fff; color:var(--text); }
 
 .tension-process-intro { margin:6px 0 14px; color:var(--muted); font-size:13px; line-height:1.5; }
 .tension-resolution-check { margin-top:14px; padding:14px 15px; border:1px solid var(--border); border-radius:13px; background:#fbfcfc; }
@@ -113,4 +119,7 @@
   .facilitator-cue { flex-direction:column; gap:4px; }
   .access-person-row { align-items:flex-start; flex-direction:column; }
   .access-person-row .auth-actions { width:100%; flex-wrap:wrap; }
+  .presidency-panel { align-items:flex-start; flex-direction:column; }
+  .presidency-transfer { width:100%; align-items:stretch; flex-direction:column; }
+  .presidency-transfer select { width:100%; min-width:0; }
 }
