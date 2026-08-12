@@ -216,22 +216,12 @@ export async function updateRecordFollowUps(recordId: string, followups: RecordF
 }
 
 export async function archiveRecord(recordId: string) {
-  const { error } = await supabase
-    .from("records")
-    .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-    .eq("id", recordId)
-    .is("deleted_at", null);
-
+  const { error } = await supabase.rpc("archive_record", { target_record_id: recordId });
   if (error) throw error;
 }
 
 export async function restoreRecord(recordId: string) {
-  const { error } = await supabase
-    .from("records")
-    .update({ deleted_at: null, updated_at: new Date().toISOString() })
-    .eq("id", recordId)
-    .not("deleted_at", "is", null);
-
+  const { error } = await supabase.rpc("restore_record", { target_record_id: recordId });
   if (error) throw error;
 }
 
