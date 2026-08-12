@@ -3,6 +3,8 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Prototype } from "@/components/prototype";
 import { supabase } from "@/lib/supabase/client";
+import { canInvitePeople, loadWorkspace, type WorkspacePerson } from "@/lib/supabase/workspace";
+import { deactivateWorkspacePerson, resendWorkspaceInvitation } from "@/lib/supabase/people-access";
 
 type Profile = { id: string; name: string; email: string };
 type AuthStatus = "loading" | "signed_out" | "signed_in" | "not_invited" | "error";
@@ -21,6 +23,12 @@ export function AuthenticatedLaunch() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
+  const [canManageAccess, setCanManageAccess] = useState(false);
+  const [accessOpen, setAccessOpen] = useState(false);
+  const [accessPeople, setAccessPeople] = useState<WorkspacePerson[]>([]);
+  const [accessLoading, setAccessLoading] = useState(false);
+  const [accessBusyId, setAccessBusyId] = useState<string | null>(null);
+  const [accessError, setAccessError] = useState("");
 
   const resolveUser = useCallback(async () => {
     setError("");
@@ -32,6 +40,7 @@ export function AuthenticatedLaunch() {
     if (userError || !user) {
       setProfile(null);
       setPasswordRequired(false);
+      setCanManageAccess(false);
       setStatus("signed_out");
       return;
     }
@@ -66,6 +75,7 @@ export function AuthenticatedLaunch() {
     if (!person) {
       setProfile(null);
       setPasswordRequired(false);
+      setCanManageAccess(false);
       setStatus("not_invited");
       return;
     }
@@ -74,6 +84,12 @@ export function AuthenticatedLaunch() {
     setProfile(next);
     setEmail(next.email);
     setStatus("signed_in");
+
+    try {
+      setCanManageAccess(await canInvitePeople());
+    } catch {
+      setCanManageAccess(false);
+    }
 
     const passwordMarked = user.user_metadata?.sdbp_password_set === true;
     const methods = readAuthenticationMethods(sessionData.session?.access_token);
@@ -110,6 +126,7 @@ export function AuthenticatedLaunch() {
       if (!session?.user) {
         setProfile(null);
         setPasswordRequired(false);
+        setCanManageAccess(false);
         setStatus("signed_out");
         return;
       }
@@ -177,7 +194,56 @@ export function AuthenticatedLaunch() {
 
   async function signOut() {
     await supabase.auth.signOut();
-    setProfile(null); setPassword(""); setMessage(""); setError(""); setPasswordRequired(false); setPasswordEditor(false); setStatus("signed_out");
+    setProfile(null); setPassword(""); setMessage(""); setError(""); setPasswordRequired(false); setPasswordEditor(false); setCanManageAccess(false); setAccessOpen(false); setStatus("signed_out");
+  }
+
+  async function openAccessManager() {
+    setAccessOpen(true);
+    setAccessLoading(true);
+    setAccessError("");
+    try {
+      const workspace = await loadWorkspace();
+      setAccessPeople(workspace.people);
+    } catch (accessLoadError) {
+      setAccessError(readError(accessLoadError));
+    } finally {
+      setAccessLoading(false);
+    }
+  }
+
+  async function resendInvitation(person: WorkspacePerson) {
+    setAccessBusyId(person.id);
+    setAccessError("");
+    try {
+      await resendWorkspaceInvitation(person);
+      setMessage(`Invitation resent to ${person.email}.`);
+    } catch (resendError) {
+      setAccessError(readError(resendError));
+    } finally {
+      setAccessBusyId(null);
+    }
+  }
+
+  async function removeAccess(person: WorkspacePerson) {
+    if (!profile || person.id === profile.id) return;
+    const label = person.linked ? "member" : "invitation";
+    const explanation = person.linked
+      ? `Remove ${person.name} from the SDBP workspace? Their organisational history will remain, but they will lose access.`
+      : `Remove the invitation for ${person.name}? The invitation link will no longer grant workspace access.`;
+    if (!window.confirm(explanation)) return;
+
+    setAccessBusyId(person.id);
+    setAccessError("");
+    try {
+      await deactivateWorkspacePerson(person.id);
+      setAccessPeople((people) => people.filter((item) => item.id !== person.id));
+      setMessage(person.linked ? `${person.name} removed from the workspace.` : `Invitation for ${person.name} removed.`);
+      window.dispatchEvent(new Event("focus"));
+    } catch (removeError) {
+      setAccessError(readError(removeError));
+    } finally {
+      setAccessBusyId(null);
+    }
   }
 
   if (status === "loading") return <AuthShell><div className="auth-state"><span className="auth-spinner" /><h1>Opening SDBP</h1><p>Checking your access.</p></div></AuthShell>;
@@ -193,7 +259,20 @@ export function AuthenticatedLaunch() {
 
   if (status === "error") return <AuthShell><div className="auth-card"><span className="section-kicker">Connection</span><h1>We could not open the workspace.</h1><p>{error}</p><div className="auth-actions"><button className="primary" onClick={() => void resolveUser()}>Try again</button><button className="secondary" onClick={() => void signOut()}>Sign out</button></div></div></AuthShell>;
 
-  return <>{profile && <div className="auth-session-chip"><div><strong>{profile.name}</strong><small>{message || "Shared SDBP workspace"}</small></div><div className="auth-session-actions"><button onClick={() => { setMessage(""); setError(""); setPasswordEditor(true); }}>Password</button><button onClick={() => void signOut()}>Sign out</button></div></div>}{profile && <Prototype liveProfile={profile} />}</>;
+  return <>{profile && <div className="auth-session-chip"><div><strong>{profile.name}</strong><small>{message || "Shared SDBP workspace"}</small></div><div className="auth-session-actions">{canManageAccess && <button onClick={() => void openAccessManager()}>People access</button>}<button onClick={() => { setMessage(""); setError(""); setPasswordEditor(true); }}>Password</button><button onClick={() => void signOut()}>Sign out</button></div></div>}{profile && <Prototype liveProfile={profile} />}{profile && accessOpen && <AccessManager people={accessPeople} currentProfileId={profile.id} loading={accessLoading} busyId={accessBusyId} error={accessError} onResend={resendInvitation} onRemove={removeAccess} onClose={() => setAccessOpen(false)} />}</>;
+}
+
+function AccessManager({ people, currentProfileId, loading, busyId, error, onResend, onRemove, onClose }: {
+  people: WorkspacePerson[];
+  currentProfileId: string;
+  loading: boolean;
+  busyId: string | null;
+  error: string;
+  onResend: (person: WorkspacePerson) => Promise<void>;
+  onRemove: (person: WorkspacePerson) => Promise<void>;
+  onClose: () => void;
+}) {
+  return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="workflow-editor compact-modal" role="dialog" aria-modal="true"><div className="editor-head"><div><span className="section-kicker">People access</span><h2>Invitations and members</h2></div><button className="quiet editor-close" onClick={onClose}>×</button></div><p className="editor-note">Removing a member revokes workspace access but keeps their past organisational work and records intact.</p>{loading ? <div className="auth-state"><span className="auth-spinner" /><p>Loading people…</p></div> : <div className="access-people-list">{people.map((person) => <article className="access-person-row" key={person.id}><div><strong>{person.name}</strong><small>{person.email}</small><span>{person.linked ? "Active member" : "Invitation pending"}</span></div><div className="auth-actions">{!person.linked && <button className="secondary small" disabled={busyId === person.id} onClick={() => void onResend(person)}>{busyId === person.id ? "Sending…" : "Resend invitation"}</button>}{person.id !== currentProfileId && <button className="danger small" disabled={busyId === person.id} onClick={() => void onRemove(person)}>{person.linked ? "Remove member" : "Remove invitation"}</button>}</div></article>)}</div>}{error && <div className="auth-message error">{error}</div>}<div className="editor-actions"><div /><button className="secondary" onClick={onClose}>Close</button></div></section></div>;
 }
 
 function AuthShell({ children }: { children: React.ReactNode }) {
@@ -212,4 +291,8 @@ function readAuthenticationMethods(accessToken?: string) {
   } catch {
     return [] as string[];
   }
+}
+
+function readError(error: unknown) {
+  return error instanceof Error ? error.message : "Something could not be saved.";
 }
