@@ -91,6 +91,7 @@ as $$
 $$;
 
 revoke all on function public.president_role_id() from public;
+grant execute on function public.president_role_id() to authenticated;
 
 create or replace function public.is_current_president()
 returns boolean
