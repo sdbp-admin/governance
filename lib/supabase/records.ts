@@ -201,6 +201,31 @@ export async function updateRecordFollowUps(recordId: string, followups: RecordF
   if (error) throw error;
 }
 
+export async function deleteRecord(recordId: string) {
+  const { data: versions, error: versionsError } = await supabase
+    .from("record_versions")
+    .select("storage_path")
+    .eq("record_id", recordId);
+
+  if (versionsError) throw versionsError;
+
+  const paths = (versions ?? [])
+    .map((version) => version.storage_path as string | null)
+    .filter((path): path is string => Boolean(path));
+
+  const { error: deleteError } = await supabase
+    .from("records")
+    .delete()
+    .eq("id", recordId);
+
+  if (deleteError) throw deleteError;
+
+  if (paths.length > 0) {
+    const { error: storageError } = await supabase.storage.from(RECORDS_BUCKET).remove(paths);
+    if (storageError) console.warn("Record row deleted, but one or more stored files could not be removed.", storageError);
+  }
+}
+
 export async function createRecordSignedUrl(storagePath: string, download = false) {
   const { data, error } = await supabase.storage
     .from(RECORDS_BUCKET)
