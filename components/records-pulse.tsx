@@ -2,11 +2,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Action, AttentionItem, GovernanceProposal, Tension } from "@/lib/domain";
+import type { RecordFollowUp } from "@/lib/records-followups";
 import { PROTOTYPE_TODAY, formatTensionStatus, personName } from "@/lib/prototype-utils";
 import { RecordsView as LiveRecordsView } from "@/components/records-view";
 import { supabase } from "@/lib/supabase/client";
 
-export function RecordsView({ governanceProposals, tensions }: { governanceProposals: GovernanceProposal[]; tensions: Tension[] }) {
+export function RecordsView({ governanceProposals, tensions, onCaptureFollowUp, onNotice }: {
+  governanceProposals: GovernanceProposal[];
+  tensions: Tension[];
+  onCaptureFollowUp?: (sourceTitle: string, followup: RecordFollowUp) => Promise<boolean>;
+  onNotice?: (message: string) => void;
+}) {
   const [profileId, setProfileId] = useState<string | undefined>();
 
   useEffect(() => {
@@ -30,7 +36,13 @@ export function RecordsView({ governanceProposals, tensions }: { governancePropo
     return () => { cancelled = true; };
   }, []);
 
-  return <LiveRecordsView governanceProposals={governanceProposals} tensions={tensions} profileId={profileId} />;
+  return <LiveRecordsView
+    governanceProposals={governanceProposals}
+    tensions={tensions}
+    profileId={profileId}
+    onCaptureFollowUp={onCaptureFollowUp}
+    onNotice={onNotice}
+  />;
 }
 
 export function PulseView({ attention, actions, tensions }: { attention: AttentionItem[]; actions: Action[]; tensions: Tension[] }) {
