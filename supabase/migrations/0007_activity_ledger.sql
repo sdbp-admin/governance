@@ -165,6 +165,38 @@ create trigger log_record_activity
 after update of deleted_at on public.records
 for each row execute function public.log_record_activity();
 
+-- A direct DELETE against a real stored record is converted to the same reversible
+-- removal. Empty record shells created during a failed upload may still be cleaned up.
+create or replace function public.prevent_record_hard_delete()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if exists (
+    select 1
+    from public.record_versions rv
+    where rv.record_id = old.id
+  ) then
+    update public.records
+    set deleted_at = coalesce(deleted_at, now()),
+        updated_at = now()
+    where id = old.id;
+    return null;
+  end if;
+
+  return old;
+end;
+$$;
+
+revoke all on function public.prevent_record_hard_delete() from public;
+
+drop trigger if exists prevent_record_hard_delete on public.records;
+create trigger prevent_record_hard_delete
+before delete on public.records
+for each row execute function public.prevent_record_hard_delete();
+
 create or replace function public.log_record_version_activity()
 returns trigger
 language plpgsql
@@ -304,8 +336,13 @@ declare
   v_person_name text;
   v_president_role_id uuid;
 begin
-  v_role_id := case when tg_op = 'DELETE' then old.role_id else new.role_id end;
-  v_person_id := case when tg_op = 'DELETE' then old.person_id else new.person_id end;
+  if tg_op = 'DELETE' then
+    v_role_id := old.role_id;
+    v_person_id := old.person_id;
+  else
+    v_role_id := new.role_id;
+    v_person_id := new.person_id;
+  end if;
 
   select r.title into v_role_title from public.roles r where r.id = v_role_id;
   select p.name into v_person_name from public.people p where p.id = v_person_id;
@@ -321,7 +358,11 @@ begin
         jsonb_build_object('person_id', v_person_id)
       );
     end if;
-    return case when tg_op = 'DELETE' then old else new end;
+
+    if tg_op = 'DELETE' then
+      return old;
+    end if;
+    return new;
   end if;
 
   if tg_op = 'INSERT' and new.ends_on is null then
@@ -350,7 +391,10 @@ begin
     );
   end if;
 
-  return case when tg_op = 'DELETE' then old else new end;
+  if tg_op = 'DELETE' then
+    return old;
+  end if;
+  return new;
 end;
 $$;
 
