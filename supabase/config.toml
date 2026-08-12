@@ -1,0 +1,2 @@
+[functions.tension-notify]
+verify_jwt = true
