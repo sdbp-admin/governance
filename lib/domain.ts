@@ -1,4 +1,4 @@
-export type AttentionKind = "project_update" | "action" | "tension" | "governance";
+export type AttentionKind = "project_update" | "action" | "tension" | "governance" | "comment";
 export type AttentionStatus = "needs_action" | "deferred" | "done";
 
 export type Person = {
@@ -41,6 +41,7 @@ export type Action = {
   ownerId: string;
   status: "proposed" | "open" | "done" | "cancelled";
   due?: string;
+  projectId?: string;
   source?: string;
   sourceTensionId?: string;
 };
@@ -63,6 +64,7 @@ export type AttentionItem = {
   ownerId: string;
   kind: AttentionKind;
   targetId?: string;
+  signalId?: string;
   title: string;
   reason: string;
   primaryAction: string;
