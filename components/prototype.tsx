@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { LaunchApp } from "@/components/launch-app";
+import { ProjectSettings } from "@/components/project-settings";
 import { TacticalMeeting } from "@/components/tactical-meeting";
 import styles from "@/components/tactical-meeting.module.css";
 import { supabase } from "@/lib/supabase/client";
@@ -40,8 +41,6 @@ export function Prototype({ liveProfile }: { liveProfile?: LiveProfile }) {
       const visibleStage = card?.querySelector(".governance-stage-badge")?.textContent?.trim();
       if (!card || !title || !proposalText) return;
 
-      // Open synchronously while the click still carries browser user activation.
-      // This prevents popup blockers from turning the meeting back into same-tab navigation.
       const meetingWindow = window.open("about:blank", "_blank");
       if (!meetingWindow) return;
 
@@ -107,6 +106,7 @@ export function Prototype({ liveProfile }: { liveProfile?: LiveProfile }) {
 
   return <>
     <LaunchApp liveProfile={liveProfile} />
+    {liveProfile && !governanceMeetingMode && <ProjectSettings />}
     {liveProfile && !governanceMeetingMode && <button className={styles.launcher} type="button" onClick={launchTacticalMeeting} title="Open a live facilitation view in a separate tab">
       <strong>Start tactical meeting</strong>
       <span>For a live online meeting</span>
