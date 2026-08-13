@@ -84,7 +84,7 @@ export type AttentionItem = {
   ownerId: string;
   kind: AttentionKind;
   targetId?: string;
-  signalId?: string;
+  signalId?: any;
   title: string;
   reason: string;
   primaryAction: string;
