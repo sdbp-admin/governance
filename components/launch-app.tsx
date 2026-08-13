@@ -4,8 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AttentionItem, GovernanceProposal, GovernanceStage, Project, RoleDefinition, Tension } from "@/lib/domain";
 import { RecordsView } from "@/components/records-view";
 import { CompassModal, HelpTip } from "@/components/guidance";
+import { WorkspaceWorkView } from "@/components/work-view";
 import {
   acceptGovernanceProposal,
+  acknowledgeAttentionSignal,
   canInvitePeople,
   completeProject,
   createAction,
@@ -18,6 +20,7 @@ import {
   saveGovernanceProposal,
   saveRole,
   setActionStatus,
+  setTensionNeed,
   todayISO,
   touchProject,
   updateProject,
@@ -31,7 +34,7 @@ type LiveProfile = { id: string; name: string; email: string };
 type NoticeFn = (message: string) => void;
 type TensionNeed = "input" | "sync";
 
-const EMPTY_WORKSPACE: WorkspaceData = { people: [], roles: [], projects: [], actions: [], tensions: [], governanceProposals: [] };
+const EMPTY_WORKSPACE: WorkspaceData = { people: [], roles: [], projects: [], actions: [], tensions: [], governanceProposals: [], attentionSignals: [] };
 
 const LABELS: Record<View, string> = {
   attention: "My Attention",
@@ -61,6 +64,7 @@ export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
   const [notice, setNotice] = useState("");
   const [inviteAllowed, setInviteAllowed] = useState(false);
   const [projectEditorId, setProjectEditorId] = useState<string | null>(null);
+  const [projectCommentsId, setProjectCommentsId] = useState<string | null>(null);
   const [activeMeetingId, setActiveMeetingId] = useState<string | null>(null);
   const [compassOpen, setCompassOpen] = useState(false);
 
@@ -131,6 +135,15 @@ export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
       setView("work");
       return;
     }
+    if (item.kind === "comment" && item.targetId) {
+      if (item.signalId) {
+        const ok = await run(() => acknowledgeAttentionSignal(item.signalId!));
+        if (!ok) return;
+      }
+      setProjectCommentsId(item.targetId);
+      setView("work");
+      return;
+    }
     if (item.kind === "action" && item.targetId) {
       const action = workspace.actions.find((candidate) => candidate.id === item.targetId);
       if (!action) return;
@@ -145,8 +158,8 @@ export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
     if (item.kind === "governance") setView("governance");
   }
 
-  async function addOwnAction(title: string) {
-    return run(() => createAction({ title, ownerId: currentUserId, status: "open" }), "Action added.");
+  async function addOwnAction(input: { title: string; projectId?: string; due?: string }) {
+    return run(() => createAction({ ...input, ownerId: currentUserId, status: "open" }), "Action added.");
   }
 
   async function addProject(input: { title: string; ownerId: string; participantIds: string[]; summary: string; sourceTensionId?: string }) {
@@ -184,14 +197,10 @@ export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
   }
 
   async function recordTensionNeed(tension: Tension, kind: TensionNeed, peopleIds: string[], detail: string) {
-    const names = peopleIds.map(personName).filter((name) => name !== "Unknown");
-    if (!names.length) return false;
-    const prefix = kind === "input" ? `Needs input or help from ${names.join(", ")}` : `Needs a real conversation with ${names.join(", ")}`;
-    const note = detail.trim() ? `${prefix} — ${detail.trim()}` : `${prefix}.`;
-    const status: Tension["status"] = kind === "sync" ? "needs_sync" : "open";
+    if (!peopleIds.length) return false;
     return run(
-      () => updateTension(tension.id, { status, resolutionProposedBy: null, latestNote: note }),
-      kind === "sync" ? "Conversation noted. Arrange it however is easiest." : "Need noted. Reach out however is easiest.",
+      () => setTensionNeed(tension.id, kind, peopleIds, detail),
+      kind === "sync" ? "Conversation noted. It now appears for the people you need." : "Need noted. It now appears for the people you need.",
     );
   }
 
@@ -249,7 +258,7 @@ export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
 
   return <div className="shell launch-shell">
     <aside className="sidebar">
-      <div className="brand-lockup"><div className="brand-mark" aria-hidden="true"><span /><span /></div><div className="brand">SDBP Governance<small>Structure · rhythm · memory</small></div></div>
+      <div className="brand-lockup"><div className="brand-mark" aria-hidden="true"><span /><span /></div><div className="brand">SDBP Workspace<small>Structure · rhythm · memory</small></div></div>
       <nav className="nav">{(Object.keys(LABELS) as View[]).map((key) => <button key={key} className={view === key ? "active" : ""} onClick={() => setView(key)}><strong>{LABELS[key]}</strong><small>{NAV_META[key]}</small></button>)}</nav>
       <div className="sidebar-foot launch-sidebar-foot"><div className="avatar">{liveProfile.name.charAt(0)}</div><div><strong>{liveProfile.name}</strong><small>Signed in</small></div><button className="sidebar-compass" type="button" onClick={() => setCompassOpen(true)}>Compass</button></div>
     </aside>
@@ -259,7 +268,7 @@ export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
       {error && <div className="records-status error launch-error">{error}</div>}
 
       {view === "attention" && <AttentionView items={attention} onPrimary={handleAttention} onRaiseTension={() => setView("tensions")} />}
-      {view === "work" && <WorkView workspace={workspace} currentUserId={currentUserId} personName={personName} personInitial={personInitial} onAddAction={addOwnAction} onAddProject={addProject} onCompleteAction={(id) => run(() => setActionStatus(id, "done"), "Action completed.")} onCompleteProject={markProjectComplete} onUpdateProject={setProjectEditorId} />}
+      {view === "work" && <WorkspaceWorkView workspace={workspace} currentUserId={currentUserId} personName={personName} personInitial={personInitial} onAddAction={addOwnAction} onAddProject={addProject} onCompleteAction={(id) => run(() => setActionStatus(id, "done"), "Action completed.")} onCompleteProject={markProjectComplete} onUpdateProject={setProjectEditorId} openCommentsProjectId={projectCommentsId} onCommentsOpened={() => setProjectCommentsId(null)} />}
       {view === "tensions" && <TensionsView workspace={workspace} currentUserId={currentUserId} personName={personName} onRaise={raiseTension} onMarkResolved={markTensionResolved} onKeepOpen={keepTensionOpen} onNeed={recordTensionNeed} onMoveGovernance={moveTensionToGovernance} onResolve={resolveWithNote} />}
       {view === "organisation" && <OrganisationView workspace={workspace} currentUserId={currentUserId} canInvite={inviteAllowed} personName={personName} onInvite={async (name, email) => { const ok = await run(() => invitePerson(name, email), `Invitation sent to ${email}.`); return ok; }} onSaveRole={async (role) => run(() => saveRole(role), "Role saved.")} onDeleteRole={async (id) => run(() => deleteRole(id), "Role removed.")} onOpenProject={() => setView("work")} />}
       {view === "governance" && <GovernanceView workspace={workspace} currentUserId={currentUserId} personName={personName} onCreateProposal={addProposal} onStartMeeting={startMeeting} onGoTensions={() => setView("tensions")} />}
@@ -297,7 +306,23 @@ function deriveAttention(workspace: WorkspaceData, userId: string, personName: (
 
   for (const action of workspace.actions) {
     if (action.ownerId !== userId || (action.status !== "proposed" && action.status !== "open")) continue;
-    items.push({ id: `action-${action.id}`, ownerId: userId, kind: "action", targetId: action.id, title: action.title, reason: action.status === "proposed" ? `${action.source ? `From ${action.source}. ` : ""}Accept it if this is your commitment.` : `${action.source ? `From ${action.source}. ` : ""}This is an open commitment.`, primaryAction: action.status === "proposed" ? "Accept action" : "Mark done", status: "needs_action", due: action.due });
+    const project = action.projectId ? workspace.projects.find((candidate) => candidate.id === action.projectId) : undefined;
+    const context = project ? `Project: ${project.title}. ` : "";
+    items.push({ id: `action-${action.id}`, ownerId: userId, kind: "action", targetId: action.id, title: action.title, reason: context + (action.status === "proposed" ? `${action.source ? `From ${action.source}. ` : ""}Accept it if this is your commitment.` : `${action.source ? `From ${action.source}. ` : ""}This is an open commitment.`), primaryAction: action.status === "proposed" ? "Accept action" : "Mark done", status: "needs_action", due: action.due });
+  }
+
+  for (const signal of workspace.attentionSignals ?? []) {
+    if (signal.recipientId !== userId) continue;
+    if (signal.signalType === "tension_need" && signal.tensionId) {
+      const tension = workspace.tensions.find((candidate) => candidate.id === signal.tensionId);
+      if (!tension || tension.status === "resolved" || tension.status === "governance" || tension.status === "awaiting_confirmation") continue;
+      items.push({ id: `signal-${signal.id}`, ownerId: userId, kind: "tension", targetId: tension.id, signalId: signal.id, title: tension.title, reason: `${personName(signal.createdBy ?? tension.raiserId)} needs you on this tension. ${signal.message}`, primaryAction: "Open tension", status: "needs_action" });
+    }
+    if (signal.signalType === "project_comment" && signal.projectId) {
+      const project = workspace.projects.find((candidate) => candidate.id === signal.projectId);
+      if (!project) continue;
+      items.push({ id: `signal-${signal.id}`, ownerId: userId, kind: "comment", targetId: project.id, signalId: signal.id, title: project.title, reason: signal.message, primaryAction: "Open comments", status: "needs_action" });
+    }
   }
 
   for (const tension of workspace.tensions) {
@@ -314,7 +339,7 @@ function deriveAttention(workspace: WorkspaceData, userId: string, personName: (
 function attentionWeight(item: AttentionItem) {
   if (item.kind === "action" && item.due && item.due < todayISO()) return 0;
   if (item.kind === "governance") return 1;
-  if (item.kind === "tension") return 2;
+  if (item.kind === "tension" || item.kind === "comment") return 2;
   if (item.kind === "action") return 3;
   return 4;
 }
