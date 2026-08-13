@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Project } from "@/lib/domain";
+import { WorkAttachmentsButton } from "@/components/work-attachments";
 import {
   addProjectComment,
   loadProjectComments,
@@ -80,6 +81,7 @@ export function WorkspaceWorkView({
             {project.ownerId === currentUserId && <button className="secondary small" onClick={() => onUpdateProject(project.id)}>Update</button>}
             <button className="quiet small" onClick={() => setHistoryProject(project)}>History</button>
             <button className="quiet small" onClick={() => setCommentsProject(project)}>Comments</button>
+            <WorkAttachmentsButton parentType="project" parentId={project.id} parentTitle={project.title} personName={personName} />
             {project.ownerId === currentUserId && <button className="quiet small" onClick={() => void onCompleteProject(project.id)}>Outcome achieved</button>}
           </div>
         </article>)}</div> : <div className="calm-empty compact-empty"><span>○</span><h3>No active projects yet</h3><p>Add them when they become real work.</p></div>}
