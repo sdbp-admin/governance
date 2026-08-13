@@ -42,12 +42,12 @@ begin
     raise exception 'Project not found.';
   end if;
 
-  select coalesce(array_agg(distinct person_id), '{}'::uuid[])
+  select coalesce(array_agg(distinct participant.person_id), '{}'::uuid[])
     into v_participants
-  from unnest(coalesce(new_participant_ids, '{}'::uuid[]) || array[new_owner_id]) as person_id
+  from unnest(coalesce(new_participant_ids, '{}'::uuid[]) || array[new_owner_id]) as participant(person_id)
   where exists (
     select 1 from public.people p
-    where p.id = person_id and p.active = true
+    where p.id = participant.person_id and p.active = true
   );
 
   update public.projects
