@@ -10,6 +10,7 @@ import { TensionsWorkspaceView } from "@/components/tensions-workspace-view";
 import { OrganisationWorkspaceView } from "@/components/organisation-workspace-view";
 import { GovernanceWorkspaceView } from "@/components/governance-workspace-view";
 import { WorkspaceGovernanceMeeting } from "@/components/governance-workspace-meeting";
+import { loadUrgentTensionIds, setTensionUrgency } from "@/lib/supabase/tension-urgency";
 import {
   acceptGovernanceProposal, acknowledgeAttentionSignal, canInvitePeople, chooseTensionPollOption,
   completeProject, createAction, createGovernanceProposal, createProject, createTension,
@@ -28,6 +29,7 @@ const NAV_META: Record<View,string> = { attention:"What needs you", work:"Projec
 
 export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
   const [workspace,setWorkspace]=useState<WorkspaceData>(EMPTY_WORKSPACE);
+  const [urgentTensionIds,setUrgentTensionIds]=useState<Set<string>>(new Set());
   const [view,setView]=useState<View>("attention");
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState("");
@@ -42,7 +44,7 @@ export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
   const refresh=useCallback(async(quiet=false)=>{
     if(!liveProfile)return;
     if(!quiet)setLoading(true);
-    try{const[next,canInvite]=await Promise.all([loadWorkspace(),canInvitePeople()]);setWorkspace(next);setInviteAllowed(canInvite);setError("");}
+    try{const[next,canInvite,urgentIds]=await Promise.all([loadWorkspace(),canInvitePeople(),loadUrgentTensionIds()]);setWorkspace(next);setInviteAllowed(canInvite);setUrgentTensionIds(urgentIds);setError("");}
     catch(e){setError(readError(e));}
     finally{if(!quiet)setLoading(false);}
   },[liveProfile]);
@@ -61,7 +63,7 @@ export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
   const peopleById=useMemo(()=>new Map(workspace.people.map(p=>[p.id,p])),[workspace.people]);
   const personName=(id:string)=>peopleById.get(id)?.name??"Unknown";
   const personInitial=(id:string)=>personName(id).charAt(0).toUpperCase();
-  const attention=useMemo(()=>deriveAttention(workspace,currentUserId,personName),[workspace,currentUserId]);
+  const attention=useMemo(()=>deriveAttention(workspace,currentUserId,personName,urgentTensionIds),[workspace,currentUserId,urgentTensionIds]);
   const activeMeeting=activeMeetingId?workspace.governanceProposals.find(p=>p.id===activeMeetingId):undefined;
 
   async function run(action:()=>Promise<void>,success?:string){
@@ -90,6 +92,7 @@ export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
   async function recordTensionNeed(t:Tension,k:TensionNeed,ids:string[],detail:string){if(!ids.length)return false;return run(()=>setTensionNeed(t.id,k,ids,detail),k==="sync"?"Conversation noted. It now appears for the people you need.":"Need noted. It now appears for the people you need.");}
   async function moveTensionToGovernance(t:Tension){if(await run(()=>updateTension(t.id,{status:"governance",resolutionProposedBy:null,latestNote:"This tension needs a change to an ongoing role, responsibility, authority or standing way of working."}),"Moved to Governance."))setView("governance");}
   async function resolveWithNote(t:Tension,note:string){await run(()=>updateTension(t.id,{status:"resolved",resolutionProposedBy:null,latestNote:note}),"Tension resolved.");}
+  async function changeTensionUrgency(t:Tension,urgent:boolean){return run(()=>setTensionUrgency(t.id,urgent),urgent?"Tension marked urgent.":"Urgent flag removed.");}
   const addTensionPoll=(id:string,times:string[])=>run(()=>createTensionPoll(id,times),"Availability poll created.");
   const saveTensionPollVote=(id:string,options:string[])=>run(()=>voteTensionPoll(id,options),"Availability saved.");
   const choosePollTime=(id:string,option:string)=>run(()=>chooseTensionPollOption(id,option),"Meeting time chosen.");
@@ -110,13 +113,13 @@ export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
   return <div className="shell launch-shell">
     <aside className="sidebar"><div className="brand-lockup"><div className="brand-mark" aria-hidden="true"><span/><span/></div><div className="brand">SDBP Workspace<small>Structure · rhythm · memory</small></div></div><nav className="nav">{(Object.keys(LABELS) as View[]).map(key=><button key={key} className={view===key?"active":""} onClick={()=>setView(key)}><strong>{LABELS[key]}</strong><small>{NAV_META[key]}</small></button>)}</nav><div className="sidebar-foot launch-sidebar-foot"><div className="avatar">{liveProfile.name.charAt(0)}</div><div><strong>{liveProfile.name}</strong><small>Signed in</small></div><button className="sidebar-compass" type="button" onClick={()=>setCompassOpen(true)}>Compass</button></div></aside>
     <main className="main"><PageHeader view={view} attentionCount={attention.length} currentName={liveProfile.name}/>{error&&<div className="records-status error launch-error">{error}</div>}
-      {view==="attention"&&<AttentionView items={attention} onPrimary={handleAttention} onRaiseTension={()=>setView("tensions")}/>}
+      {view==="attention"&&<AttentionView items={attention} urgentTensionIds={urgentTensionIds} onPrimary={handleAttention} onRaiseTension={()=>setView("tensions")}/>}
       {view==="work"&&<WorkspaceWorkView workspace={workspace} currentUserId={currentUserId} personName={personName} personInitial={personInitial} onAddAction={addOwnAction} onAddProject={addProject} onCompleteAction={id=>run(()=>setActionStatus(id,"done"),"Action completed.")} onCompleteProject={markProjectComplete} onUpdateProject={setProjectEditorId} openCommentsProjectId={projectCommentsId} onCommentsOpened={()=>setProjectCommentsId(null)}/>}
-      {view==="tensions"&&<TensionsWorkspaceView workspace={workspace} currentUserId={currentUserId} personName={personName} onRaise={async title=>raiseTension(title)} onMarkResolved={markTensionResolved} onKeepOpen={keepTensionOpen} onNeed={recordTensionNeed} onMoveGovernance={moveTensionToGovernance} onResolve={resolveWithNote} onCreatePoll={addTensionPoll} onVotePoll={saveTensionPollVote} onChoosePoll={choosePollTime}/>}
+      {view==="tensions"&&<TensionsWorkspaceView workspace={workspace} currentUserId={currentUserId} personName={personName} urgentTensionIds={urgentTensionIds} onRaise={async title=>raiseTension(title)} onMarkResolved={markTensionResolved} onKeepOpen={keepTensionOpen} onNeed={recordTensionNeed} onMoveGovernance={moveTensionToGovernance} onResolve={resolveWithNote} onCreatePoll={addTensionPoll} onVotePoll={saveTensionPollVote} onChoosePoll={choosePollTime} onUrgency={changeTensionUrgency}/>}
       {view==="organisation"&&<OrganisationWorkspaceView workspace={workspace} currentUserId={currentUserId} canInvite={inviteAllowed} personName={personName} onInvite={async(name,email)=>{const ok=await run(()=>invitePerson(name,email),`Invitation sent to ${email}.`);return ok;}} onSaveRole={role=>run(()=>saveRole(role),"Role saved.")} onDeleteRole={id=>run(()=>deleteRole(id),"Role removed.")} onOpenProject={()=>setView("work")}/>}
       {view==="governance"&&<GovernanceWorkspaceView workspace={workspace} currentUserId={currentUserId} personName={personName} onCreateProposal={addProposal} onStartMeeting={startMeeting} onGoTensions={()=>setView("tensions")} onGoRecords={()=>setView("records")}/>}
       {view==="records"&&<RecordsView governanceProposals={workspace.governanceProposals} tensions={workspace.tensions} profileId={liveProfile.id} onNotice={setNotice}/>}
-      {view==="pulse"&&<PulseView workspace={workspace}/>}
+      {view==="pulse"&&<PulseView workspace={workspace} urgentTensionIds={urgentTensionIds}/>}
     </main>
     {notice&&<Toast message={notice}/>}
     {compassOpen&&<CompassModal onClose={()=>setCompassOpen(false)}/>}
@@ -140,7 +143,7 @@ function ProjectUpdateModal({project,onSave,onNoChange,onClose}:{project:Project
  const[summary,setSummary]=useState(project.summary);
  return <div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}><section className="workflow-editor compact-modal"><div className="editor-head"><div><span className="section-kicker">Project update</span><h2>{project.title}</h2></div><button className="quiet editor-close" onClick={onClose}>×</button></div><p className="editor-note">Has anything meaningfully changed? Keep this short. The app needs current reality, not a report.</p><label className="field"><span>Current state</span><textarea rows={5} value={summary} onChange={e=>setSummary(e.target.value)}/></label><div className="workflow-choice-row"><button className="secondary" onClick={()=>void onNoChange(project.id)}>No change</button><button className="primary" onClick={()=>void onSave(project.id,summary)}>Save update</button></div></section></div>;
 }
-function PulseView({workspace}:{workspace:WorkspaceData}){const today=todayISO();const overdue=workspace.actions.filter(a=>(a.status==="open"||a.status==="proposed")&&a.due&&a.due<today).length;const updates=workspace.projects.filter(p=>p.status==="active"&&p.nextPrompt<=today).length;const tensions=workspace.tensions.filter(t=>t.status!=="resolved").length;const governance=workspace.governanceProposals.filter(p=>p.stage!=="accepted").length+workspace.tensions.filter(t=>t.status==="governance"&&!workspace.governanceProposals.some(p=>p.tensionId===t.id)).length;return <><div className="pulse-reminder"><strong>Look for stuck work, not scores.</strong><p>Pulse is only a signal for where a conversation or update may be needed.</p></div><div className="pulse-grid launch-pulse-grid"><PulseCard label="Project updates due" value={updates}/><PulseCard label="Overdue actions" value={overdue}/><PulseCard label="Open tensions" value={tensions}/><PulseCard label="Governance waiting" value={governance}/></div></>}
+function PulseView({workspace,urgentTensionIds}:{workspace:WorkspaceData;urgentTensionIds:ReadonlySet<string>}){const today=todayISO();const overdue=workspace.actions.filter(a=>(a.status==="open"||a.status==="proposed")&&a.due&&a.due<today).length;const updates=workspace.projects.filter(p=>p.status==="active"&&p.nextPrompt<=today).length;const tensions=workspace.tensions.filter(t=>t.status!=="resolved").length;const urgent=workspace.tensions.filter(t=>t.status!=="resolved"&&urgentTensionIds.has(t.id)).length;const governance=workspace.governanceProposals.filter(p=>p.stage!=="accepted").length+workspace.tensions.filter(t=>t.status==="governance"&&!workspace.governanceProposals.some(p=>p.tensionId===t.id)).length;return <><div className="pulse-reminder"><strong>Look for stuck work, not scores.</strong><p>Pulse is only a signal for where a conversation or update may be needed. Urgent means a tension-holder explicitly flagged that tension for fast attention.</p></div><div className="pulse-grid launch-pulse-grid"><PulseCard label="Project updates due" value={updates}/><PulseCard label="Overdue actions" value={overdue}/><PulseCard label="Open tensions" value={tensions}/><PulseCard label="Urgent tensions" value={urgent}/><PulseCard label="Governance waiting" value={governance}/></div></>}
 function PulseCard({label,value}:{label:string;value:number}){return <article className="pulse-card"><span className="kind">{label}</span><strong>{value}</strong></article>}
 function Toast({message}:{message:string}){return <div className="save-toast" role="status"><span>✓</span>{message}</div>}
 function readError(error:unknown){return error instanceof Error?error.message:"Something could not be saved."}
