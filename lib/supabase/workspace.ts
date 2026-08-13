@@ -1,4 +1,14 @@
-import type { Action, GovernanceProposal, Person, Project, RoleDefinition, Tension } from "@/lib/domain";
+import type {
+  Action,
+  GovernanceEffect,
+  GovernanceProposal,
+  Person,
+  Project,
+  RoleDefinition,
+  StandingAgreement,
+  Tension,
+  TensionPoll,
+} from "@/lib/domain";
 import { supabase } from "@/lib/supabase/client";
 
 export type WorkspacePerson = Person & {
@@ -41,6 +51,7 @@ export type WorkspaceData = {
   actions: Action[];
   tensions: Tension[];
   governanceProposals: GovernanceProposal[];
+  standingAgreements: StandingAgreement[];
   attentionSignals?: WorkspaceAttentionSignal[];
 };
 
@@ -55,7 +66,6 @@ type RoleRow = {
   source: string;
   definition_status: "draft" | "defined";
 };
-
 type AssignmentRow = { role_id: string; person_id: string; ends_on: string | null };
 type ProjectRow = {
   id: string;
@@ -126,6 +136,19 @@ type ProjectCommentRow = {
   body: string;
   created_at: string;
 };
+type StandingAgreementRow = {
+  id: string;
+  category: StandingAgreement["category"];
+  title: string;
+  body: string;
+  status: StandingAgreement["status"];
+  source_proposal_id: string | null;
+  updated_at: string;
+};
+type PollRow = { id: string; tension_id: string; chosen_option_id: string | null };
+type PollOptionRow = { id: string; poll_id: string; starts_at: string };
+type PollParticipantRow = { poll_id: string; person_id: string };
+type PollVoteRow = { poll_id: string; option_id: string; person_id: string; available: boolean };
 
 export async function loadWorkspace(): Promise<WorkspaceData> {
   const [peopleResult, rolesResult, assignmentsResult, projectsResult, actionsResult, tensionsResult, proposalsResult, attentionResult] = await Promise.all([
@@ -156,6 +179,18 @@ export async function loadWorkspace(): Promise<WorkspaceData> {
     status: row.definition_status,
   }));
 
+  const effectByProposal = new Map<string, GovernanceEffect>();
+  const effectResult = await supabase.from("governance_proposals").select("id,governance_effect");
+  if (!effectResult.error) {
+    for (const row of effectResult.data ?? []) {
+      if (row.governance_effect) effectByProposal.set(row.id as string, row.governance_effect as GovernanceEffect);
+    }
+  } else if (!isOptionalSchemaError(effectResult.error)) {
+    throw effectResult.error;
+  }
+
+  const standingAgreements = await loadOptionalStandingAgreements();
+  const pollsByTension = await loadOptionalTensionPolls();
   const roleTitle = new Map(roles.map((role) => [role.id, role.title]));
 
   return {
@@ -198,6 +233,7 @@ export async function loadWorkspace(): Promise<WorkspaceData> {
       resolutionProposedBy: row.resolution_proposed_by ?? undefined,
       latestNote: row.latest_note ?? undefined,
       createdAt: dateOnly(row.created_at),
+      poll: pollsByTension.get(row.id),
     })),
     governanceProposals: ((proposalsResult.data ?? []) as ProposalRow[]).map((row): GovernanceProposal => ({
       id: row.id,
@@ -207,9 +243,11 @@ export async function loadWorkspace(): Promise<WorkspaceData> {
       proposerId: row.proposer_id,
       stage: row.stage,
       meetingNotes: row.meeting_notes ?? {},
+      governanceEffect: effectByProposal.get(row.id),
       createdAt: dateOnly(row.created_at),
       acceptedAt: row.accepted_at ? dateOnly(row.accepted_at) : undefined,
     })),
+    standingAgreements,
     attentionSignals: ((attentionResult.data ?? []) as AttentionSignalRow[]).map((row): WorkspaceAttentionSignal => ({
       id: row.id,
       recipientId: row.recipient_id,
@@ -223,6 +261,66 @@ export async function loadWorkspace(): Promise<WorkspaceData> {
   };
 }
 
+async function loadOptionalStandingAgreements(): Promise<StandingAgreement[]> {
+  const result = await supabase
+    .from("standing_agreements")
+    .select("id,category,title,body,status,source_proposal_id,updated_at")
+    .order("category")
+    .order("title");
+  if (result.error) {
+    if (isOptionalSchemaError(result.error)) return [];
+    throw result.error;
+  }
+  return ((result.data ?? []) as StandingAgreementRow[]).map((row) => ({
+    id: row.id,
+    category: row.category,
+    title: row.title,
+    body: row.body,
+    status: row.status,
+    sourceProposalId: row.source_proposal_id ?? undefined,
+    updatedAt: row.updated_at,
+  }));
+}
+
+async function loadOptionalTensionPolls(): Promise<Map<string, TensionPoll>> {
+  const [polls, options, participants, votes] = await Promise.all([
+    supabase.from("tension_polls").select("id,tension_id,chosen_option_id"),
+    supabase.from("tension_poll_options").select("id,poll_id,starts_at").order("starts_at"),
+    supabase.from("tension_poll_participants").select("poll_id,person_id"),
+    supabase.from("tension_poll_votes").select("poll_id,option_id,person_id,available"),
+  ]);
+
+  const firstError = polls.error || options.error || participants.error || votes.error;
+  if (firstError) {
+    if (isOptionalSchemaError(firstError)) return new Map();
+    throw firstError;
+  }
+
+  const pollRows = (polls.data ?? []) as PollRow[];
+  const optionRows = (options.data ?? []) as PollOptionRow[];
+  const participantRows = (participants.data ?? []) as PollParticipantRow[];
+  const voteRows = (votes.data ?? []) as PollVoteRow[];
+  const byTension = new Map<string, TensionPoll>();
+
+  for (const poll of pollRows) {
+    byTension.set(poll.tension_id, {
+      id: poll.id,
+      tensionId: poll.tension_id,
+      participantIds: participantRows.filter((row) => row.poll_id === poll.id).map((row) => row.person_id),
+      chosenOptionId: poll.chosen_option_id ?? undefined,
+      options: optionRows.filter((row) => row.poll_id === poll.id).map((option) => ({
+        id: option.id,
+        startsAt: option.starts_at,
+        votes: voteRows.filter((vote) => vote.poll_id === poll.id && vote.option_id === option.id).map((vote) => ({
+          personId: vote.person_id,
+          available: vote.available,
+        })),
+      })),
+    });
+  }
+  return byTension;
+}
+
 export async function canInvitePeople() {
   const { data, error } = await supabase.rpc("can_invite_people");
   if (error) throw error;
@@ -234,21 +332,14 @@ export async function invitePerson(name: string, email: string) {
   const cleanEmail = email.trim().toLowerCase();
   if (!cleanName || !cleanEmail) throw new Error("Name and email are required.");
 
-  const { data: existing, error: existingError } = await supabase
-    .from("people")
-    .select("id,active")
-    .ilike("email", cleanEmail)
-    .maybeSingle();
+  const { data: existing, error: existingError } = await supabase.from("people").select("id,active").ilike("email", cleanEmail).maybeSingle();
   if (existingError) throw existingError;
 
   if (!existing) {
     const { error: insertError } = await supabase.from("people").insert({ name: cleanName, email: cleanEmail, active: true });
     if (insertError) throw insertError;
   } else if (!existing.active) {
-    const { error: reactivateError } = await supabase.rpc("reactivate_workspace_person", {
-      target_email: cleanEmail,
-      target_name: cleanName,
-    });
+    const { error: reactivateError } = await supabase.rpc("reactivate_workspace_person", { target_email: cleanEmail, target_name: cleanName });
     if (reactivateError) throw reactivateError;
   }
 
@@ -274,12 +365,10 @@ export async function saveRole(role: RoleDefinition) {
     updated_at: new Date().toISOString(),
   });
   if (roleError) throw roleError;
-
   if (isPresidentRole(role)) return;
 
   const { error: deleteError } = await supabase.from("role_assignments").delete().eq("role_id", role.id).is("ends_on", null);
   if (deleteError) throw deleteError;
-
   if (role.holderIds.length) {
     const { error: assignmentError } = await supabase.from("role_assignments").insert(role.holderIds.map((personId) => ({ role_id: role.id, person_id: personId })));
     if (assignmentError) throw assignmentError;
@@ -367,14 +456,24 @@ export async function createTension(input: { title: string; raiserId: string; pr
 }
 
 export async function setTensionNeed(tensionId: string, kind: "input" | "sync", recipientIds: string[], detail: string) {
-  const { error } = await supabase.rpc("set_tension_need", {
-    target_tension_id: tensionId,
-    need_kind: kind,
-    recipient_ids: recipientIds,
-    detail,
-  });
+  const { error } = await supabase.rpc("set_tension_need", { target_tension_id: tensionId, need_kind: kind, recipient_ids: recipientIds, detail });
   if (error) throw error;
   await notifyTensionChange(tensionId);
+}
+
+export async function createTensionPoll(tensionId: string, optionTimes: string[]) {
+  const { error } = await supabase.rpc("create_tension_poll", { target_tension_id: tensionId, option_times: optionTimes });
+  if (error) throw error;
+}
+
+export async function voteTensionPoll(pollId: string, availableOptionIds: string[]) {
+  const { error } = await supabase.rpc("vote_tension_poll", { target_poll_id: pollId, available_option_ids: availableOptionIds });
+  if (error) throw error;
+}
+
+export async function chooseTensionPollOption(pollId: string, optionId: string) {
+  const { error } = await supabase.rpc("choose_tension_poll_option", { target_poll_id: pollId, target_option_id: optionId });
+  if (error) throw error;
 }
 
 export async function acknowledgeAttentionSignal(signalId: string) {
@@ -383,43 +482,19 @@ export async function acknowledgeAttentionSignal(signalId: string) {
 }
 
 export async function loadProjectUpdates(projectId: string): Promise<ProjectUpdateEntry[]> {
-  const { data, error } = await supabase
-    .from("project_updates")
-    .select("id,project_id,author_id,update_kind,summary,created_at")
-    .eq("project_id", projectId)
-    .order("created_at", { ascending: false });
+  const { data, error } = await supabase.from("project_updates").select("id,project_id,author_id,update_kind,summary,created_at").eq("project_id", projectId).order("created_at", { ascending: false });
   if (error) throw error;
-  return ((data ?? []) as ProjectUpdateRow[]).map((row) => ({
-    id: row.id,
-    projectId: row.project_id,
-    authorId: row.author_id ?? undefined,
-    updateKind: row.update_kind,
-    summary: row.summary,
-    createdAt: row.created_at,
-  }));
+  return ((data ?? []) as ProjectUpdateRow[]).map((row) => ({ id: row.id, projectId: row.project_id, authorId: row.author_id ?? undefined, updateKind: row.update_kind, summary: row.summary, createdAt: row.created_at }));
 }
 
 export async function loadProjectComments(projectId: string): Promise<ProjectCommentEntry[]> {
-  const { data, error } = await supabase
-    .from("project_comments")
-    .select("id,project_id,author_id,body,created_at")
-    .eq("project_id", projectId)
-    .order("created_at", { ascending: true });
+  const { data, error } = await supabase.from("project_comments").select("id,project_id,author_id,body,created_at").eq("project_id", projectId).order("created_at", { ascending: true });
   if (error) throw error;
-  return ((data ?? []) as ProjectCommentRow[]).map((row) => ({
-    id: row.id,
-    projectId: row.project_id,
-    authorId: row.author_id,
-    body: row.body,
-    createdAt: row.created_at,
-  }));
+  return ((data ?? []) as ProjectCommentRow[]).map((row) => ({ id: row.id, projectId: row.project_id, authorId: row.author_id, body: row.body, createdAt: row.created_at }));
 }
 
 export async function addProjectComment(projectId: string, body: string) {
-  const { error } = await supabase.rpc("add_project_comment", {
-    target_project_id: projectId,
-    comment_body: body.trim(),
-  });
+  const { error } = await supabase.rpc("add_project_comment", { target_project_id: projectId, comment_body: body.trim() });
   if (error) throw error;
 }
 
@@ -431,13 +506,10 @@ export async function updateTension(tensionId: string, patch: Partial<{ status: 
   if (patch.status === "resolved") values.resolved_at = new Date().toISOString();
   const { error } = await supabase.from("tensions").update(values).eq("id", tensionId);
   if (error) throw error;
-
-  if (shouldNotifyTensionChange(patch)) {
-    await notifyTensionChange(tensionId);
-  }
+  if (shouldNotifyTensionChange(patch)) await notifyTensionChange(tensionId);
 }
 
-export async function createGovernanceProposal(input: { tensionId: string; title: string; proposal: string; proposerId: string }) {
+export async function createGovernanceProposal(input: { tensionId: string; title: string; proposal: string; proposerId: string; governanceEffect?: GovernanceEffect }) {
   const { error } = await supabase.from("governance_proposals").insert({
     tension_id: input.tensionId,
     title: input.title.trim(),
@@ -445,28 +517,46 @@ export async function createGovernanceProposal(input: { tensionId: string; title
     proposer_id: input.proposerId,
     stage: "prepared",
     meeting_notes: {},
+    governance_effect: input.governanceEffect ?? null,
   });
   if (error) throw error;
 }
 
 export async function saveGovernanceProposal(proposal: GovernanceProposal) {
-  const { error } = await supabase.from("governance_proposals").update({
+  const values = {
     proposal: proposal.proposal,
     stage: proposal.stage,
     meeting_notes: proposal.meetingNotes,
+    governance_effect: proposal.governanceEffect ?? null,
     accepted_at: proposal.stage === "accepted" ? (proposal.acceptedAt ? `${proposal.acceptedAt}T12:00:00Z` : new Date().toISOString()) : null,
     updated_at: new Date().toISOString(),
-  }).eq("id", proposal.id);
-  if (error) throw error;
+  };
+  const { error } = await supabase.from("governance_proposals").update(values).eq("id", proposal.id);
+  if (error) {
+    if (!proposal.governanceEffect && isOptionalSchemaError(error)) {
+      const { error: legacyError } = await supabase.from("governance_proposals").update({
+        proposal: proposal.proposal,
+        stage: proposal.stage,
+        meeting_notes: proposal.meetingNotes,
+        accepted_at: values.accepted_at,
+        updated_at: values.updated_at,
+      }).eq("id", proposal.id);
+      if (legacyError) throw legacyError;
+      return;
+    }
+    throw error;
+  }
 }
 
 export async function acceptGovernanceProposal(proposal: GovernanceProposal) {
-  await saveGovernanceProposal({ ...proposal, stage: "accepted", acceptedAt: todayISO() });
-  await updateTension(proposal.tensionId, {
-    status: "resolved",
-    resolutionProposedBy: null,
-    latestNote: `Governance proposal accepted: “${proposal.title}”.`,
+  if (!proposal.governanceEffect) throw new Error("Define where this governance change will live before accepting it.");
+  const { error } = await supabase.rpc("accept_governance_proposal_with_effect", {
+    target_proposal_id: proposal.id,
+    final_proposal: proposal.proposal,
+    final_meeting_notes: proposal.meetingNotes,
+    final_effect: proposal.governanceEffect,
   });
+  if (error) throw error;
 }
 
 export function todayISO() {
@@ -499,11 +589,13 @@ function shouldNotifyTensionChange(patch: Partial<{ status: Tension["status"]; l
   return note.startsWith("Needs input or help from ") || note.startsWith("Needs a real conversation with ");
 }
 
+function isOptionalSchemaError(error: { code?: string; message?: string }) {
+  return error.code === "42P01" || error.code === "42703" || error.code === "PGRST204" || /does not exist|schema cache/i.test(error.message ?? "");
+}
+
 async function notifyTensionChange(tensionId: string) {
   try {
-    const { error } = await supabase.functions.invoke("tension-notify", {
-      body: { tensionId },
-    });
+    const { error } = await supabase.functions.invoke("tension-notify", { body: { tensionId } });
     if (error) console.warn("Tension email notification failed", error);
   } catch (error) {
     console.warn("Tension email notification failed", error);
