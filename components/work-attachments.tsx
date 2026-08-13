@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   addWorkLink,
   createWorkFileSignedUrl,
@@ -27,7 +28,10 @@ export function WorkAttachmentsButton({
   const [open, setOpen] = useState(false);
   return <>
     <button className="quiet small" type="button" onClick={() => setOpen(true)}>Files &amp; links</button>
-    {open && <WorkAttachmentsModal parentType={parentType} parentId={parentId} parentTitle={parentTitle} personName={personName} onClose={() => setOpen(false)} />}
+    {open && typeof document !== "undefined" ? createPortal(
+      <WorkAttachmentsModal parentType={parentType} parentId={parentId} parentTitle={parentTitle} personName={personName} onClose={() => setOpen(false)} />,
+      document.body,
+    ) : null}
   </>;
 }
 
