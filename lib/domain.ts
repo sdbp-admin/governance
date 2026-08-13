@@ -48,6 +48,25 @@ export type Action = {
 
 export type TensionStatus = "open" | "awaiting_confirmation" | "resolved" | "needs_sync" | "governance";
 
+export type AvailabilityVote = {
+  personId: string;
+  available: boolean;
+};
+
+export type AvailabilityOption = {
+  id: string;
+  startsAt: string;
+  votes: AvailabilityVote[];
+};
+
+export type TensionPoll = {
+  id: string;
+  tensionId: string;
+  participantIds: string[];
+  options: AvailabilityOption[];
+  chosenOptionId?: string;
+};
+
 export type Tension = {
   id: string;
   title: string;
@@ -57,6 +76,7 @@ export type Tension = {
   resolutionProposedBy?: string;
   latestNote?: string;
   createdAt: string;
+  poll?: TensionPoll;
 };
 
 export type AttentionItem = {
@@ -83,6 +103,52 @@ export type GovernanceStage =
   | "integration"
   | "accepted";
 
+export type StandingAgreementCategory =
+  | "organisation_authority"
+  | "finance"
+  | "membership"
+  | "external_relations"
+  | "events_programmes"
+  | "ways_of_working"
+  | "other";
+
+export type StandingAgreement = {
+  id: string;
+  category: StandingAgreementCategory;
+  title: string;
+  body: string;
+  status: "current" | "repealed";
+  sourceProposalId?: string;
+  updatedAt: string;
+};
+
+export type GovernanceRoleSnapshot = {
+  title: string;
+  category: RoleCategory;
+  purpose: string;
+  scope: string;
+  responsibilities: string[];
+  accountabilities: string[];
+};
+
+export type GovernanceEffect =
+  | {
+      kind: "role";
+      operation: "create" | "amend" | "remove";
+      targetId?: string;
+      role?: GovernanceRoleSnapshot;
+    }
+  | {
+      kind: "standing_agreement";
+      operation: "create" | "amend" | "repeal";
+      targetId?: string;
+      agreement?: {
+        category: StandingAgreementCategory;
+        title: string;
+        body: string;
+      };
+    };
+
 export type GovernanceProposal = {
   id: string;
   tensionId: string;
@@ -91,6 +157,7 @@ export type GovernanceProposal = {
   proposerId: string;
   stage: GovernanceStage;
   meetingNotes: Partial<Record<GovernanceStage, string>>;
+  governanceEffect?: GovernanceEffect;
   createdAt: string;
   acceptedAt?: string;
 };
