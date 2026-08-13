@@ -6,6 +6,34 @@ export type WorkspacePerson = Person & {
   canInvite: boolean;
 };
 
+export type WorkspaceAttentionSignal = {
+  id: string;
+  recipientId: string;
+  tensionId?: string;
+  projectId?: string;
+  signalType: "tension_need" | "project_comment";
+  message: string;
+  createdBy?: string;
+  createdAt: string;
+};
+
+export type ProjectUpdateEntry = {
+  id: string;
+  projectId: string;
+  authorId?: string;
+  updateKind: "baseline" | "update" | "no_change" | "edit";
+  summary: string;
+  createdAt: string;
+};
+
+export type ProjectCommentEntry = {
+  id: string;
+  projectId: string;
+  authorId: string;
+  body: string;
+  createdAt: string;
+};
+
 export type WorkspaceData = {
   people: WorkspacePerson[];
   roles: RoleDefinition[];
@@ -13,6 +41,7 @@ export type WorkspaceData = {
   actions: Action[];
   tensions: Tension[];
   governanceProposals: GovernanceProposal[];
+  attentionSignals?: WorkspaceAttentionSignal[];
 };
 
 type RoleRow = {
@@ -47,6 +76,7 @@ type ActionRow = {
   owner_id: string;
   status: "proposed" | "open" | "done" | "cancelled";
   due_on: string | null;
+  project_id: string | null;
   source_label: string | null;
   source_tension_id: string | null;
 };
@@ -71,19 +101,45 @@ type ProposalRow = {
   created_at: string;
   accepted_at: string | null;
 };
+type AttentionSignalRow = {
+  id: string;
+  recipient_id: string;
+  tension_id: string | null;
+  project_id: string | null;
+  signal_type: "tension_need" | "project_comment";
+  message: string;
+  created_by: string | null;
+  created_at: string;
+};
+type ProjectUpdateRow = {
+  id: string;
+  project_id: string;
+  author_id: string | null;
+  update_kind: ProjectUpdateEntry["updateKind"];
+  summary: string;
+  created_at: string;
+};
+type ProjectCommentRow = {
+  id: string;
+  project_id: string;
+  author_id: string;
+  body: string;
+  created_at: string;
+};
 
 export async function loadWorkspace(): Promise<WorkspaceData> {
-  const [peopleResult, rolesResult, assignmentsResult, projectsResult, actionsResult, tensionsResult, proposalsResult] = await Promise.all([
+  const [peopleResult, rolesResult, assignmentsResult, projectsResult, actionsResult, tensionsResult, proposalsResult, attentionResult] = await Promise.all([
     supabase.from("people").select("id,name,email,auth_user_id,can_invite").eq("active", true).order("name"),
     supabase.from("roles").select("id,title,category,purpose,scope,responsibilities,accountabilities,source,definition_status").order("title"),
     supabase.from("role_assignments").select("role_id,person_id,ends_on").is("ends_on", null),
     supabase.from("projects").select("id,title,owner_id,role_id,status,summary,last_update_at,next_prompt_on,source_tension_id,participant_ids,created_at").order("created_at", { ascending: false }),
-    supabase.from("actions").select("id,title,owner_id,status,due_on,source_label,source_tension_id").order("created_at", { ascending: false }),
+    supabase.from("actions").select("id,title,owner_id,status,due_on,project_id,source_label,source_tension_id").order("created_at", { ascending: false }),
     supabase.from("tensions").select("id,title,raiser_id,project_id,status,resolution_proposed_by,latest_note,created_at").order("created_at", { ascending: false }),
     supabase.from("governance_proposals").select("id,tension_id,title,proposal,proposer_id,stage,meeting_notes,created_at,accepted_at").order("created_at", { ascending: false }),
+    supabase.from("attention_signals").select("id,recipient_id,tension_id,project_id,signal_type,message,created_by,created_at").is("acknowledged_at", null).order("created_at", { ascending: false }),
   ]);
 
-  const error = peopleResult.error || rolesResult.error || assignmentsResult.error || projectsResult.error || actionsResult.error || tensionsResult.error || proposalsResult.error;
+  const error = peopleResult.error || rolesResult.error || assignmentsResult.error || projectsResult.error || actionsResult.error || tensionsResult.error || proposalsResult.error || attentionResult.error;
   if (error) throw error;
 
   const assignments = (assignmentsResult.data ?? []) as AssignmentRow[];
@@ -129,6 +185,7 @@ export async function loadWorkspace(): Promise<WorkspaceData> {
       ownerId: row.owner_id,
       status: row.status,
       due: row.due_on ?? undefined,
+      projectId: row.project_id ?? undefined,
       source: row.source_label ?? undefined,
       sourceTensionId: row.source_tension_id ?? undefined,
     })),
@@ -152,6 +209,16 @@ export async function loadWorkspace(): Promise<WorkspaceData> {
       meetingNotes: row.meeting_notes ?? {},
       createdAt: dateOnly(row.created_at),
       acceptedAt: row.accepted_at ? dateOnly(row.accepted_at) : undefined,
+    })),
+    attentionSignals: ((attentionResult.data ?? []) as AttentionSignalRow[]).map((row): WorkspaceAttentionSignal => ({
+      id: row.id,
+      recipientId: row.recipient_id,
+      tensionId: row.tension_id ?? undefined,
+      projectId: row.project_id ?? undefined,
+      signalType: row.signal_type,
+      message: row.message,
+      createdBy: row.created_by ?? undefined,
+      createdAt: row.created_at,
     })),
   };
 }
@@ -208,8 +275,6 @@ export async function saveRole(role: RoleDefinition) {
   });
   if (roleError) throw roleError;
 
-  // The President holder is transferred through the dedicated presidency flow.
-  // Ordinary role editing may change the descriptive fields, but never the holder.
   if (isPresidentRole(role)) return;
 
   const { error: deleteError } = await supabase.from("role_assignments").delete().eq("role_id", role.id).is("ends_on", null);
@@ -269,12 +334,13 @@ export async function completeProject(projectId: string) {
   if (error) throw error;
 }
 
-export async function createAction(input: { title: string; ownerId: string; status?: Action["status"]; due?: string; source?: string; sourceTensionId?: string }) {
+export async function createAction(input: { title: string; ownerId: string; status?: Action["status"]; due?: string; projectId?: string; source?: string; sourceTensionId?: string }) {
   const { error } = await supabase.from("actions").insert({
     title: input.title.trim(),
     owner_id: input.ownerId,
     status: input.status ?? "open",
     due_on: input.due ?? null,
+    project_id: input.projectId ?? null,
     source_label: input.source?.trim() || null,
     source_tension_id: input.sourceTensionId ?? null,
   });
@@ -296,6 +362,63 @@ export async function createTension(input: { title: string; raiserId: string; pr
     raiser_id: input.raiserId,
     project_id: input.projectId ?? null,
     status: "open",
+  });
+  if (error) throw error;
+}
+
+export async function setTensionNeed(tensionId: string, kind: "input" | "sync", recipientIds: string[], detail: string) {
+  const { error } = await supabase.rpc("set_tension_need", {
+    target_tension_id: tensionId,
+    need_kind: kind,
+    recipient_ids: recipientIds,
+    detail,
+  });
+  if (error) throw error;
+  await notifyTensionChange(tensionId);
+}
+
+export async function acknowledgeAttentionSignal(signalId: string) {
+  const { error } = await supabase.rpc("acknowledge_attention_signal", { target_signal_id: signalId });
+  if (error) throw error;
+}
+
+export async function loadProjectUpdates(projectId: string): Promise<ProjectUpdateEntry[]> {
+  const { data, error } = await supabase
+    .from("project_updates")
+    .select("id,project_id,author_id,update_kind,summary,created_at")
+    .eq("project_id", projectId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return ((data ?? []) as ProjectUpdateRow[]).map((row) => ({
+    id: row.id,
+    projectId: row.project_id,
+    authorId: row.author_id ?? undefined,
+    updateKind: row.update_kind,
+    summary: row.summary,
+    createdAt: row.created_at,
+  }));
+}
+
+export async function loadProjectComments(projectId: string): Promise<ProjectCommentEntry[]> {
+  const { data, error } = await supabase
+    .from("project_comments")
+    .select("id,project_id,author_id,body,created_at")
+    .eq("project_id", projectId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return ((data ?? []) as ProjectCommentRow[]).map((row) => ({
+    id: row.id,
+    projectId: row.project_id,
+    authorId: row.author_id,
+    body: row.body,
+    createdAt: row.created_at,
+  }));
+}
+
+export async function addProjectComment(projectId: string, body: string) {
+  const { error } = await supabase.rpc("add_project_comment", {
+    target_project_id: projectId,
+    comment_body: body.trim(),
   });
   if (error) throw error;
 }
