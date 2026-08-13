@@ -9,6 +9,7 @@ import "./persistence.css";
 import "./records.css";
 import "./launch.css";
 import "./compat.css";
+import "./work-context.css";
 
 export const metadata: Metadata = {
   title: "SDBP Workspace",
