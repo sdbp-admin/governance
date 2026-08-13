@@ -10,7 +10,7 @@ import "./records.css";
 import "./launch.css";
 
 export const metadata: Metadata = {
-  title: "SDBP Governance",
+  title: "SDBP Workspace",
   description: "Lightweight operating system for SDBP board work",
 };
 
