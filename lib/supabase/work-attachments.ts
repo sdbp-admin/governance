@@ -1,7 +1,7 @@
 import { supabase } from "@/lib/supabase/client";
 
 export const WORK_FILES_BUCKET = "sdbp-records";
-export type WorkAttachmentParent = "project" | "tension";
+export type WorkAttachmentParent = "project" | "tension" | "board_post";
 
 export type WorkAttachment = {
   id: string;
@@ -22,6 +22,7 @@ type AttachmentRow = {
   id: string;
   project_id: string | null;
   tension_id: string | null;
+  board_post_id?: string | null;
   attachment_kind: "file" | "link";
   title: string;
   url: string | null;
@@ -33,14 +34,18 @@ type AttachmentRow = {
   updated_at: string;
 };
 
-const SELECT = "id,project_id,tension_id,attachment_kind,title,url,storage_path,mime_type,file_size,added_by,created_at,updated_at";
+const BASE_SELECT = "id,project_id,tension_id,attachment_kind,title,url,storage_path,mime_type,file_size,added_by,created_at,updated_at";
+const FEED_SELECT = "id,project_id,tension_id,board_post_id,attachment_kind,title,url,storage_path,mime_type,file_size,added_by,created_at,updated_at";
 
 export async function loadWorkAttachments(parentType: WorkAttachmentParent, parentId: string): Promise<WorkAttachment[]> {
-  let query = supabase.from("work_attachments").select(SELECT).is("removed_at", null).order("created_at", { ascending: false });
-  query = parentType === "project" ? query.eq("project_id", parentId) : query.eq("tension_id", parentId);
+  const select = parentType === "board_post" ? FEED_SELECT : BASE_SELECT;
+  let query = supabase.from("work_attachments").select(select).is("removed_at", null).order("created_at", { ascending: false });
+  if (parentType === "project") query = query.eq("project_id", parentId);
+  else if (parentType === "tension") query = query.eq("tension_id", parentId);
+  else query = query.eq("board_post_id", parentId);
   const { data, error } = await query;
   if (error) throw error;
-  return ((data ?? []) as AttachmentRow[]).map(mapAttachment);
+  return ((data ?? []) as unknown as AttachmentRow[]).map(mapAttachment);
 }
 
 export async function addWorkLink(parentType: WorkAttachmentParent, parentId: string, title: string, url: string) {
@@ -127,11 +132,11 @@ export async function createWorkFileSignedUrl(storagePath: string) {
 }
 
 function mapAttachment(row: AttachmentRow): WorkAttachment {
-  const parentType: WorkAttachmentParent = row.project_id ? "project" : "tension";
+  const parentType: WorkAttachmentParent = row.project_id ? "project" : row.tension_id ? "tension" : "board_post";
   return {
     id: row.id,
     parentType,
-    parentId: row.project_id ?? row.tension_id ?? "",
+    parentId: row.project_id ?? row.tension_id ?? row.board_post_id ?? "",
     kind: row.attachment_kind,
     title: row.title,
     url: row.url ?? undefined,
