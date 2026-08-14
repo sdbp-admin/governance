@@ -1,4 +1,4 @@
-export type AttentionKind = "project_update" | "action" | "tension" | "governance" | "comment";
+export type AttentionKind = "project_update" | "action" | "tension" | "governance" | "comment" | "tension_comment" | "feed";
 export type AttentionStatus = "needs_action" | "deferred" | "done";
 
 export type Person = {
