@@ -136,9 +136,37 @@ export async function replaceWorkFile(attachment: WorkAttachment, file: File) {
   }
 }
 
-export async function removeWorkAttachment(attachmentId: string) {
+export async function removeWorkAttachment(attachment: WorkAttachment | string) {
+  const attachmentId = typeof attachment === "string" ? attachment : attachment.id;
+  const storagePath = typeof attachment === "string" ? undefined : attachment.storagePath;
+
+  // Working files are temporary. Delete the object itself, not only its database row.
+  if (storagePath) {
+    const { error: storageError } = await supabase.storage.from(WORK_FILES_BUCKET).remove([storagePath]);
+    if (storageError) throw storageError;
+  }
+
   const { error } = await supabase.rpc("remove_work_attachment", { target_attachment_id: attachmentId });
   if (error) throw error;
+}
+
+export async function cleanupTemporaryWorkFiles(parentType: "project" | "tension", parentId: string) {
+  const attachments = await loadWorkAttachments(parentType, parentId);
+  const files = attachments.filter((item) => item.kind === "file");
+  let firstError: unknown;
+
+  for (const item of files) {
+    // A conflicted viewer cannot receive the storage path. Leave that file for a
+    // non-conflicted board member's automatic cleanup pass rather than bypassing COI.
+    if (item.coiBlocked || !item.storagePath) continue;
+    try {
+      await removeWorkAttachment(item);
+    } catch (error) {
+      firstError ??= error;
+    }
+  }
+
+  if (firstError) throw firstError;
 }
 
 export async function createWorkFileSignedUrl(storagePath: string) {
