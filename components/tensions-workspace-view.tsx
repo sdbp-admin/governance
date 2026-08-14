@@ -5,6 +5,7 @@ import type { Tension } from "@/lib/domain";
 import type { WorkspaceData, WorkspacePerson } from "@/lib/supabase/workspace";
 import { TensionAvailabilityPoll } from "@/components/tension-availability-poll";
 import { WorkAttachmentsButton } from "@/components/work-attachments";
+import { TensionCommentsButton } from "@/components/tension-comments";
 
 type Need = "input" | "sync";
 
@@ -13,6 +14,8 @@ type Props = {
   currentUserId: string;
   personName: (id: string) => string;
   urgentTensionIds: ReadonlySet<string>;
+  openCommentsTensionId?: string | null;
+  onCommentsOpened?: () => void;
   onRaise: (title: string) => Promise<boolean>;
   onMarkResolved: (tension: Tension) => Promise<void>;
   onKeepOpen: (tension: Tension) => Promise<void>;
@@ -79,6 +82,7 @@ function TensionCard(props: Props & { tension: Tension; processing: string | nul
       {props.processing !== tension.id && processable && !hasNeed && mine && <button className="secondary" onClick={() => props.setProcessing(tension.id)}>What do you need? →</button>}
       {props.processing !== tension.id && processable && !hasNeed && <button className="quiet" onClick={() => void props.onMarkResolved(tension)}>Resolve</button>}
       {props.processing !== tension.id && processable && hasNeed && !mine && <button className="quiet" onClick={() => void props.onMarkResolved(tension)}>Looks resolved</button>}
+      <TensionCommentsButton tension={tension} currentUserId={props.currentUserId} personName={props.personName} forceOpen={props.openCommentsTensionId === tension.id} onOpened={props.openCommentsTensionId === tension.id ? props.onCommentsOpened : undefined} />
       <WorkAttachmentsButton parentType="tension" parentId={tension.id} parentTitle={tension.title} personName={props.personName} />
       {mine && <button className={urgent ? "secondary small" : "quiet small"} type="button" onClick={() => void props.onUrgency(tension, !urgent)}>{urgent ? "Remove urgent flag" : "Mark urgent"}</button>}
     </div>
