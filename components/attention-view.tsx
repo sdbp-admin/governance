@@ -1,9 +1,16 @@
 "use client";
 
 import type { AttentionItem } from "@/lib/domain";
+import type { CommunicationAttentionSignal } from "@/lib/supabase/board-feed";
 import { todayISO, type WorkspaceData } from "@/lib/supabase/workspace";
 
-export function deriveAttention(workspace: WorkspaceData, userId: string, personName: (id: string) => string, urgentTensionIds: ReadonlySet<string> = new Set()): AttentionItem[] {
+export function deriveAttention(
+  workspace: WorkspaceData,
+  userId: string,
+  personName: (id: string) => string,
+  urgentTensionIds: ReadonlySet<string> = new Set(),
+  communicationSignals: CommunicationAttentionSignal[] = [],
+): AttentionItem[] {
   const today = todayISO();
   const items: AttentionItem[] = [];
   for (const project of workspace.projects) {
@@ -30,6 +37,16 @@ export function deriveAttention(workspace: WorkspaceData, userId: string, person
       if (project) items.push({ id: `signal-${signal.id}`, ownerId: userId, kind: "comment", targetId: project.id, signalId: signal.id, title: project.title, reason: signal.message, primaryAction: "Open comments", status: "needs_action" });
     }
   }
+  for (const signal of communicationSignals) {
+    if (signal.recipientId !== userId) continue;
+    if (signal.signalType === "tension_comment" && signal.tensionId) {
+      const tension = workspace.tensions.find((candidate) => candidate.id === signal.tensionId);
+      if (tension) items.push({ id: `comm-${signal.id}`, ownerId: userId, kind: "tension_comment", targetId: tension.id, signalId: signal.id, title: tension.title, reason: signal.message, primaryAction: "Open comments", status: "needs_action" });
+    }
+    if (signal.signalType === "board_feed_mention" && signal.boardPostId) {
+      items.push({ id: `comm-${signal.id}`, ownerId: userId, kind: "feed", targetId: signal.boardPostId, signalId: signal.id, title: "Board Feed mention", reason: signal.message, primaryAction: "Open Board Feed", status: "needs_action" });
+    }
+  }
   for (const tension of workspace.tensions) {
     if (tension.raiserId !== userId) continue;
     if (tension.status === "awaiting_confirmation") items.push({ id: `tension-${tension.id}`, ownerId: userId, kind: "tension", targetId: tension.id, title: tension.title, reason: `${personName(tension.resolutionProposedBy ?? "")} believes this is resolved. Check the real situation.`, primaryAction: "Review tension", status: "needs_action" });
@@ -42,7 +59,7 @@ export function deriveAttention(workspace: WorkspaceData, userId: string, person
 
 export function AttentionView({ items, urgentTensionIds, onPrimary, onRaiseTension }: { items: AttentionItem[]; urgentTensionIds: ReadonlySet<string>; onPrimary: (item: AttentionItem) => void; onRaiseTension: () => void }) {
   if (!items.length) return <div className="calm-empty"><span>✓</span><h2>Clear for now</h2><p>Nothing is waiting for you.</p><button className="text-action" onClick={onRaiseTension}>+ Raise a tension</button></div>;
-  return <><div className="attention-compact-head"><div><span className="section-kicker">Needs you now</span><h2>{items.length} open {items.length === 1 ? "interaction" : "interactions"}</h2></div><p>Overdue deadlines and tensions explicitly marked urgent are surfaced first. The Workspace does not decide importance itself.</p></div><div className="attention-grid compact-attention-grid">{items.map((item) => { const urgent = item.kind === "tension" && Boolean(item.targetId && urgentTensionIds.has(item.targetId)); return <article className={`attention-card compact-attention-card${urgent ? " attention-urgent" : ""}`} key={item.id}><div className={`type-dot type-${item.kind}`} /><div className="attention-copy"><span className="kind">{urgent ? "URGENT · " : ""}{humanKind(item.kind)}{item.due ? ` · due ${formatDate(item.due)}` : ""}</span><h3>{compactText(item.title, 170)}</h3><p>{compactText(item.reason, 220)}</p></div><div className="actions compact-actions"><button className="primary small" onClick={() => onPrimary(item)}>{item.primaryAction}</button></div></article>; })}</div><button className="text-action attention-raise" onClick={onRaiseTension}>+ Raise a tension</button></>;
+  return <><div className="attention-compact-head"><div><span className="section-kicker">Needs you now</span><h2>{items.length} open {items.length === 1 ? "interaction" : "interactions"}</h2></div><p>Overdue deadlines and tensions explicitly marked urgent are surfaced first. The Workspace does not decide importance itself.</p></div><div className="attention-grid compact-attention-grid">{items.map((item) => { const urgent = (item.kind === "tension" || item.kind === "tension_comment") && Boolean(item.targetId && urgentTensionIds.has(item.targetId)); return <article className={`attention-card compact-attention-card${urgent ? " attention-urgent" : ""}`} key={item.id}><div className={`type-dot type-${item.kind}`} /><div className="attention-copy"><span className="kind">{urgent ? "URGENT · " : ""}{humanKind(item.kind)}{item.due ? ` · due ${formatDate(item.due)}` : ""}</span><h3>{compactText(item.title, 170)}</h3><p>{compactText(item.reason, 220)}</p></div><div className="actions compact-actions"><button className="primary small" onClick={() => onPrimary(item)}>{item.primaryAction}</button></div></article>; })}</div><button className="text-action attention-raise" onClick={onRaiseTension}>+ Raise a tension</button></>;
 }
 
 function objectiveAttentionOrder(a: AttentionItem, b: AttentionItem, urgentTensionIds: ReadonlySet<string>) {
@@ -50,8 +67,8 @@ function objectiveAttentionOrder(a: AttentionItem, b: AttentionItem, urgentTensi
   const aOverdue = Boolean(a.kind === "action" && a.due && a.due < today);
   const bOverdue = Boolean(b.kind === "action" && b.due && b.due < today);
   if (aOverdue !== bOverdue) return aOverdue ? -1 : 1;
-  const aUrgent = Boolean(a.kind === "tension" && a.targetId && urgentTensionIds.has(a.targetId));
-  const bUrgent = Boolean(b.kind === "tension" && b.targetId && urgentTensionIds.has(b.targetId));
+  const aUrgent = Boolean((a.kind === "tension" || a.kind === "tension_comment") && a.targetId && urgentTensionIds.has(a.targetId));
+  const bUrgent = Boolean((b.kind === "tension" || b.kind === "tension_comment") && b.targetId && urgentTensionIds.has(b.targetId));
   if (aUrgent !== bUrgent) return aUrgent ? -1 : 1;
   if (a.due && b.due) return a.due.localeCompare(b.due);
   if (a.due !== b.due) return a.due ? -1 : 1;
@@ -59,5 +76,5 @@ function objectiveAttentionOrder(a: AttentionItem, b: AttentionItem, urgentTensi
 }
 function compactNeedDetail(message: string) { const marker = " — "; const index = message.indexOf(marker); return index >= 0 ? compactText(message.slice(index + marker.length), 150) : ""; }
 function compactText(value: string, max: number) { const clean = value.replace(/\s+/g, " ").trim(); return clean.length <= max ? clean : `${clean.slice(0, max - 1).trimEnd()}…`; }
-function humanKind(value: string) { return value.replace("_", " "); }
+function humanKind(value: string) { if (value === "feed") return "Board Feed"; if (value === "tension_comment") return "tension comment"; return value.replace("_", " "); }
 function formatDate(value: string) { return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(new Date(`${value}T12:00:00`)); }
