@@ -97,7 +97,7 @@ function TensionCard(props: Props & { tension: Tension; processing: string | nul
         <span className="tension-meta-status">{urgent && <span className="urgency-badge">Urgent</span>}<span>{label(tension.status)}</span></span>
       </div>
       <h3>{tension.title}</h3>
-      <TensionProjectLink tension={tension} linkedProject={linkedProject} mine={mine} projects={props.workspace.projects} />
+      <TensionProjectLink tension={tension} linkedProject={linkedProject} projects={props.workspace.projects} />
       {tension.latestNote && <p>{tension.latestNote}</p>}
 
       {tension.status === "needs_sync" && <TensionAvailabilityPoll tension={tension} currentUserId={props.currentUserId} personName={props.personName} onCreate={props.onCreatePoll} onVote={props.onVotePoll} onChoose={props.onChoosePoll} />}
@@ -120,17 +120,16 @@ function TensionCard(props: Props & { tension: Tension; processing: string | nul
       {props.processing !== tension.id && processable && !hasNeed && mine && <button className="secondary" onClick={() => props.setProcessing(tension.id)}>What do you need? →</button>}
       {props.processing !== tension.id && processable && !hasNeed && <button className="quiet" onClick={() => void props.onMarkResolved(tension)}>Resolve</button>}
       {props.processing !== tension.id && processable && hasNeed && !mine && <button className="quiet" onClick={() => void props.onMarkResolved(tension)}>Looks resolved</button>}
-      <TensionCommentsButton tension={tension} currentUserId={props.currentUserId} personName={props.personName} forceOpen={props.openCommentsTensionId === tension.id} onOpened={props.openCommentsTensionId === tension.id ? props.onCommentsOpened : undefined} />
+      <TensionCommentsButton tension={tension} currentUserId={props.currentUserId} personName={props.personName} people={props.workspace.people} forceOpen={props.openCommentsTensionId === tension.id} onOpened={props.openCommentsTensionId === tension.id ? props.onCommentsOpened : undefined} />
       <WorkAttachmentsButton parentType="tension" parentId={tension.id} parentTitle={tension.title} personName={props.personName} />
       {mine && <button className={urgent ? "secondary small" : "quiet small"} type="button" onClick={() => void props.onUrgency(tension, !urgent)}>{urgent ? "Remove urgent flag" : "Mark urgent"}</button>}
     </div>
   </article>;
 }
 
-function TensionProjectLink({ tension, linkedProject, mine, projects }: {
+function TensionProjectLink({ tension, linkedProject, projects }: {
   tension: Tension;
   linkedProject?: WorkspaceData["projects"][number];
-  mine: boolean;
   projects: WorkspaceData["projects"];
 }) {
   const [editing, setEditing] = useState(false);
@@ -154,9 +153,7 @@ function TensionProjectLink({ tension, linkedProject, mine, projects }: {
     }
   }
 
-  if (!mine) return linkedProject ? <span className="tension-project-chip">Project · {linkedProject.title}</span> : null;
-
-  if (!editing) return <button className={linkedProject ? "tension-project-chip tension-project-button" : "tension-project-empty"} type="button" onClick={() => { setProjectId(tension.linkedProjectId ?? ""); setEditing(true); }}>{linkedProject ? `Project · ${linkedProject.title}` : "+ Link project"}</button>;
+  if (!editing) return <button className={linkedProject ? "tension-project-chip tension-project-button" : "tension-project-empty"} type="button" title="Organise this tension under a project" onClick={() => { setProjectId(tension.linkedProjectId ?? ""); setEditing(true); }}>{linkedProject ? `Project · ${linkedProject.title}` : "+ Link project"}</button>;
 
   return <div className="tension-project-editor">
     <select value={projectId} onChange={(event) => setProjectId(event.target.value)}><option value="">No project</option>{choices.map((project) => <option value={project.id} key={project.id}>{project.title}</option>)}</select>
