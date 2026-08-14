@@ -13,6 +13,7 @@ import "./work-context.css";
 import "./workspace-refinements.css";
 import "./work-files.css";
 import "./feed.css";
+import "./next-steps.css";
 
 export const metadata: Metadata = {
   title: "SDBP Workspace",
