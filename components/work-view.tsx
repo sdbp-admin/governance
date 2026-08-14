@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Project } from "@/lib/domain";
 import { ContextualNextSteps, type ContextualNextStepInput } from "@/components/contextual-next-steps";
+import { ProjectCoiBadge } from "@/components/project-coi-badge";
 import { ProjectCommentsModal } from "@/components/project-comments-modal";
 import { ProjectSettingsModal } from "@/components/project-settings-modal";
 import { ProjectSummaryPreview } from "@/components/project-summary-preview";
@@ -74,6 +75,7 @@ export function WorkspaceWorkView({
           <div className="project-accent" />
           <span className="kind">{project.role ?? "SDBP project"}</span>
           <h3>{project.title}</h3>
+          <ProjectCoiBadge projectId={project.id} personName={personName} />
           {project.summary && <ProjectSummaryPreview title={project.title} text={project.summary} />}
           <div className="project-team-row">{(project.participantIds ?? [project.ownerId]).map((id) => <span className="mini-avatar" title={personName(id)} key={id}>{personInitial(id)}</span>)}</div>
           <div className="project-meta">
