@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { Tension } from "@/lib/domain";
+import { ContextualNextSteps, type ContextualNextStepInput } from "@/components/contextual-next-steps";
 import { createTension, type WorkspaceData, type WorkspacePerson } from "@/lib/supabase/workspace";
 import { setTensionProject } from "@/lib/supabase/tension-project";
 import { TensionAvailabilityPoll } from "@/components/tension-availability-poll";
@@ -18,6 +19,8 @@ type Props = {
   openCommentsTensionId?: string | null;
   onCommentsOpened?: () => void;
   onRaise: (title: string) => Promise<boolean>;
+  onAddNextStep: (input: ContextualNextStepInput) => Promise<boolean>;
+  onActionStatus: (id: string, status: "open" | "done") => Promise<unknown>;
   onMarkResolved: (tension: Tension) => Promise<void>;
   onKeepOpen: (tension: Tension) => Promise<void>;
   onNeed: (tension: Tension, kind: Need, ids: string[], detail: string) => Promise<boolean>;
@@ -99,6 +102,7 @@ function TensionCard(props: Props & { tension: Tension; processing: string | nul
       <h3>{tension.title}</h3>
       <TensionProjectLink tension={tension} linkedProject={linkedProject} projects={props.workspace.projects} />
       {tension.latestNote && <p>{tension.latestNote}</p>}
+      <ContextualNextSteps parentType="tension" parentId={tension.id} parentTitle={tension.title} projectId={tension.linkedProjectId} actions={props.workspace.actions} people={props.workspace.people} currentUserId={props.currentUserId} personName={props.personName} onAdd={props.onAddNextStep} onStatus={props.onActionStatus} />
 
       {tension.status === "needs_sync" && <TensionAvailabilityPoll tension={tension} currentUserId={props.currentUserId} personName={props.personName} onCreate={props.onCreatePoll} onVote={props.onVotePoll} onChoose={props.onChoosePoll} />}
 
