@@ -72,6 +72,14 @@ function ProjectWorkAttachmentsModal({ projectId, projectTitle, personName, onCl
     return window.confirm(`Conflict of interest active for ${names}. Make sure the visible ${label} does not reveal sensitive information that could affect the conflict. Continue?`);
   }
 
+  function confirmTemporaryUpload() {
+    const coiNames = conflicts.map((conflict) => personName(conflict.personId)).join(", ");
+    const coiNote = conflicts.length > 0
+      ? `\n\nCOI active for ${coiNames}. Keep the filename free of information that could affect the conflict.`
+      : "";
+    return window.confirm(`Temporary attachment\n\nThis file is stored in SDBP Workspace only for the duration of this project. It will be automatically deleted when this project is completed.\n\nKeep the permanent copy in Google Drive.${coiNote}\n\nUpload anyway?`);
+  }
+
   function confirmConflictedInput(item: WorkAttachment) {
     if (!item.contributorConflicted) return true;
     return window.confirm(`${personName(item.addedBy)} has an active conflict of interest on this project. This item is conflicted input. Open it deliberately?`);
@@ -114,7 +122,7 @@ function ProjectWorkAttachmentsModal({ projectId, projectTitle, personName, onCl
 
   async function upload(file?: File) {
     if (!file || uploading) return;
-    if (!confirmCoiSafe("filename")) return;
+    if (!confirmTemporaryUpload()) return;
     setUploading(true);
     setError("");
     try {
@@ -130,7 +138,7 @@ function ProjectWorkAttachmentsModal({ projectId, projectTitle, personName, onCl
   async function replace(file?: File) {
     const target = replaceTarget;
     if (!file || !target || uploading || target.coiBlocked) return;
-    if (!confirmCoiSafe("filename")) return;
+    if (!confirmTemporaryUpload()) return;
     setUploading(true);
     setError("");
     try {
@@ -146,11 +154,11 @@ function ProjectWorkAttachmentsModal({ projectId, projectTitle, personName, onCl
 
   async function remove(item: WorkAttachment) {
     if (item.coiBlocked) return;
-    if (!window.confirm(`Remove “${item.title}” from this project? The removal will be recorded in Activity.`)) return;
+    if (!window.confirm(`Remove “${item.title}” from this project? The file itself will be deleted from Workspace storage and the removal will be recorded in Activity.`)) return;
     setRemovingId(item.id);
     setError("");
     try {
-      await removeWorkAttachment(item.id);
+      await removeWorkAttachment(item);
       await refresh();
     } catch (err) {
       setError(readError(err));
@@ -194,11 +202,14 @@ function ProjectWorkAttachmentsModal({ projectId, projectTitle, personName, onCl
     }
   }
 
+  const coiNames = conflicts.map((conflict) => personName(conflict.personId)).join(", ");
+  const driveReminder = conflicts.length > 0 && isGoogleDriveUrl(linkUrl);
+
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="workflow-editor compact-modal work-files-modal" role="dialog" aria-modal="true" aria-label={`Files and links for ${projectTitle}`}>
       <div className="editor-head"><div><span className="section-kicker">Files &amp; links</span><h2>{projectTitle}</h2></div><button className="quiet editor-close" type="button" onClick={onClose}>×</button></div>
-      <p className="editor-note">Keep useful material beside the work. Upload supporting files here, or attach the Google Drive folder, Sheet, Doc or other external link where collaborative editing happens.</p>
-      {conflicts.length > 0 && <div className="coi-awareness-note"><strong>COI active · {conflicts.map((conflict) => personName(conflict.personId)).join(", ")}</strong><span>Attachment titles remain visible. Keep filenames and link titles free of information that could affect the conflict.</span></div>}
+      <p className="editor-note">Uploaded files are temporary working copies and are deleted when the project is completed. Keep permanent working documents in Google Drive and link them here.</p>
+      {conflicts.length > 0 && <div className="coi-awareness-note"><strong>COI active · {coiNames}</strong><span>Attachment titles remain visible. Keep filenames and link titles free of information that could affect the conflict.</span></div>}
 
       <div className="work-files-toolbar">
         <button className="secondary small" type="button" disabled={uploading} onClick={() => uploadInput.current?.click()}>{uploading ? "Uploading…" : "+ Upload file"}</button>
@@ -210,6 +221,7 @@ function ProjectWorkAttachmentsModal({ projectId, projectTitle, personName, onCl
       {linkForm && <div className="work-link-form">
         <label className="field"><span>Link title</span><input autoFocus value={linkTitle} onChange={(event) => setLinkTitle(event.target.value)} placeholder="AGRA budget 2026" /></label>
         <label className="field"><span>URL</span><input value={linkUrl} onChange={(event) => setLinkUrl(event.target.value)} placeholder="https://drive.google.com/…" /></label>
+        {driveReminder && <div className="coi-drive-reminder"><strong>COI active: {coiNames}</strong><span>Make sure this Drive folder or document uses limited access and does not give {coiNames} access.</span></div>}
         <div className="process-actions"><button className="quiet small" type="button" onClick={() => setLinkForm(null)}>Cancel</button><button className="primary small" type="button" disabled={!linkTitle.trim() || !linkUrl.trim() || savingLink} onClick={() => void saveLink()}>{savingLink ? "Saving…" : linkForm === "edit" ? "Save link" : "Add link"}</button></div>
       </div>}
 
@@ -226,6 +238,15 @@ function ProjectWorkAttachmentsModal({ projectId, projectTitle, personName, onCl
       </article>)}</div> : <div className="project-context-empty work-files-empty">No files or links attached yet.</div>}
     </section>
   </div>;
+}
+
+function isGoogleDriveUrl(value: string) {
+  try {
+    const host = new URL(value).hostname.toLowerCase();
+    return host === "drive.google.com" || host === "docs.google.com" || host.endsWith(".drive.google.com") || host.endsWith(".docs.google.com");
+  } catch {
+    return false;
+  }
 }
 
 function formatBytes(value: number) {
