@@ -14,6 +14,7 @@ import "./workspace-refinements.css";
 import "./work-files.css";
 import "./feed.css";
 import "./next-steps.css";
+import "./coi.css";
 
 export const metadata: Metadata = {
   title: "SDBP Workspace",
