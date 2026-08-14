@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Project } from "@/lib/domain";
+import { ContextualNextSteps, type ContextualNextStepInput } from "@/components/contextual-next-steps";
 import { WorkAttachmentsButton } from "@/components/work-attachments";
 import {
   addProjectComment,
@@ -13,16 +14,14 @@ import {
   type WorkspacePerson,
 } from "@/lib/supabase/workspace";
 
-type ActionInput = { title: string; projectId?: string; due?: string };
-
 export function WorkspaceWorkView({
   workspace,
   currentUserId,
   personName,
   personInitial,
-  onAddAction,
+  onAddNextStep,
   onAddProject,
-  onCompleteAction,
+  onActionStatus,
   onCompleteProject,
   onUpdateProject,
   openCommentsProjectId,
@@ -32,15 +31,14 @@ export function WorkspaceWorkView({
   currentUserId: string;
   personName: (id: string) => string;
   personInitial: (id: string) => string;
-  onAddAction: (input: ActionInput) => Promise<boolean>;
+  onAddNextStep: (input: ContextualNextStepInput) => Promise<boolean>;
   onAddProject: (input: { title: string; ownerId: string; participantIds: string[]; summary: string }) => Promise<boolean>;
-  onCompleteAction: (id: string) => Promise<unknown>;
+  onActionStatus: (id: string, status: "open" | "done") => Promise<unknown>;
   onCompleteProject: (id: string) => Promise<void>;
   onUpdateProject: (id: string) => void;
   openCommentsProjectId?: string | null;
   onCommentsOpened?: () => void;
 }) {
-  const [actionOpen, setActionOpen] = useState(false);
   const [projectOpen, setProjectOpen] = useState(false);
   const [historyProject, setHistoryProject] = useState<Project | null>(null);
   const [commentsProject, setCommentsProject] = useState<Project | null>(null);
@@ -60,7 +58,7 @@ export function WorkspaceWorkView({
   return <>
     <div className="work-toolbar">
       <button className="primary small" onClick={() => setProjectOpen(true)}>+ Add project</button>
-      <button className="secondary small" onClick={() => setActionOpen(true)}>+ Add my action</button>
+      <span className="work-toolbar-note">Next steps are created inside the project or tension they belong to.</span>
     </div>
 
     <div className="work-layout">
@@ -77,6 +75,7 @@ export function WorkspaceWorkView({
             <span><strong>{formatDate(project.lastUpdate)}</strong><small>last checked</small></span>
             <span><strong>{formatDate(project.nextPrompt)}</strong><small>next prompt</small></span>
           </div>
+          <ContextualNextSteps parentType="project" parentId={project.id} parentTitle={project.title} actions={workspace.actions} people={workspace.people} currentUserId={currentUserId} personName={personName} onAdd={onAddNextStep} onStatus={onActionStatus} />
           <div className="actions compact-actions project-context-actions">
             {project.ownerId === currentUserId && <button className="secondary small" onClick={() => onUpdateProject(project.id)}>Update</button>}
             <button className="quiet small" onClick={() => setHistoryProject(project)}>History</button>
@@ -88,7 +87,8 @@ export function WorkspaceWorkView({
       </section>
 
       <aside className="action-rail">
-        <div className="section-head"><div><span className="section-kicker">Concrete next steps</span><h2>Actions</h2></div></div>
+        <div className="section-head"><div><span className="section-kicker">Aggregate view</span><h2>All commitments</h2></div></div>
+        <p className="action-rail-note">These are the same next steps attached to projects and tensions, collected in one place.</p>
         <div className="action-stack">{openActions.length ? openActions.map((action) => {
           const project = action.projectId ? projectById.get(action.projectId) : undefined;
           return <article className="action-slip" key={action.id}>
@@ -98,42 +98,17 @@ export function WorkspaceWorkView({
             {action.source && <p>{action.source}</p>}
             <div className="action-owner"><span className="mini-avatar">{personInitial(action.ownerId)}</span>{personName(action.ownerId)}</div>
             {action.due && <small className={action.due < todayISO() ? "action-overdue" : ""}>Due {formatDate(action.due)}</small>}
-            {action.status === "open" && action.ownerId === currentUserId && <button className="secondary small action-done" onClick={() => void onCompleteAction(action.id)}>Mark done</button>}
+            {action.status === "proposed" && action.ownerId === currentUserId && <button className="secondary small action-done" onClick={() => void onActionStatus(action.id, "open")}>Accept</button>}
+            {action.status === "open" && action.ownerId === currentUserId && <button className="secondary small action-done" onClick={() => void onActionStatus(action.id, "done")}>Mark done</button>}
           </article>;
-        }) : <div className="calm-empty compact-empty"><span>✓</span><h3>No open actions</h3></div>}</div>
+        }) : <div className="calm-empty compact-empty"><span>✓</span><h3>No open commitments</h3></div>}</div>
       </aside>
     </div>
 
-    {actionOpen && <ActionCreateModal projects={activeProjects} onClose={() => setActionOpen(false)} onSave={async (input) => { if (await onAddAction(input)) setActionOpen(false); }} />}
     {projectOpen && <ProjectCreateModal people={workspace.people} currentUserId={currentUserId} onClose={() => setProjectOpen(false)} onSave={async (input) => { if (await onAddProject(input)) setProjectOpen(false); }} />}
     {historyProject && <ProjectHistoryModal project={historyProject} personName={personName} onClose={() => setHistoryProject(null)} />}
     {commentsProject && <ProjectCommentsModal project={commentsProject} currentUserId={currentUserId} personName={personName} onClose={() => setCommentsProject(null)} />}
   </>;
-}
-
-function ActionCreateModal({ projects, onClose, onSave }: {
-  projects: Project[];
-  onClose: () => void;
-  onSave: (input: ActionInput) => Promise<void>;
-}) {
-  const [title, setTitle] = useState("");
-  const [projectId, setProjectId] = useState("");
-  const [due, setDue] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  async function save() {
-    if (!title.trim() || saving) return;
-    setSaving(true);
-    await onSave({ title: title.trim(), projectId: projectId || undefined, due: due || undefined });
-    setSaving(false);
-  }
-
-  return <ModalShell kicker="New action" title="What is your concrete next step?" onClose={onClose}>
-    <label className="field"><span>Action</span><input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} /></label>
-    <label className="field"><span>Project <em>optional</em></span><select value={projectId} onChange={(event) => setProjectId(event.target.value)}><option value="">No project</option>{projects.map((project) => <option value={project.id} key={project.id}>{project.title}</option>)}</select></label>
-    <label className="field"><span>Due date / deadline <em>optional</em></span><input type="date" value={due} onChange={(event) => setDue(event.target.value)} /></label>
-    <div className="editor-actions"><div /><div className="editor-actions-right"><button className="secondary" onClick={onClose}>Cancel</button><button className="primary" disabled={!title.trim() || saving} onClick={() => void save()}>{saving ? "Saving…" : "Save action"}</button></div></div>
-  </ModalShell>;
 }
 
 function ProjectCreateModal({ people, currentUserId, onClose, onSave }: {
