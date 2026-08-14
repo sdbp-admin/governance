@@ -115,6 +115,20 @@
 .coi-awareness-note strong { font-size: 12px; }
 .coi-awareness-note span { color: #78521f; }
 
+.coi-drive-reminder {
+  display: grid;
+  gap: 2px;
+  margin-top: -2px;
+  padding: 8px 10px;
+  border-left: 3px solid #dfbd89;
+  background: #fff8ec;
+  color: #78521f;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.coi-drive-reminder strong { color: var(--warn); }
+
 .coi-inline-label {
   display: inline-flex;
   align-items: center;
