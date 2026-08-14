@@ -5,6 +5,7 @@ import type { Project } from "@/lib/domain";
 import { ContextualNextSteps, type ContextualNextStepInput } from "@/components/contextual-next-steps";
 import { ProjectCommentsModal } from "@/components/project-comments-modal";
 import { ProjectSettingsModal } from "@/components/project-settings-modal";
+import { ProjectSummaryPreview } from "@/components/project-summary-preview";
 import { WorkAttachmentsButton } from "@/components/work-attachments";
 import {
   loadProjectUpdates,
@@ -73,7 +74,7 @@ export function WorkspaceWorkView({
           <div className="project-accent" />
           <span className="kind">{project.role ?? "SDBP project"}</span>
           <h3>{project.title}</h3>
-          {project.summary && <div className="project-summary"><LinkifiedText text={project.summary} /></div>}
+          {project.summary && <ProjectSummaryPreview title={project.title} text={project.summary} />}
           <div className="project-team-row">{(project.participantIds ?? [project.ownerId]).map((id) => <span className="mini-avatar" title={personName(id)} key={id}>{personInitial(id)}</span>)}</div>
           <div className="project-meta">
             <span><strong>{personName(project.ownerId)}</strong><small>owner</small></span>
@@ -161,11 +162,6 @@ function ProjectHistoryModal({ project, personName, onClose }: { project: Projec
 
 function ModalShell({ kicker, title, onClose, children }: { kicker: string; title: string; onClose: () => void; children: React.ReactNode }) {
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="workflow-editor compact-modal project-context-modal" role="dialog" aria-modal="true"><div className="editor-head"><div><span className="section-kicker">{kicker}</span><h2>{title}</h2></div><button className="quiet editor-close" onClick={onClose}>×</button></div>{children}</section></div>;
-}
-
-function LinkifiedText({ text }: { text: string }) {
-  const parts = text.split(/(https?:\/\/[^\s]+)/g);
-  return <p>{parts.map((part, index) => part.match(/^https?:\/\//) ? <a href={part} target="_blank" rel="noreferrer" key={`${part}-${index}`}>{part}</a> : <span key={index}>{part}</span>)}</p>;
 }
 
 function historyLabel(kind: ProjectUpdateEntry["updateKind"]) {
