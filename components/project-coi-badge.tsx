@@ -48,11 +48,12 @@ export function ProjectCoiBadge({ projectId, personName }: {
       className="project-coi-badge"
       type="button"
       aria-label={`Conflict of interest: ${names.join(", ")}`}
+      title={`Conflict of interest: ${names.join(", ")}`}
       onMouseEnter={show}
       onMouseLeave={() => setPopover(null)}
       onFocus={show}
       onBlur={() => setPopover(null)}
-      onClick={() => popover ? setPopover(null) : show()}
+      onClick={show}
     >
       <span aria-hidden="true">⚠</span> COI · {names.join(", ")}
     </button>
