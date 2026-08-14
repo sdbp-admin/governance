@@ -103,7 +103,7 @@ export function Prototype({ liveProfile }: { liveProfile?: LiveProfile }) {
     meetingWindow.opener = window;
   }
 
-  if (tacticalMode && liveProfile) return <TacticalMeeting liveProfile={liveProfile} />;
+  if (tacticalMode && liveProfile) return <><TemporaryWorkFileCleanup /><TacticalMeeting liveProfile={liveProfile} /></>;
 
   return <>
     {liveProfile && <TemporaryWorkFileCleanup />}
