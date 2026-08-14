@@ -72,6 +72,11 @@ function WorkAttachmentsModal({ parentType, parentId, parentTitle, personName, o
     return () => { alive = false; };
   }, [parentId, parentType]);
 
+  function confirmTemporaryUpload() {
+    if (parentType !== "tension") return true;
+    return window.confirm("Temporary attachment\n\nThis file is stored in SDBP Workspace only for the duration of this tension. It will be automatically deleted when this tension is resolved.\n\nKeep the permanent copy in Google Drive.\n\nUpload anyway?");
+  }
+
   function startAddLink() {
     setEditingLinkId(null);
     setLinkTitle("");
@@ -107,6 +112,7 @@ function WorkAttachmentsModal({ parentType, parentId, parentTitle, personName, o
 
   async function upload(file?: File) {
     if (!file || uploading) return;
+    if (!confirmTemporaryUpload()) return;
     setUploading(true);
     setError("");
     try {
@@ -122,6 +128,7 @@ function WorkAttachmentsModal({ parentType, parentId, parentTitle, personName, o
   async function replace(file?: File) {
     const target = replaceTarget;
     if (!file || !target || uploading) return;
+    if (!confirmTemporaryUpload()) return;
     setUploading(true);
     setError("");
     try {
@@ -136,11 +143,12 @@ function WorkAttachmentsModal({ parentType, parentId, parentTitle, personName, o
   }
 
   async function remove(item: WorkAttachment) {
-    if (!window.confirm(`Remove “${item.title}” from this ${parentType}? The removal will be recorded in Activity.`)) return;
+    const permanentDelete = item.kind === "file" ? " The file itself will be deleted from Workspace storage." : "";
+    if (!window.confirm(`Remove “${item.title}” from this ${parentType}?${permanentDelete} The removal will be recorded in Activity.`)) return;
     setRemovingId(item.id);
     setError("");
     try {
-      await removeWorkAttachment(item.id);
+      await removeWorkAttachment(item);
       await refresh();
     } catch (err) {
       setError(readError(err));
@@ -173,7 +181,7 @@ function WorkAttachmentsModal({ parentType, parentId, parentTitle, personName, o
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="workflow-editor compact-modal work-files-modal" role="dialog" aria-modal="true" aria-label={`Files and links for ${parentTitle}`}>
       <div className="editor-head"><div><span className="section-kicker">Files &amp; links</span><h2>{parentTitle}</h2></div><button className="quiet editor-close" type="button" onClick={onClose}>×</button></div>
-      <p className="editor-note">Keep useful material beside the work. Upload supporting files here, or attach the Google Drive folder, Sheet, Doc or other external link where collaborative editing happens.</p>
+      <p className="editor-note">{parentType === "tension" ? "Uploaded files are temporary working copies and are deleted when the tension is resolved. Keep permanent working documents in Google Drive and link them here." : "Keep useful material beside the work. Upload supporting files here, or attach the Google Drive folder, Sheet, Doc or other external link where collaborative editing happens."}</p>
 
       <div className="work-files-toolbar">
         <button className="secondary small" type="button" disabled={uploading} onClick={() => uploadInput.current?.click()}>{uploading ? "Uploading…" : "+ Upload file"}</button>
