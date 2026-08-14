@@ -16,6 +16,8 @@ export type WorkAttachment = {
   addedBy: string;
   createdAt: string;
   updatedAt: string;
+  coiBlocked: boolean;
+  contributorConflicted: boolean;
 };
 
 type AttachmentRow = {
@@ -32,12 +34,26 @@ type AttachmentRow = {
   added_by: string;
   created_at: string;
   updated_at: string;
+  coi_blocked?: boolean | null;
+  contributor_conflicted?: boolean | null;
 };
 
 const BASE_SELECT = "id,project_id,tension_id,attachment_kind,title,url,storage_path,mime_type,file_size,added_by,created_at,updated_at";
 const FEED_SELECT = "id,project_id,tension_id,board_post_id,attachment_kind,title,url,storage_path,mime_type,file_size,added_by,created_at,updated_at";
 
 export async function loadWorkAttachments(parentType: WorkAttachmentParent, parentId: string): Promise<WorkAttachment[]> {
+  const projected = await supabase.rpc("load_work_attachments", {
+    target_kind: parentType,
+    target_id: parentId,
+  });
+
+  if (!projected.error) {
+    return ((projected.data ?? []) as AttachmentRow[]).map(mapAttachment);
+  }
+
+  if (!isOptionalFunctionError(projected.error)) throw projected.error;
+
+  // Compatibility before migration 0017 is applied.
   const select = parentType === "board_post" ? FEED_SELECT : BASE_SELECT;
   let query = supabase.from("work_attachments").select(select).is("removed_at", null).order("created_at", { ascending: false });
   if (parentType === "project") query = query.eq("project_id", parentId);
@@ -146,6 +162,8 @@ function mapAttachment(row: AttachmentRow): WorkAttachment {
     addedBy: row.added_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    coiBlocked: Boolean(row.coi_blocked),
+    contributorConflicted: Boolean(row.contributor_conflicted),
   };
 }
 
@@ -155,4 +173,8 @@ function makeStoragePath(parentType: WorkAttachmentParent, parentId: string, fil
 
 function sanitizeFilename(name: string) {
   return name.trim().replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "file";
+}
+
+function isOptionalFunctionError(error: { code?: string; message?: string }) {
+  return error.code === "PGRST202" || /load_work_attachments|schema cache|does not exist/i.test(error.message ?? "");
 }
