@@ -89,6 +89,7 @@ export function WorkspaceWorkView({
             <button className="quiet small" onClick={() => setHistoryProject(project)}>History</button>
             <button className="quiet small" onClick={() => setCommentsProject(project)}>Comments</button>
             <WorkAttachmentsButton parentType="project" parentId={project.id} parentTitle={project.title} personName={personName} />
+            <button className="quiet small" onClick={() => setSettingsProject(project)}>COI</button>
             <button className="quiet small" onClick={() => setSettingsProject(project)}>Settings</button>
           </div>
         </article>)}</div> : <div className="calm-empty compact-empty"><span>○</span><h3>No active projects yet</h3><p>Add them when they become real work.</p></div>}
