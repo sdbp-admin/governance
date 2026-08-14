@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import type { Tension } from "@/lib/domain";
-import type { WorkspaceData, WorkspacePerson } from "@/lib/supabase/workspace";
+import { createTension, type WorkspaceData, type WorkspacePerson } from "@/lib/supabase/workspace";
+import { setTensionProject } from "@/lib/supabase/tension-project";
 import { TensionAvailabilityPoll } from "@/components/tension-availability-poll";
 import { WorkAttachmentsButton } from "@/components/work-attachments";
 import { TensionCommentsButton } from "@/components/tension-comments";
@@ -30,13 +31,48 @@ type Props = {
 
 export function TensionsWorkspaceView(props: Props) {
   const [draft, setDraft] = useState("");
+  const [draftProjectId, setDraftProjectId] = useState("");
+  const [raising, setRaising] = useState(false);
+  const [raiseError, setRaiseError] = useState("");
   const [processing, setProcessing] = useState<string | null>(null);
   const active = props.workspace.tensions.filter((tension) => tension.status !== "resolved");
+  const activeProjects = props.workspace.projects.filter((project) => project.status === "active");
+
+  async function raise() {
+    if (!draft.trim() || raising) return;
+    if (!draftProjectId) {
+      if (await props.onRaise(draft)) {
+        setDraft("");
+        setRaiseError("");
+      }
+      return;
+    }
+
+    setRaising(true);
+    setRaiseError("");
+    try {
+      await createTension({ title: draft, raiserId: props.currentUserId, projectId: draftProjectId });
+      setDraft("");
+      setDraftProjectId("");
+      window.dispatchEvent(new Event("focus"));
+    } catch (error) {
+      setRaiseError(readError(error));
+    } finally {
+      setRaising(false);
+    }
+  }
 
   return <>
     <div className="tension-composer">
       <div className="composer-copy"><span className="section-kicker">Raise a tension</span><h2>What could be better?</h2><p>You do not need to know the solution yet.</p></div>
-      <div className="composer-input"><textarea rows={3} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Something is unclear, blocked or could work better…"/><button className="primary" disabled={!draft.trim()} onClick={async () => { if (await props.onRaise(draft)) setDraft(""); }}>Raise tension</button></div>
+      <div className="composer-input">
+        <textarea rows={3} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Something is unclear, blocked or could work better…"/>
+        <div className="tension-raise-meta">
+          <label className="tension-project-select"><span>Project <em>optional</em></span><select value={draftProjectId} onChange={(event) => setDraftProjectId(event.target.value)}><option value="">No project</option>{activeProjects.map((project) => <option value={project.id} key={project.id}>{project.title}</option>)}</select></label>
+          <button className="primary" disabled={!draft.trim() || raising} onClick={() => void raise()}>{raising ? "Raising…" : "Raise tension"}</button>
+        </div>
+        {raiseError && <small className="tension-project-error">{raiseError}</small>}
+      </div>
     </div>
     <section className="section">
       <div className="section-head"><div><span className="section-kicker">Open</span><h2>Tensions that still exist</h2></div><span className="counter">{active.length}</span></div>
@@ -51,6 +87,7 @@ function TensionCard(props: Props & { tension: Tension; processing: string | nul
   const processable = tension.status === "open" || tension.status === "needs_sync";
   const hasNeed = Boolean(tension.latestNote);
   const urgent = props.urgentTensionIds.has(tension.id);
+  const linkedProject = tension.linkedProjectId ? props.workspace.projects.find((project) => project.id === tension.linkedProjectId) : undefined;
 
   return <article className={`tension-card${urgent ? " urgent-tension-card" : ""}`}>
     <div className="tension-line" />
@@ -60,6 +97,7 @@ function TensionCard(props: Props & { tension: Tension; processing: string | nul
         <span className="tension-meta-status">{urgent && <span className="urgency-badge">Urgent</span>}<span>{label(tension.status)}</span></span>
       </div>
       <h3>{tension.title}</h3>
+      <TensionProjectLink tension={tension} linkedProject={linkedProject} mine={mine} projects={props.workspace.projects} />
       {tension.latestNote && <p>{tension.latestNote}</p>}
 
       {tension.status === "needs_sync" && <TensionAvailabilityPoll tension={tension} currentUserId={props.currentUserId} personName={props.personName} onCreate={props.onCreatePoll} onVote={props.onVotePoll} onChoose={props.onChoosePoll} />}
@@ -87,6 +125,45 @@ function TensionCard(props: Props & { tension: Tension; processing: string | nul
       {mine && <button className={urgent ? "secondary small" : "quiet small"} type="button" onClick={() => void props.onUrgency(tension, !urgent)}>{urgent ? "Remove urgent flag" : "Mark urgent"}</button>}
     </div>
   </article>;
+}
+
+function TensionProjectLink({ tension, linkedProject, mine, projects }: {
+  tension: Tension;
+  linkedProject?: WorkspaceData["projects"][number];
+  mine: boolean;
+  projects: WorkspaceData["projects"];
+}) {
+  const [editing, setEditing] = useState(false);
+  const [projectId, setProjectId] = useState(tension.linkedProjectId ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const choices = projects.filter((project) => project.status === "active" || project.id === tension.linkedProjectId);
+
+  async function save() {
+    if (saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      await setTensionProject(tension.id, projectId || null);
+      setEditing(false);
+      window.dispatchEvent(new Event("focus"));
+    } catch (err) {
+      setError(readError(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!mine) return linkedProject ? <span className="tension-project-chip">Project · {linkedProject.title}</span> : null;
+
+  if (!editing) return <button className={linkedProject ? "tension-project-chip tension-project-button" : "tension-project-empty"} type="button" onClick={() => { setProjectId(tension.linkedProjectId ?? ""); setEditing(true); }}>{linkedProject ? `Project · ${linkedProject.title}` : "+ Link project"}</button>;
+
+  return <div className="tension-project-editor">
+    <select value={projectId} onChange={(event) => setProjectId(event.target.value)}><option value="">No project</option>{choices.map((project) => <option value={project.id} key={project.id}>{project.title}</option>)}</select>
+    <button className="primary small" type="button" disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</button>
+    <button className="quiet small" type="button" onClick={() => setEditing(false)}>Cancel</button>
+    {error && <small className="tension-project-error">{error}</small>}
+  </div>;
 }
 
 function Process({ tension, people, currentUserId, onClose, onNeed, onMoveGovernance }: {
@@ -126,4 +203,8 @@ function Picker({ people, selected, setSelected }: { people: WorkspacePerson[]; 
 
 function label(status: Tension["status"]) {
   return status === "awaiting_confirmation" ? "awaiting confirmation" : status === "needs_sync" ? "needs conversation" : status;
+}
+
+function readError(error: unknown) {
+  return error instanceof Error ? error.message : "The project link could not be saved.";
 }
