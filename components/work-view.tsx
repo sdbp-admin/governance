@@ -3,12 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Project } from "@/lib/domain";
 import { ContextualNextSteps, type ContextualNextStepInput } from "@/components/contextual-next-steps";
+import { ProjectCommentsModal } from "@/components/project-comments-modal";
+import { ProjectSettingsModal } from "@/components/project-settings-modal";
 import { WorkAttachmentsButton } from "@/components/work-attachments";
 import {
-  addProjectComment,
-  loadProjectComments,
   loadProjectUpdates,
-  type ProjectCommentEntry,
   type ProjectUpdateEntry,
   type WorkspaceData,
   type WorkspacePerson,
@@ -23,6 +22,8 @@ export function WorkspaceWorkView({
   onAddProject,
   onActionStatus,
   onCompleteProject,
+  onReopenProject,
+  onSaveProjectSettings,
   onUpdateProject,
   openCommentsProjectId,
   onCommentsOpened,
@@ -35,6 +36,8 @@ export function WorkspaceWorkView({
   onAddProject: (input: { title: string; ownerId: string; participantIds: string[]; summary: string }) => Promise<boolean>;
   onActionStatus: (id: string, status: "open" | "done") => Promise<unknown>;
   onCompleteProject: (id: string) => Promise<void>;
+  onReopenProject: (id: string) => Promise<void>;
+  onSaveProjectSettings: (projectId: string, input: { title: string; ownerId: string; participantIds: string[]; summary: string }) => Promise<boolean>;
   onUpdateProject: (id: string) => void;
   openCommentsProjectId?: string | null;
   onCommentsOpened?: () => void;
@@ -42,8 +45,10 @@ export function WorkspaceWorkView({
   const [projectOpen, setProjectOpen] = useState(false);
   const [historyProject, setHistoryProject] = useState<Project | null>(null);
   const [commentsProject, setCommentsProject] = useState<Project | null>(null);
+  const [settingsProject, setSettingsProject] = useState<Project | null>(null);
 
   const activeProjects = workspace.projects.filter((project) => project.status === "active");
+  const completedProjects = workspace.projects.filter((project) => project.status === "complete");
   const openActions = workspace.actions.filter((action) => action.status === "open" || action.status === "proposed");
   const projectById = useMemo(() => new Map(workspace.projects.map((project) => [project.id, project])), [workspace.projects]);
 
@@ -81,9 +86,14 @@ export function WorkspaceWorkView({
             <button className="quiet small" onClick={() => setHistoryProject(project)}>History</button>
             <button className="quiet small" onClick={() => setCommentsProject(project)}>Comments</button>
             <WorkAttachmentsButton parentType="project" parentId={project.id} parentTitle={project.title} personName={personName} />
-            {project.ownerId === currentUserId && <button className="quiet small" onClick={() => void onCompleteProject(project.id)}>Outcome achieved</button>}
+            <button className="quiet small" onClick={() => setSettingsProject(project)}>Settings</button>
           </div>
         </article>)}</div> : <div className="calm-empty compact-empty"><span>○</span><h3>No active projects yet</h3><p>Add them when they become real work.</p></div>}
+
+        {completedProjects.length > 0 && <details className="completed-projects">
+          <summary>Completed projects <span>{completedProjects.length}</span></summary>
+          <div className="completed-project-list">{completedProjects.map((project) => <div className="completed-project-row" key={project.id}><div><strong>{project.title}</strong><small>{personName(project.ownerId)} · completed</small></div><button className="quiet small" type="button" onClick={() => void onReopenProject(project.id)}>Reopen</button></div>)}</div>
+        </details>}
       </section>
 
       <aside className="action-rail">
@@ -107,7 +117,8 @@ export function WorkspaceWorkView({
 
     {projectOpen && <ProjectCreateModal people={workspace.people} currentUserId={currentUserId} onClose={() => setProjectOpen(false)} onSave={async (input) => { if (await onAddProject(input)) setProjectOpen(false); }} />}
     {historyProject && <ProjectHistoryModal project={historyProject} personName={personName} onClose={() => setHistoryProject(null)} />}
-    {commentsProject && <ProjectCommentsModal project={commentsProject} currentUserId={currentUserId} personName={personName} onClose={() => setCommentsProject(null)} />}
+    {commentsProject && <ProjectCommentsModal project={commentsProject} currentUserId={currentUserId} personName={personName} people={workspace.people} onClose={() => setCommentsProject(null)} />}
+    {settingsProject && <ProjectSettingsModal project={settingsProject} people={workspace.people} openNextStepCount={workspace.actions.filter((action) => (action.status === "open" || action.status === "proposed") && action.projectId === settingsProject.id).length} onSave={onSaveProjectSettings} onComplete={onCompleteProject} onClose={() => setSettingsProject(null)} />}
   </>;
 }
 
@@ -145,48 +156,6 @@ function ProjectHistoryModal({ project, personName, onClose }: { project: Projec
   return <ModalShell kicker="Project history" title={project.title} onClose={onClose}>
     <p className="editor-note">The project card shows the current state. This is the trail of earlier checks and updates.</p>
     {loading ? <div className="project-context-empty">Loading history…</div> : error ? <div className="auth-message error">{error}</div> : entries.length ? <div className="project-history-list">{entries.map((entry) => <article key={entry.id} className="project-history-entry"><div><strong>{historyLabel(entry.updateKind)}</strong><time>{formatTimestamp(entry.createdAt)}</time></div><p>{entry.updateKind === "no_change" ? "No change recorded." : entry.summary || "No current-state text was recorded."}</p><small>{entry.authorId ? personName(entry.authorId) : "Existing state when history was enabled"}</small></article>)}</div> : <div className="project-context-empty">No earlier updates recorded yet.</div>}
-  </ModalShell>;
-}
-
-function ProjectCommentsModal({ project, currentUserId, personName, onClose }: { project: Project; currentUserId: string; personName: (id: string) => string; onClose: () => void }) {
-  const [comments, setComments] = useState<ProjectCommentEntry[]>([]);
-  const [body, setBody] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-
-  async function refresh() {
-    const result = await loadProjectComments(project.id);
-    setComments(result);
-  }
-
-  useEffect(() => {
-    let alive = true;
-    void loadProjectComments(project.id).then((result) => { if (alive) setComments(result); }).catch((err) => { if (alive) setError(readError(err)); }).finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
-  }, [project.id]);
-
-  async function add() {
-    if (!body.trim() || saving) return;
-    setSaving(true); setError("");
-    try {
-      await addProjectComment(project.id, body);
-      setBody("");
-      await refresh();
-      window.dispatchEvent(new Event("focus"));
-    } catch (err) {
-      setError(readError(err));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return <ModalShell kicker="Project comments" title={project.title} onClose={onClose}>
-    <p className="editor-note">Use this for short project-specific clarification. Decisions, actions and changed project reality still belong in their normal places.</p>
-    {loading ? <div className="project-context-empty">Loading comments…</div> : comments.length ? <div className="project-comments-list">{comments.map((comment) => <article className={comment.authorId === currentUserId ? "project-comment mine" : "project-comment"} key={comment.id}><div><strong>{personName(comment.authorId)}</strong><time>{formatTimestamp(comment.createdAt)}</time></div><div><LinkifiedText text={comment.body} /></div></article>)}</div> : <div className="project-context-empty">No comments yet.</div>}
-    <label className="field project-comment-composer"><span>Add comment</span><textarea rows={3} value={body} onChange={(event) => setBody(event.target.value)} placeholder="Ask for clarification or leave a short project-specific note…" /></label>
-    {error && <div className="auth-message error">{error}</div>}
-    <div className="editor-actions"><div /><button className="primary" disabled={!body.trim() || saving} onClick={() => void add()}>{saving ? "Adding…" : "Add comment"}</button></div>
   </ModalShell>;
 }
 
