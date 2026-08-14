@@ -311,6 +311,7 @@ end;
 $$;
 
 revoke all on function public.can_read_sdbp_storage_object(text) from public;
+grant execute on function public.can_read_sdbp_storage_object(text) to authenticated;
 
 drop policy if exists "board members read records files" on storage.objects;
 create policy "board members read records files"
