@@ -13,6 +13,7 @@ import { OrganisationWorkspaceView } from "@/components/organisation-workspace-v
 import { GovernanceWorkspaceView } from "@/components/governance-workspace-view";
 import { WorkspaceGovernanceMeeting } from "@/components/governance-workspace-meeting";
 import { loadCommunicationAttentionSignals, type CommunicationAttentionSignal } from "@/lib/supabase/board-feed";
+import { reopenProject, saveProjectSettings } from "@/lib/supabase/project-management";
 import { loadUrgentTensionIds, setTensionUrgency } from "@/lib/supabase/tension-urgency";
 import {
   acceptGovernanceProposal, acknowledgeAttentionSignal, canInvitePeople, chooseTensionPollOption,
@@ -91,7 +92,9 @@ export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
   const addProject=(input:{title:string;ownerId:string;participantIds:string[];summary:string;sourceTensionId?:string})=>run(()=>createProject(input),"Project added.");
   async function saveProjectUpdate(id:string,summary:string){if(await run(()=>updateProject(id,summary),"Project updated."))setProjectEditorId(null);}
   async function noProjectChange(id:string){if(await run(()=>touchProject(id),"Project checked. No change recorded."))setProjectEditorId(null);}
-  async function markProjectComplete(id:string){await run(()=>completeProject(id),"Project outcome achieved.");}
+  async function markProjectComplete(id:string){await run(()=>completeProject(id),"Project completed.");}
+  async function reopenCompletedProject(id:string){await run(()=>reopenProject(id),"Project reopened.");}
+  const changeProjectSettings=(id:string,input:{title:string;ownerId:string;participantIds:string[];summary:string})=>run(()=>saveProjectSettings(id,input),"Project settings saved.");
   const raiseTension=(title:string,projectId?:string)=>run(()=>createTension({title,raiserId:currentUserId,projectId}),"Tension raised.");
   async function markTensionResolved(t:Tension){
     if(t.raiserId===currentUserId){await run(()=>updateTension(t.id,{status:"resolved",resolutionProposedBy:null,latestNote:`${personName(currentUserId)} confirmed the tension is resolved.`}),"Tension resolved.");return;}
@@ -124,7 +127,7 @@ export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
     <main className="main"><PageHeader view={view} attentionCount={attention.length} currentName={liveProfile.name}/>{error&&<div className="records-status error launch-error">{error}</div>}
       {view==="attention"&&<AttentionView items={attention} urgentTensionIds={urgentTensionIds} onPrimary={handleAttention} onRaiseTension={()=>setView("tensions")}/>}
       {view==="feed"&&<BoardFeedView people={workspace.people} currentUserId={currentUserId} personName={personName} openPostId={feedPostId} onOpenedPost={()=>setFeedPostId(null)}/>}
-      {view==="work"&&<WorkspaceWorkView workspace={workspace} currentUserId={currentUserId} personName={personName} personInitial={personInitial} onAddNextStep={addNextStep} onAddProject={addProject} onActionStatus={changeActionStatus} onCompleteProject={markProjectComplete} onUpdateProject={setProjectEditorId} openCommentsProjectId={projectCommentsId} onCommentsOpened={()=>setProjectCommentsId(null)}/>}
+      {view==="work"&&<WorkspaceWorkView workspace={workspace} currentUserId={currentUserId} personName={personName} personInitial={personInitial} onAddNextStep={addNextStep} onAddProject={addProject} onActionStatus={changeActionStatus} onCompleteProject={markProjectComplete} onReopenProject={reopenCompletedProject} onSaveProjectSettings={changeProjectSettings} onUpdateProject={setProjectEditorId} openCommentsProjectId={projectCommentsId} onCommentsOpened={()=>setProjectCommentsId(null)}/>}
       {view==="tensions"&&<TensionsWorkspaceView workspace={workspace} currentUserId={currentUserId} personName={personName} urgentTensionIds={urgentTensionIds} openCommentsTensionId={tensionCommentsId} onCommentsOpened={()=>setTensionCommentsId(null)} onRaise={async title=>raiseTension(title)} onAddNextStep={addNextStep} onActionStatus={changeActionStatus} onMarkResolved={markTensionResolved} onKeepOpen={keepTensionOpen} onNeed={recordTensionNeed} onMoveGovernance={moveTensionToGovernance} onResolve={resolveWithNote} onCreatePoll={addTensionPoll} onVotePoll={saveTensionPollVote} onChoosePoll={choosePollTime} onUrgency={changeTensionUrgency}/>}
       {view==="organisation"&&<OrganisationWorkspaceView workspace={workspace} currentUserId={currentUserId} canInvite={inviteAllowed} personName={personName} onInvite={async(name,email)=>{const ok=await run(()=>invitePerson(name,email),`Invitation sent to ${email}.`);return ok;}} onSaveRole={role=>run(()=>saveRole(role),"Role saved.")} onDeleteRole={id=>run(()=>deleteRole(id),"Role removed.")} onOpenProject={()=>setView("work")}/>}
       {view==="governance"&&<GovernanceWorkspaceView workspace={workspace} currentUserId={currentUserId} personName={personName} onCreateProposal={addProposal} onStartMeeting={startMeeting} onGoTensions={()=>setView("tensions")} onGoRecords={()=>setView("records")}/>}
