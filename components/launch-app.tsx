@@ -7,9 +7,11 @@ import { CompassModal } from "@/components/guidance";
 import { WorkspaceWorkView } from "@/components/work-view";
 import { AttentionView, deriveAttention } from "@/components/attention-view";
 import { TensionsWorkspaceView } from "@/components/tensions-workspace-view";
+import { BoardFeedView } from "@/components/board-feed-view";
 import { OrganisationWorkspaceView } from "@/components/organisation-workspace-view";
 import { GovernanceWorkspaceView } from "@/components/governance-workspace-view";
 import { WorkspaceGovernanceMeeting } from "@/components/governance-workspace-meeting";
+import { loadCommunicationAttentionSignals, type CommunicationAttentionSignal } from "@/lib/supabase/board-feed";
 import { loadUrgentTensionIds, setTensionUrgency } from "@/lib/supabase/tension-urgency";
 import {
   acceptGovernanceProposal, acknowledgeAttentionSignal, canInvitePeople, chooseTensionPollOption,
@@ -19,17 +21,18 @@ import {
   voteTensionPoll, type WorkspaceData,
 } from "@/lib/supabase/workspace";
 
-type View = "attention" | "work" | "tensions" | "organisation" | "governance" | "records" | "pulse";
+type View = "attention" | "feed" | "work" | "tensions" | "organisation" | "governance" | "records" | "pulse";
 type LiveProfile = { id: string; name: string; email: string };
 type TensionNeed = "input" | "sync";
 
 const EMPTY_WORKSPACE: WorkspaceData = { people: [], roles: [], projects: [], actions: [], tensions: [], governanceProposals: [], standingAgreements: [], attentionSignals: [] };
-const LABELS: Record<View,string> = { attention:"My Attention", work:"Work", tensions:"Tensions", organisation:"Organisation", governance:"Governance", records:"Records", pulse:"SDBP Pulse" };
-const NAV_META: Record<View,string> = { attention:"What needs you", work:"Projects & actions", tensions:"What could be better", organisation:"People, roles & groups", governance:"Change how we work", records:"Organisational memory", pulse:"Where things are stuck" };
+const LABELS: Record<View,string> = { attention:"My Attention", feed:"Board Feed", work:"Work", tensions:"Tensions", organisation:"Organisation", governance:"Governance", records:"Records", pulse:"SDBP Pulse" };
+const NAV_META: Record<View,string> = { attention:"What needs you", feed:"Shared board communication", work:"Projects & actions", tensions:"What could be better", organisation:"People, roles & groups", governance:"Change how we work", records:"Organisational memory", pulse:"Where things are stuck" };
 
 export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
   const [workspace,setWorkspace]=useState<WorkspaceData>(EMPTY_WORKSPACE);
   const [urgentTensionIds,setUrgentTensionIds]=useState<Set<string>>(new Set());
+  const [communicationSignals,setCommunicationSignals]=useState<CommunicationAttentionSignal[]>([]);
   const [view,setView]=useState<View>("attention");
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState("");
@@ -37,6 +40,8 @@ export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
   const [inviteAllowed,setInviteAllowed]=useState(false);
   const [projectEditorId,setProjectEditorId]=useState<string|null>(null);
   const [projectCommentsId,setProjectCommentsId]=useState<string|null>(null);
+  const [tensionCommentsId,setTensionCommentsId]=useState<string|null>(null);
+  const [feedPostId,setFeedPostId]=useState<string|null>(null);
   const [activeMeetingId,setActiveMeetingId]=useState<string|null>(null);
   const [compassOpen,setCompassOpen]=useState(false);
   const currentUserId=liveProfile?.id??"";
@@ -44,7 +49,7 @@ export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
   const refresh=useCallback(async(quiet=false)=>{
     if(!liveProfile)return;
     if(!quiet)setLoading(true);
-    try{const[next,canInvite,urgentIds]=await Promise.all([loadWorkspace(),canInvitePeople(),loadUrgentTensionIds()]);setWorkspace(next);setInviteAllowed(canInvite);setUrgentTensionIds(urgentIds);setError("");}
+    try{const[next,canInvite,urgentIds,commSignals]=await Promise.all([loadWorkspace(),canInvitePeople(),loadUrgentTensionIds(),loadCommunicationAttentionSignals()]);setWorkspace(next);setInviteAllowed(canInvite);setUrgentTensionIds(urgentIds);setCommunicationSignals(commSignals);setError("");}
     catch(e){setError(readError(e));}
     finally{if(!quiet)setLoading(false);}
   },[liveProfile]);
@@ -63,7 +68,7 @@ export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
   const peopleById=useMemo(()=>new Map(workspace.people.map(p=>[p.id,p])),[workspace.people]);
   const personName=(id:string)=>peopleById.get(id)?.name??"Unknown";
   const personInitial=(id:string)=>personName(id).charAt(0).toUpperCase();
-  const attention=useMemo(()=>deriveAttention(workspace,currentUserId,personName,urgentTensionIds),[workspace,currentUserId,urgentTensionIds]);
+  const attention=useMemo(()=>deriveAttention(workspace,currentUserId,personName,urgentTensionIds,communicationSignals),[workspace,currentUserId,urgentTensionIds,communicationSignals]);
   const activeMeeting=activeMeetingId?workspace.governanceProposals.find(p=>p.id===activeMeetingId):undefined;
 
   async function run(action:()=>Promise<void>,success?:string){
@@ -73,6 +78,8 @@ export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
   async function handleAttention(item:AttentionItem){
     if(item.kind==="project_update"&&item.targetId){setProjectEditorId(item.targetId);setView("work");return;}
     if(item.kind==="comment"&&item.targetId){if(item.signalId&&!await run(()=>acknowledgeAttentionSignal(item.signalId)))return;setProjectCommentsId(item.targetId);setView("work");return;}
+    if(item.kind==="tension_comment"&&item.targetId){if(item.signalId&&!await run(()=>acknowledgeAttentionSignal(item.signalId)))return;setTensionCommentsId(item.targetId);setView("tensions");return;}
+    if(item.kind==="feed"){if(item.signalId&&!await run(()=>acknowledgeAttentionSignal(item.signalId)))return;setFeedPostId(item.targetId??null);setView("feed");return;}
     if(item.kind==="action"&&item.targetId){const action=workspace.actions.find(a=>a.id===item.targetId);if(!action)return;const next=action.status==="proposed"?"open":"done";await run(()=>setActionStatus(action.id,next),next==="open"?"Action accepted.":"Action completed.");return;}
     if(item.kind==="tension"){setView("tensions");return;}
     if(item.kind==="governance")setView("governance");
@@ -114,8 +121,9 @@ export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
     <aside className="sidebar"><div className="brand-lockup"><div className="brand-mark" aria-hidden="true"><span/><span/></div><div className="brand">SDBP Workspace<small>Structure · rhythm · memory</small></div></div><nav className="nav">{(Object.keys(LABELS) as View[]).map(key=><button key={key} className={view===key?"active":""} onClick={()=>setView(key)}><strong>{LABELS[key]}</strong><small>{NAV_META[key]}</small></button>)}</nav><div className="sidebar-foot launch-sidebar-foot"><div className="avatar">{liveProfile.name.charAt(0)}</div><div><strong>{liveProfile.name}</strong><small>Signed in</small></div><button className="sidebar-compass" type="button" onClick={()=>setCompassOpen(true)}>Compass</button></div></aside>
     <main className="main"><PageHeader view={view} attentionCount={attention.length} currentName={liveProfile.name}/>{error&&<div className="records-status error launch-error">{error}</div>}
       {view==="attention"&&<AttentionView items={attention} urgentTensionIds={urgentTensionIds} onPrimary={handleAttention} onRaiseTension={()=>setView("tensions")}/>}
+      {view==="feed"&&<BoardFeedView people={workspace.people} currentUserId={currentUserId} personName={personName} openPostId={feedPostId} onOpenedPost={()=>setFeedPostId(null)}/>}
       {view==="work"&&<WorkspaceWorkView workspace={workspace} currentUserId={currentUserId} personName={personName} personInitial={personInitial} onAddAction={addOwnAction} onAddProject={addProject} onCompleteAction={id=>run(()=>setActionStatus(id,"done"),"Action completed.")} onCompleteProject={markProjectComplete} onUpdateProject={setProjectEditorId} openCommentsProjectId={projectCommentsId} onCommentsOpened={()=>setProjectCommentsId(null)}/>}
-      {view==="tensions"&&<TensionsWorkspaceView workspace={workspace} currentUserId={currentUserId} personName={personName} urgentTensionIds={urgentTensionIds} onRaise={async title=>raiseTension(title)} onMarkResolved={markTensionResolved} onKeepOpen={keepTensionOpen} onNeed={recordTensionNeed} onMoveGovernance={moveTensionToGovernance} onResolve={resolveWithNote} onCreatePoll={addTensionPoll} onVotePoll={saveTensionPollVote} onChoosePoll={choosePollTime} onUrgency={changeTensionUrgency}/>}
+      {view==="tensions"&&<TensionsWorkspaceView workspace={workspace} currentUserId={currentUserId} personName={personName} urgentTensionIds={urgentTensionIds} openCommentsTensionId={tensionCommentsId} onCommentsOpened={()=>setTensionCommentsId(null)} onRaise={async title=>raiseTension(title)} onMarkResolved={markTensionResolved} onKeepOpen={keepTensionOpen} onNeed={recordTensionNeed} onMoveGovernance={moveTensionToGovernance} onResolve={resolveWithNote} onCreatePoll={addTensionPoll} onVotePoll={saveTensionPollVote} onChoosePoll={choosePollTime} onUrgency={changeTensionUrgency}/>}
       {view==="organisation"&&<OrganisationWorkspaceView workspace={workspace} currentUserId={currentUserId} canInvite={inviteAllowed} personName={personName} onInvite={async(name,email)=>{const ok=await run(()=>invitePerson(name,email),`Invitation sent to ${email}.`);return ok;}} onSaveRole={role=>run(()=>saveRole(role),"Role saved.")} onDeleteRole={id=>run(()=>deleteRole(id),"Role removed.")} onOpenProject={()=>setView("work")}/>}
       {view==="governance"&&<GovernanceWorkspaceView workspace={workspace} currentUserId={currentUserId} personName={personName} onCreateProposal={addProposal} onStartMeeting={startMeeting} onGoTensions={()=>setView("tensions")} onGoRecords={()=>setView("records")}/>}
       {view==="records"&&<RecordsView governanceProposals={workspace.governanceProposals} tensions={workspace.tensions} profileId={liveProfile.id} onNotice={setNotice}/>}
@@ -130,6 +138,7 @@ export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
 function PageHeader({view,attentionCount,currentName}:{view:View;attentionCount:number;currentName:string}){
  const description:Record<View,React.ReactNode>={
   attention:attentionCount===0?`Nothing needs ${currentName}'s attention right now.`:`${attentionCount} ${attentionCount===1?"thing needs":"things need"} ${currentName}'s attention. The Workspace does not rank them by importance; use your judgement.`,
+  feed:"A persistent shared board space for general notices, requests and context. Use projects and tensions when the communication belongs to specific work.",
   work:"Keep commitments visible and project updates short. The current reality matters more than reporting activity.",
   tensions:"A tension is a gap between current reality and a potential future you sense. Raise one whenever something could be better.",
   organisation:"Board roles and operating roles are both roles. Board-role authority comes from the statutes and applicable law; operating-role authority comes from SDBP governance.",
