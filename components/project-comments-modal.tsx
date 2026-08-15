@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Project } from "@/lib/domain";
 import type { WorkspacePerson } from "@/lib/supabase/workspace";
 import { addProjectComment, loadProjectComments, type ProjectCommentEntry } from "@/lib/supabase/project-comments";
 import { loadProjectConflicts, type ProjectConflict } from "@/lib/supabase/project-coi";
+import { announceCommentThreadChange, loadCommentThreadSummary, markCommentThreadSeen } from "@/lib/supabase/comment-thread-state";
 
 export function ProjectCommentsModal({ project, currentUserId, personName, people, onClose }: {
   project: Project;
@@ -15,6 +16,7 @@ export function ProjectCommentsModal({ project, currentUserId, personName, peopl
 }) {
   const [comments, setComments] = useState<ProjectCommentEntry[]>([]);
   const [conflicts, setConflicts] = useState<ProjectConflict[]>([]);
+  const [seenBefore, setSeenBefore] = useState<string | null>(null);
   const [revealedCoiComments, setRevealedCoiComments] = useState<Set<string>>(new Set());
   const [body, setBody] = useState("");
   const [cursor, setCursor] = useState(0);
@@ -35,8 +37,18 @@ export function ProjectCommentsModal({ project, currentUserId, personName, peopl
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    Promise.all([loadProjectComments(project.id), loadProjectConflicts(project.id)])
-      .then(([items, coi]) => { if (alive) { setComments(items); setConflicts(coi); } })
+    Promise.all([
+      loadProjectComments(project.id),
+      loadProjectConflicts(project.id),
+      loadCommentThreadSummary("project", project.id),
+    ])
+      .then(([items, coi, summary]) => {
+        if (!alive) return;
+        setComments(items);
+        setConflicts(coi);
+        setSeenBefore(summary.lastSeenAt);
+        void markCommentThreadSeen("project", project.id).catch(() => undefined);
+      })
       .catch((err) => { if (alive) setError(readError(err)); })
       .finally(() => { if (alive) setLoading(false); });
 
@@ -52,6 +64,7 @@ export function ProjectCommentsModal({ project, currentUserId, personName, peopl
   }, [project.id, refreshConflicts]);
 
   const mentionedIds = useMemo(() => extractMentionIds(body, people, currentUserId), [body, people, currentUserId]);
+  const firstNewIndex = useMemo(() => comments.findIndex((comment) => comment.authorId !== currentUserId && (!seenBefore || new Date(comment.createdAt).getTime() > new Date(seenBefore).getTime())), [comments, currentUserId, seenBefore]);
   const trigger = mentionSuppressed ? null : findMentionTrigger(body, cursor);
   const suggestions = useMemo(() => {
     if (!trigger) return [];
@@ -96,6 +109,7 @@ export function ProjectCommentsModal({ project, currentUserId, personName, peopl
       setCursor(0);
       setMentionSuppressed(false);
       await refresh();
+      announceCommentThreadChange("project", project.id);
       window.dispatchEvent(new Event("focus"));
     } catch (err) {
       setError(readError(err));
@@ -109,13 +123,16 @@ export function ProjectCommentsModal({ project, currentUserId, personName, peopl
       <div className="editor-head"><div><span className="section-kicker">Project comments</span><h2>{project.title}</h2></div><button className="quiet editor-close" type="button" onClick={onClose}>×</button></div>
       <p className="editor-note">Use this for short project-specific clarification. Type @ to notify a specific person. Decisions, next steps and changed project reality still belong in their normal places.</p>
       {conflicts.length > 0 && <div className="coi-awareness-note"><strong>COI active · {conflicts.map((conflict) => personName(conflict.personId)).join(", ")}</strong><span>Visible comments remain visible to the conflicted person. Keep them free of information that could affect the conflict.</span></div>}
-      {loading ? <div className="project-context-empty">Loading comments…</div> : comments.length ? <div className="project-comments-list">{comments.map((comment) => {
+      {loading ? <div className="project-context-empty">Loading comments…</div> : comments.length ? <div className="project-comments-list">{comments.map((comment, index) => {
         const conflict = conflicts.find((item) => item.personId === comment.authorId);
         const obscured = Boolean(conflict && comment.authorId !== currentUserId && !revealedCoiComments.has(comment.id));
-        return <article className={`${comment.authorId === currentUserId ? "project-comment mine" : "project-comment"}${conflict ? " coi-input" : ""}`} key={comment.id}>
-          <div><strong>{personName(comment.authorId)}{conflict && <span className="coi-inline-label">COI input</span>}</strong><time>{formatTimestamp(comment.createdAt)}</time></div>
-          {obscured ? <div className="coi-obscured-input"><p>This contribution comes from a person with an active conflict of interest on this project.</p><button className="secondary small" type="button" onClick={() => setRevealedCoiComments((items) => new Set([...items, comment.id]))}>Reveal message</button></div> : <><CommentText text={comment.body} mentionedIds={comment.mentionedIds} personName={personName} />{comment.mentionedIds.length > 0 && <small className="tension-comment-notified">Notified: {comment.mentionedIds.map(personName).join(", ")}</small>}</>}
-        </article>;
+        return <Fragment key={comment.id}>
+          {index === firstNewIndex && <div className="new-comment-divider"><span>New comments</span></div>}
+          <article className={`${comment.authorId === currentUserId ? "project-comment mine" : "project-comment"}${conflict ? " coi-input" : ""}`}>
+            <div><strong>{personName(comment.authorId)}{conflict && <span className="coi-inline-label">COI input</span>}</strong><time>{formatTimestamp(comment.createdAt)}</time></div>
+            {obscured ? <div className="coi-obscured-input"><p>This contribution comes from a person with an active conflict of interest on this project.</p><button className="secondary small" type="button" onClick={() => setRevealedCoiComments((items) => new Set([...items, comment.id]))}>Reveal message</button></div> : <><CommentText text={comment.body} mentionedIds={comment.mentionedIds} personName={personName} />{comment.mentionedIds.length > 0 && <small className="tension-comment-notified">Notified: {comment.mentionedIds.map(personName).join(", ")}</small>}</>}
+          </article>
+        </Fragment>;
       })}</div> : <div className="project-context-empty">No comments yet.</div>}
       <label className="field project-comment-composer tension-comment-composer"><span>Add comment</span><textarea ref={textareaRef} rows={3} value={body} onChange={(event) => { setBody(event.target.value); setCursor(event.target.selectionStart); setMentionSuppressed(false); }} onClick={(event) => setCursor(event.currentTarget.selectionStart)} onKeyUp={(event) => setCursor(event.currentTarget.selectionStart)} placeholder="Ask for clarification or leave a note… Type @ to mention someone." />
         {suggestions.length > 0 && <div className="mention-suggestions" role="listbox" aria-label="Mention a board member">{suggestions.map((person) => <button type="button" role="option" key={person.id} onMouseDown={(event) => event.preventDefault()} onClick={() => insertMention(person)}><span className="mini-avatar">{person.name.charAt(0)}</span><span>{person.name}</span></button>)}</div>}
