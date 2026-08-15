@@ -5,6 +5,7 @@ import type { Project } from "@/lib/domain";
 import { ContextualNextSteps, type ContextualNextStepInput } from "@/components/contextual-next-steps";
 import { ProjectCoiBadge } from "@/components/project-coi-badge";
 import { ProjectCommentsModal } from "@/components/project-comments-modal";
+import { CommentThreadButton } from "@/components/comment-thread-button";
 import { ProjectSettingsModal } from "@/components/project-settings-modal";
 import { ProjectSummaryPreview } from "@/components/project-summary-preview";
 import { WorkAttachmentsButton } from "@/components/work-attachments";
@@ -87,7 +88,7 @@ export function WorkspaceWorkView({
           <div className="actions compact-actions project-context-actions">
             {project.ownerId === currentUserId && <button className="secondary small" onClick={() => onUpdateProject(project.id)}>Update</button>}
             <button className="quiet small" onClick={() => setHistoryProject(project)}>History</button>
-            <button className="quiet small" onClick={() => setCommentsProject(project)}>Comments</button>
+            <CommentThreadButton threadType="project" threadId={project.id} onOpen={() => setCommentsProject(project)} />
             <WorkAttachmentsButton parentType="project" parentId={project.id} parentTitle={project.title} personName={personName} />
             <button className="quiet small" onClick={() => setSettingsProject(project)}>COI</button>
             <button className="quiet small" onClick={() => setSettingsProject(project)}>Settings</button>
@@ -140,7 +141,7 @@ function ProjectCreateModal({ people, currentUserId, onClose, onSave }: {
   return <ModalShell kicker="New project" title="What outcome are we working toward?" onClose={onClose}>
     <label className="field"><span>Project</span><input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} /></label>
     <label className="field"><span>Owner</span><select value={ownerId} onChange={(event) => { const id = event.target.value; setOwnerId(id); setParticipants((items) => items.includes(id) ? items : [...items, id]); }}>{people.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
-    <div className="field"><span>People involved</span><div className="people-picker">{people.map((person) => <label key={person.id}><input type="checkbox" checked={participants.includes(person.id)} onChange={(event) => setParticipants((items) => event.target.checked ? [...new Set([...items, person.id])] : person.id === ownerId ? items : items.filter((id) => id !== person.id))} />{person.name}</label>)}</div></div>
+    <div className="field"><span>People involved</span><div className="people-picker project-people-picker">{people.map((person) => <label key={person.id}><input type="checkbox" checked={participants.includes(person.id)} onChange={(event) => setParticipants((items) => event.target.checked ? [...new Set([...items, person.id])] : person.id === ownerId ? items : items.filter((id) => id !== person.id))} /><span>{person.name}</span></label>)}</div></div>
     <label className="field"><span>Current state <em>optional</em></span><textarea rows={3} value={summary} onChange={(event) => setSummary(event.target.value)} /></label>
     <div className="editor-actions"><div /><div className="editor-actions-right"><button className="secondary" onClick={onClose}>Cancel</button><button className="primary" disabled={!title.trim()} onClick={() => void onSave({ title, ownerId, participantIds: [...new Set([ownerId, ...participants])], summary })}>Save project</button></div></div>
   </ModalShell>;
