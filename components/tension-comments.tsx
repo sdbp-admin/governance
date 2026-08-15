@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Tension } from "@/lib/domain";
 import type { WorkspacePerson } from "@/lib/supabase/workspace";
 import { addTensionComment, loadTensionComments, type TensionCommentEntry } from "@/lib/supabase/tension-comments";
+import { announceCommentThreadChange, loadCommentThreadSummary, markCommentThreadSeen } from "@/lib/supabase/comment-thread-state";
+import { CommentThreadButton } from "@/components/comment-thread-button";
 
 export function TensionCommentsButton({ tension, currentUserId, personName, people, forceOpen = false, onOpened }: {
   tension: Tension;
@@ -23,7 +25,7 @@ export function TensionCommentsButton({ tension, currentUserId, personName, peop
   }, [forceOpen, onOpened]);
 
   return <>
-    <button className="quiet small" type="button" onClick={() => setOpen(true)}>Comments</button>
+    <CommentThreadButton threadType="tension" threadId={tension.id} onOpen={() => setOpen(true)} />
     {open && typeof document !== "undefined" && createPortal(
       <TensionCommentsModal tension={tension} currentUserId={currentUserId} personName={personName} people={people} onClose={() => setOpen(false)} />,
       document.body,
@@ -39,6 +41,7 @@ function TensionCommentsModal({ tension, currentUserId, personName, people, onCl
   onClose: () => void;
 }) {
   const [comments, setComments] = useState<TensionCommentEntry[]>([]);
+  const [seenBefore, setSeenBefore] = useState<string | null>(null);
   const [body, setBody] = useState("");
   const [cursor, setCursor] = useState(0);
   const [mentionSuppressed, setMentionSuppressed] = useState(false);
@@ -53,14 +56,23 @@ function TensionCommentsModal({ tension, currentUserId, personName, people, onCl
 
   useEffect(() => {
     let alive = true;
-    void loadTensionComments(tension.id)
-      .then((items) => { if (alive) setComments(items); })
+    Promise.all([
+      loadTensionComments(tension.id),
+      loadCommentThreadSummary("tension", tension.id),
+    ])
+      .then(([items, summary]) => {
+        if (!alive) return;
+        setComments(items);
+        setSeenBefore(summary.lastSeenAt);
+        void markCommentThreadSeen("tension", tension.id).catch(() => undefined);
+      })
       .catch((err) => { if (alive) setError(readError(err)); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [tension.id]);
 
   const mentionedIds = useMemo(() => extractMentionIds(body, people, currentUserId), [body, people, currentUserId]);
+  const firstNewIndex = useMemo(() => comments.findIndex((comment) => comment.authorId !== currentUserId && (!seenBefore || new Date(comment.createdAt).getTime() > new Date(seenBefore).getTime())), [comments, currentUserId, seenBefore]);
   const trigger = mentionSuppressed ? null : findMentionTrigger(body, cursor);
   const suggestions = useMemo(() => {
     if (!trigger) return [];
@@ -95,6 +107,7 @@ function TensionCommentsModal({ tension, currentUserId, personName, people, onCl
       setCursor(0);
       setMentionSuppressed(false);
       await refresh();
+      announceCommentThreadChange("tension", tension.id);
       window.dispatchEvent(new Event("focus"));
     } catch (err) {
       setError(readError(err));
@@ -107,7 +120,7 @@ function TensionCommentsModal({ tension, currentUserId, personName, people, onCl
     <section className="workflow-editor compact-modal tension-comments-modal" role="dialog" aria-modal="true">
       <div className="editor-head"><div><span className="section-kicker">Tension comments</span><h2>{tension.title}</h2></div><button className="quiet editor-close" type="button" onClick={onClose}>×</button></div>
       <p className="editor-note">Use comments for short clarification and context. Type @ to notify a specific person. Comments do not change the tension, its status, or what the raiser needs.</p>
-      {loading ? <div className="project-context-empty">Loading comments…</div> : comments.length ? <div className="project-comments-list">{comments.map((comment) => <article className={comment.authorId === currentUserId ? "project-comment mine" : "project-comment"} key={comment.id}><div><strong>{personName(comment.authorId)}</strong><time>{formatTimestamp(comment.createdAt)}</time></div><CommentText text={comment.body} mentionedIds={comment.mentionedIds} personName={personName} />{comment.mentionedIds.length > 0 && <small className="tension-comment-notified">Notified: {comment.mentionedIds.map(personName).join(", ")}</small>}</article>)}</div> : <div className="project-context-empty">No comments yet.</div>}
+      {loading ? <div className="project-context-empty">Loading comments…</div> : comments.length ? <div className="project-comments-list">{comments.map((comment, index) => <Fragment key={comment.id}>{index === firstNewIndex && <div className="new-comment-divider"><span>New comments</span></div>}<article className={comment.authorId === currentUserId ? "project-comment mine" : "project-comment"}><div><strong>{personName(comment.authorId)}</strong><time>{formatTimestamp(comment.createdAt)}</time></div><CommentText text={comment.body} mentionedIds={comment.mentionedIds} personName={personName} />{comment.mentionedIds.length > 0 && <small className="tension-comment-notified">Notified: {comment.mentionedIds.map(personName).join(", ")}</small>}</article></Fragment>)}</div> : <div className="project-context-empty">No comments yet.</div>}
       <label className="field project-comment-composer tension-comment-composer"><span>Add comment</span><textarea ref={textareaRef} rows={3} value={body} onChange={(event) => { setBody(event.target.value); setCursor(event.target.selectionStart); setMentionSuppressed(false); }} onClick={(event) => setCursor(event.currentTarget.selectionStart)} onKeyUp={(event) => setCursor(event.currentTarget.selectionStart)} placeholder="Add clarification or context… Type @ to mention someone." />
         {suggestions.length > 0 && <div className="mention-suggestions" role="listbox" aria-label="Mention a board member">{suggestions.map((person) => <button type="button" role="option" key={person.id} onMouseDown={(event) => event.preventDefault()} onClick={() => insertMention(person)}><span className="mini-avatar">{person.name.charAt(0)}</span><span>{person.name}</span></button>)}</div>}
       </label>
