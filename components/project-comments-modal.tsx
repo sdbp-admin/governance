@@ -6,6 +6,7 @@ import type { WorkspacePerson } from "@/lib/supabase/workspace";
 import { addProjectComment, loadProjectComments, type ProjectCommentEntry } from "@/lib/supabase/project-comments";
 import { loadProjectConflicts, type ProjectConflict } from "@/lib/supabase/project-coi";
 import { announceCommentThreadChange, loadCommentThreadSummary, markCommentThreadSeen } from "@/lib/supabase/comment-thread-state";
+import { useLocalDraft } from "@/lib/local-draft";
 
 export function ProjectCommentsModal({ project, currentUserId, personName, people, onClose }: {
   project: Project;
@@ -18,7 +19,7 @@ export function ProjectCommentsModal({ project, currentUserId, personName, peopl
   const [conflicts, setConflicts] = useState<ProjectConflict[]>([]);
   const [seenBefore, setSeenBefore] = useState<string | null>(null);
   const [revealedCoiComments, setRevealedCoiComments] = useState<Set<string>>(new Set());
-  const [body, setBody] = useState("");
+  const [body, setBody, clearBody] = useLocalDraft(`comment:project:${project.id}:${currentUserId}`, "");
   const [cursor, setCursor] = useState(0);
   const [mentionSuppressed, setMentionSuppressed] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -105,7 +106,7 @@ export function ProjectCommentsModal({ project, currentUserId, personName, peopl
     setError("");
     try {
       await addProjectComment(project.id, body, mentionedIds);
-      setBody("");
+      clearBody();
       setCursor(0);
       setMentionSuppressed(false);
       await refresh();
@@ -137,6 +138,7 @@ export function ProjectCommentsModal({ project, currentUserId, personName, peopl
       <label className="field project-comment-composer tension-comment-composer"><span>Add comment</span><textarea ref={textareaRef} rows={3} value={body} onChange={(event) => { setBody(event.target.value); setCursor(event.target.selectionStart); setMentionSuppressed(false); }} onClick={(event) => setCursor(event.currentTarget.selectionStart)} onKeyUp={(event) => setCursor(event.currentTarget.selectionStart)} placeholder="Ask for clarification or leave a note… Type @ to mention someone." />
         {suggestions.length > 0 && <div className="mention-suggestions" role="listbox" aria-label="Mention a board member">{suggestions.map((person) => <button type="button" role="option" key={person.id} onMouseDown={(event) => event.preventDefault()} onClick={() => insertMention(person)}><span className="mini-avatar">{person.name.charAt(0)}</span><span>{person.name}</span></button>)}</div>}
       </label>
+      {body.trim() && <small className="draft-saved-note">Draft saved on this device.</small>}
       {mentionedIds.length > 0 && <div className="mention-notify-status"><strong>Will notify:</strong>{mentionedIds.map((id) => <span className="mention-pill" key={id}>@{personName(id)}</span>)}</div>}
       {error && <div className="auth-message error">{error}</div>}
       <div className="editor-actions"><div /><button className="primary" type="button" disabled={!body.trim() || saving} onClick={() => void add()}>{saving ? "Adding…" : "Add comment"}</button></div>
