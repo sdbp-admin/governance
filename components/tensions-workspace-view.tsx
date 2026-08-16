@@ -8,6 +8,7 @@ import { setTensionProject } from "@/lib/supabase/tension-project";
 import { TensionAvailabilityPoll } from "@/components/tension-availability-poll";
 import { WorkAttachmentsButton } from "@/components/work-attachments";
 import { TensionCommentsButton } from "@/components/tension-comments";
+import { useLocalDraft } from "@/lib/local-draft";
 
 type Need = "input" | "sync";
 
@@ -33,8 +34,11 @@ type Props = {
 };
 
 export function TensionsWorkspaceView(props: Props) {
-  const [draft, setDraft] = useState("");
-  const [draftProjectId, setDraftProjectId] = useState("");
+  const [draftState, setDraftState, clearDraft] = useLocalDraft(`tension:new:${props.currentUserId}`, { text: "", projectId: "" });
+  const draft = draftState.text;
+  const draftProjectId = draftState.projectId;
+  const setDraft = (text: string) => setDraftState((current) => ({ ...current, text }));
+  const setDraftProjectId = (projectId: string) => setDraftState((current) => ({ ...current, projectId }));
   const [raising, setRaising] = useState(false);
   const [raiseError, setRaiseError] = useState("");
   const [processing, setProcessing] = useState<string | null>(null);
@@ -45,7 +49,7 @@ export function TensionsWorkspaceView(props: Props) {
     if (!draft.trim() || raising) return;
     if (!draftProjectId) {
       if (await props.onRaise(draft)) {
-        setDraft("");
+        clearDraft();
         setRaiseError("");
       }
       return;
@@ -55,8 +59,7 @@ export function TensionsWorkspaceView(props: Props) {
     setRaiseError("");
     try {
       await createTension({ title: draft, raiserId: props.currentUserId, projectId: draftProjectId });
-      setDraft("");
-      setDraftProjectId("");
+      clearDraft();
       window.dispatchEvent(new Event("focus"));
     } catch (error) {
       setRaiseError(readError(error));
