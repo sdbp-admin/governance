@@ -9,6 +9,7 @@ import { CommentThreadButton } from "@/components/comment-thread-button";
 import { ProjectSettingsModal } from "@/components/project-settings-modal";
 import { ProjectSummaryPreview } from "@/components/project-summary-preview";
 import { WorkAttachmentsButton } from "@/components/work-attachments";
+import { projectToneClass } from "@/lib/project-tone";
 import {
   loadProjectUpdates,
   type ProjectUpdateEntry,
@@ -46,6 +47,7 @@ export function WorkspaceWorkView({
   onCommentsOpened?: () => void;
 }) {
   const [projectOpen, setProjectOpen] = useState(false);
+  const [commitmentsOpen, setCommitmentsOpen] = useState(false);
   const [historyProject, setHistoryProject] = useState<Project | null>(null);
   const [commentsProject, setCommentsProject] = useState<Project | null>(null);
   const [settingsProject, setSettingsProject] = useState<Project | null>(null);
@@ -64,67 +66,86 @@ export function WorkspaceWorkView({
   }, [openCommentsProjectId, onCommentsOpened, projectById]);
 
   return <>
-    <div className="work-toolbar">
-      <button className="primary small" onClick={() => setProjectOpen(true)}>+ Add project</button>
-      <span className="work-toolbar-note">Next steps are created inside the project or tension they belong to.</span>
+    <div className="work-toolbar work-toolbar-refined">
+      <div className="work-toolbar-actions">
+        <button className="primary small" onClick={() => setProjectOpen(true)}>+ Add project</button>
+        <button className="secondary small commitments-launch" type="button" onClick={() => setCommitmentsOpen(true)}>
+          All commitments <span>{openActions.length}</span>
+        </button>
+      </div>
+      <span className="work-toolbar-note">Projects hold outcomes. Concrete next steps stay with the project or tension they belong to.</span>
     </div>
 
-    <div className="work-layout">
-      <section className="work-main">
-        <div className="section-head"><div><span className="section-kicker">Current outcomes</span><h2>Active projects</h2></div></div>
-        {activeProjects.length ? <div className="project-grid">{activeProjects.map((project) => <article className="project-card" key={project.id}>
-          <div className="project-accent" />
-          <span className="kind">{project.role ?? "SDBP project"}</span>
-          <h3>{project.title}</h3>
-          <ProjectCoiBadge projectId={project.id} personName={personName} />
-          {project.summary && <ProjectSummaryPreview title={project.title} text={project.summary} />}
-          <div className="project-team-row">{(project.participantIds ?? [project.ownerId]).map((id) => <span className="mini-avatar" title={personName(id)} key={id}>{personInitial(id)}</span>)}</div>
-          <div className="project-meta">
-            <span><strong>{personName(project.ownerId)}</strong><small>owner</small></span>
-            <span><strong>{formatDate(project.lastUpdate)}</strong><small>last checked</small></span>
-            <span><strong>{formatDate(project.nextPrompt)}</strong><small>next prompt</small></span>
-          </div>
-          <ContextualNextSteps parentType="project" parentId={project.id} parentTitle={project.title} actions={workspace.actions} people={workspace.people} currentUserId={currentUserId} personName={personName} onAdd={onAddNextStep} onStatus={onActionStatus} />
-          <div className="actions compact-actions project-context-actions">
-            {project.ownerId === currentUserId && <button className="secondary small" onClick={() => onUpdateProject(project.id)}>Update</button>}
-            <button className="quiet small" onClick={() => setHistoryProject(project)}>History</button>
-            <CommentThreadButton threadType="project" threadId={project.id} onOpen={() => setCommentsProject(project)} />
-            <WorkAttachmentsButton parentType="project" parentId={project.id} parentTitle={project.title} personName={personName} />
-            <button className="quiet small" onClick={() => setSettingsProject(project)}>COI</button>
-            <button className="quiet small" onClick={() => setSettingsProject(project)}>Settings</button>
-          </div>
-        </article>)}</div> : <div className="calm-empty compact-empty"><span>○</span><h3>No active projects yet</h3><p>Add them when they become real work.</p></div>}
+    <section className="work-main work-main-refined">
+      <div className="section-head"><div><span className="section-kicker">Current outcomes</span><h2>Active projects</h2></div></div>
+      {activeProjects.length ? <div className="project-grid">{activeProjects.map((project) => <article className={`project-card ${projectToneClass(project.id)}`} key={project.id}>
+        <div className="project-accent" />
+        <span className="kind">{project.role ?? "SDBP project"}</span>
+        <h3>{project.title}</h3>
+        <ProjectCoiBadge projectId={project.id} personName={personName} />
+        {project.summary && <ProjectSummaryPreview title={project.title} text={project.summary} />}
+        <div className="project-team-row">{(project.participantIds ?? [project.ownerId]).map((id) => <span className="mini-avatar" title={personName(id)} key={id}>{personInitial(id)}</span>)}</div>
+        <div className="project-meta">
+          <span><strong>{personName(project.ownerId)}</strong><small>owner</small></span>
+          <span><strong>{formatDate(project.lastUpdate)}</strong><small>last checked</small></span>
+          <span><strong>{formatDate(project.nextPrompt)}</strong><small>next prompt</small></span>
+        </div>
+        <ContextualNextSteps parentType="project" parentId={project.id} parentTitle={project.title} actions={workspace.actions} people={workspace.people} currentUserId={currentUserId} personName={personName} onAdd={onAddNextStep} onStatus={onActionStatus} />
+        <div className="actions compact-actions project-context-actions">
+          {project.ownerId === currentUserId && <button className="secondary small" onClick={() => onUpdateProject(project.id)}>Update</button>}
+          <button className="quiet small" onClick={() => setHistoryProject(project)}>History</button>
+          <CommentThreadButton threadType="project" threadId={project.id} onOpen={() => setCommentsProject(project)} />
+          <WorkAttachmentsButton parentType="project" parentId={project.id} parentTitle={project.title} personName={personName} />
+          <button className="quiet small" onClick={() => setSettingsProject(project)}>COI</button>
+          <button className="quiet small" onClick={() => setSettingsProject(project)}>Settings</button>
+        </div>
+      </article>)}</div> : <div className="calm-empty compact-empty"><span>○</span><h3>No active projects yet</h3><p>Add them when they become real work.</p></div>}
 
-        {completedProjects.length > 0 && <details className="completed-projects">
-          <summary>Completed projects <span>{completedProjects.length}</span></summary>
-          <div className="completed-project-list">{completedProjects.map((project) => <div className="completed-project-row" key={project.id}><div><strong>{project.title}</strong><small>{personName(project.ownerId)} · completed</small></div><button className="quiet small" type="button" onClick={() => void onReopenProject(project.id)}>Reopen</button></div>)}</div>
-        </details>}
-      </section>
+      {completedProjects.length > 0 && <details className="completed-projects">
+        <summary>Completed projects <span>{completedProjects.length}</span></summary>
+        <div className="completed-project-list">{completedProjects.map((project) => <div className="completed-project-row" key={project.id}><div><strong>{project.title}</strong><small>{personName(project.ownerId)} · completed</small></div><button className="quiet small" type="button" onClick={() => void onReopenProject(project.id)}>Reopen</button></div>)}</div>
+      </details>}
+    </section>
 
-      <aside className="action-rail">
-        <div className="section-head"><div><span className="section-kicker">Aggregate view</span><h2>All commitments</h2></div></div>
-        <p className="action-rail-note">These are the same next steps attached to projects and tensions, collected in one place.</p>
-        <div className="action-stack">{openActions.length ? openActions.map((action) => {
-          const project = action.projectId ? projectById.get(action.projectId) : undefined;
-          return <article className="action-slip" key={action.id}>
-            <span className="action-status">{action.status}</span>
-            <h3>{action.title}</h3>
-            {project && <span className="action-project-link">Project · {project.title}</span>}
-            {action.source && <p>{action.source}</p>}
-            <div className="action-owner"><span className="mini-avatar">{personInitial(action.ownerId)}</span>{personName(action.ownerId)}</div>
-            {action.due && <small className={action.due < todayISO() ? "action-overdue" : ""}>Due {formatDate(action.due)}</small>}
-            {action.status === "proposed" && action.ownerId === currentUserId && <button className="secondary small action-done" onClick={() => void onActionStatus(action.id, "open")}>Accept</button>}
-            {action.status === "open" && action.ownerId === currentUserId && <button className="secondary small action-done" onClick={() => void onActionStatus(action.id, "done")}>Mark done</button>}
-          </article>;
-        }) : <div className="calm-empty compact-empty"><span>✓</span><h3>No open commitments</h3></div>}</div>
-      </aside>
-    </div>
-
+    {commitmentsOpen && <CommitmentsModal workspace={workspace} currentUserId={currentUserId} personName={personName} personInitial={personInitial} onActionStatus={onActionStatus} onClose={() => setCommitmentsOpen(false)} />}
     {projectOpen && <ProjectCreateModal people={workspace.people} currentUserId={currentUserId} onClose={() => setProjectOpen(false)} onSave={async (input) => { if (await onAddProject(input)) setProjectOpen(false); }} />}
     {historyProject && <ProjectHistoryModal project={historyProject} personName={personName} onClose={() => setHistoryProject(null)} />}
     {commentsProject && <ProjectCommentsModal project={commentsProject} currentUserId={currentUserId} personName={personName} people={workspace.people} onClose={() => setCommentsProject(null)} />}
     {settingsProject && <ProjectSettingsModal project={settingsProject} people={workspace.people} openNextStepCount={workspace.actions.filter((action) => (action.status === "open" || action.status === "proposed") && action.projectId === settingsProject.id).length} onSave={onSaveProjectSettings} onComplete={onCompleteProject} onClose={() => setSettingsProject(null)} />}
   </>;
+}
+
+function CommitmentsModal({ workspace, currentUserId, personName, personInitial, onActionStatus, onClose }: {
+  workspace: WorkspaceData;
+  currentUserId: string;
+  personName: (id: string) => string;
+  personInitial: (id: string) => string;
+  onActionStatus: (id: string, status: "open" | "done") => Promise<unknown>;
+  onClose: () => void;
+}) {
+  const actions = workspace.actions.filter((action) => action.status === "open" || action.status === "proposed");
+  const projectById = new Map(workspace.projects.map((project) => [project.id, project]));
+  const tensionById = new Map(workspace.tensions.map((tension) => [tension.id, tension]));
+
+  return <div className="modal-backdrop commitments-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="workflow-editor commitments-modal" role="dialog" aria-modal="true">
+      <div className="editor-head"><div><span className="section-kicker">Aggregate view</span><h2>All commitments</h2><p className="commitments-intro">The same concrete next steps from projects and tensions, collected here when you need the overview.</p></div><button className="quiet editor-close" onClick={onClose}>×</button></div>
+      {actions.length ? <div className="commitment-grid">{actions.map((action) => {
+        const project = action.projectId ? projectById.get(action.projectId) : undefined;
+        const tension = action.sourceTensionId ? tensionById.get(action.sourceTensionId) : undefined;
+        return <article className={`commitment-card${action.ownerId === currentUserId ? " mine" : ""}`} key={action.id}>
+          <div className="commitment-card-head"><span className="action-status">{action.status}</span>{action.due && <small className={action.due < todayISO() ? "action-overdue" : ""}>Due {formatDate(action.due)}</small>}</div>
+          <h3>{action.title}</h3>
+          {project ? <span className={`commitment-context ${projectToneClass(project.id)}`}>Project · {project.title}</span> : tension ? <span className="commitment-context tension-context">Tension · {tension.title}</span> : null}
+          {action.source && <p>{action.source}</p>}
+          <div className="commitment-footer"><div className="action-owner"><span className="mini-avatar">{personInitial(action.ownerId)}</span>{personName(action.ownerId)}</div>
+            {action.status === "proposed" && action.ownerId === currentUserId && <button className="secondary small" onClick={() => void onActionStatus(action.id, "open")}>Accept</button>}
+            {action.status === "open" && action.ownerId === currentUserId && <button className="secondary small" onClick={() => void onActionStatus(action.id, "done")}>Mark done</button>}
+          </div>
+        </article>;
+      })}</div> : <div className="calm-empty compact-empty"><span>✓</span><h3>No open commitments</h3></div>}
+    </section>
+  </div>;
 }
 
 function ProjectCreateModal({ people, currentUserId, onClose, onSave }: {
