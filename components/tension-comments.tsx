@@ -7,6 +7,7 @@ import type { WorkspacePerson } from "@/lib/supabase/workspace";
 import { addTensionComment, loadTensionComments, type TensionCommentEntry } from "@/lib/supabase/tension-comments";
 import { announceCommentThreadChange, loadCommentThreadSummary, markCommentThreadSeen } from "@/lib/supabase/comment-thread-state";
 import { CommentThreadButton } from "@/components/comment-thread-button";
+import { useLocalDraft } from "@/lib/local-draft";
 
 export function TensionCommentsButton({ tension, currentUserId, personName, people, forceOpen = false, onOpened }: {
   tension: Tension;
@@ -42,7 +43,7 @@ function TensionCommentsModal({ tension, currentUserId, personName, people, onCl
 }) {
   const [comments, setComments] = useState<TensionCommentEntry[]>([]);
   const [seenBefore, setSeenBefore] = useState<string | null>(null);
-  const [body, setBody] = useState("");
+  const [body, setBody, clearBody] = useLocalDraft(`comment:tension:${tension.id}:${currentUserId}`, "");
   const [cursor, setCursor] = useState(0);
   const [mentionSuppressed, setMentionSuppressed] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -103,7 +104,7 @@ function TensionCommentsModal({ tension, currentUserId, personName, people, onCl
     setError("");
     try {
       await addTensionComment(tension.id, body, mentionedIds);
-      setBody("");
+      clearBody();
       setCursor(0);
       setMentionSuppressed(false);
       await refresh();
@@ -124,6 +125,7 @@ function TensionCommentsModal({ tension, currentUserId, personName, people, onCl
       <label className="field project-comment-composer tension-comment-composer"><span>Add comment</span><textarea ref={textareaRef} rows={3} value={body} onChange={(event) => { setBody(event.target.value); setCursor(event.target.selectionStart); setMentionSuppressed(false); }} onClick={(event) => setCursor(event.currentTarget.selectionStart)} onKeyUp={(event) => setCursor(event.currentTarget.selectionStart)} placeholder="Add clarification or context… Type @ to mention someone." />
         {suggestions.length > 0 && <div className="mention-suggestions" role="listbox" aria-label="Mention a board member">{suggestions.map((person) => <button type="button" role="option" key={person.id} onMouseDown={(event) => event.preventDefault()} onClick={() => insertMention(person)}><span className="mini-avatar">{person.name.charAt(0)}</span><span>{person.name}</span></button>)}</div>}
       </label>
+      {body.trim() && <small className="draft-saved-note">Draft saved on this device.</small>}
       {mentionedIds.length > 0 && <div className="mention-notify-status"><strong>Will notify:</strong>{mentionedIds.map((id) => <span className="mention-pill" key={id}>@{personName(id)}</span>)}</div>}
       {error && <div className="auth-message error">{error}</div>}
       <div className="editor-actions"><div /><button className="primary" type="button" disabled={!body.trim() || saving} onClick={() => void add()}>{saving ? "Adding…" : "Add comment"}</button></div>
