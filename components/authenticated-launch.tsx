@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Prototype } from "@/components/prototype";
 import { supabase } from "@/lib/supabase/client";
 import { canInvitePeople, loadWorkspace, type WorkspacePerson } from "@/lib/supabase/workspace";
@@ -9,6 +9,9 @@ import { deactivateWorkspacePerson, isCurrentPresident, resendWorkspaceInvitatio
 type Profile = { id: string; name: string; email: string };
 type AuthStatus = "loading" | "signed_out" | "signed_in" | "not_invited" | "error";
 type AmrEntry = { method?: string };
+
+const ACCESS_CHECK_TIMEOUT_MS = 12_000;
+const SIGN_OUT_TIMEOUT_MS = 5_000;
 
 export function AuthenticatedLaunch() {
   const [status, setStatus] = useState<AuthStatus>("loading");
@@ -32,90 +35,138 @@ export function AuthenticatedLaunch() {
   const [accessLoading, setAccessLoading] = useState(false);
   const [accessBusyId, setAccessBusyId] = useState<string | null>(null);
   const [accessError, setAccessError] = useState("");
+  const accessCheckAttempt = useRef(0);
 
-  const resolveUser = useCallback(async () => {
+  const resolveUser = useCallback(async (showLoading = false) => {
+    const attempt = ++accessCheckAttempt.current;
+    if (showLoading) setStatus("loading");
     setError("");
-    const [{ data: userData, error: userError }, { data: sessionData }] = await Promise.all([
-      supabase.auth.getUser(),
-      supabase.auth.getSession(),
-    ]);
-    const user = userData.user;
-    if (userError || !user) {
+
+    let timedOut = false;
+    const timeout = window.setTimeout(() => {
+      if (accessCheckAttempt.current !== attempt) return;
+      timedOut = true;
+      accessCheckAttempt.current += 1;
       setProfile(null);
       setPasswordRequired(false);
       setCanManageAccess(false);
       setCanTransferPresidency(false);
-      setStatus("signed_out");
-      return;
-    }
-
-    let { data: person, error: profileError } = await supabase
-      .from("people")
-      .select("id,name,email")
-      .eq("auth_user_id", user.id)
-      .eq("active", true)
-      .maybeSingle();
-
-    if (!person && !profileError) {
-      const { error: claimError } = await supabase.rpc("claim_workspace_profile");
-      if (!claimError) {
-        const retry = await supabase
-          .from("people")
-          .select("id,name,email")
-          .eq("auth_user_id", user.id)
-          .eq("active", true)
-          .maybeSingle();
-        person = retry.data;
-        profileError = retry.error;
-      }
-    }
-
-    if (profileError) {
-      setError(profileError.message);
+      setError("We couldn't finish checking your access. The connection may have stalled or this browser may have an expired session.");
       setStatus("error");
-      return;
-    }
+    }, ACCESS_CHECK_TIMEOUT_MS);
 
-    if (!person) {
-      setProfile(null);
-      setPasswordRequired(false);
-      setCanManageAccess(false);
-      setCanTransferPresidency(false);
-      setStatus("not_invited");
-      return;
-    }
-
-    const next = person as Profile;
-    setProfile(next);
-    setEmail(next.email);
-    setStatus("signed_in");
+    const active = () => !timedOut && accessCheckAttempt.current === attempt;
 
     try {
-      const [manageAccess, currentPresident] = await Promise.all([canInvitePeople(), isCurrentPresident()]);
-      setCanManageAccess(manageAccess);
-      setCanTransferPresidency(currentPresident);
-    } catch {
+      const [{ data: userData, error: userError }, { data: sessionData }] = await Promise.all([
+        supabase.auth.getUser(),
+        supabase.auth.getSession(),
+      ]);
+      if (!active()) return;
+
+      const user = userData.user;
+      if (userError) {
+        setProfile(null);
+        setPasswordRequired(false);
+        setCanManageAccess(false);
+        setCanTransferPresidency(false);
+        setError(userError.message);
+        setStatus("error");
+        return;
+      }
+      if (!user) {
+        setProfile(null);
+        setPasswordRequired(false);
+        setCanManageAccess(false);
+        setCanTransferPresidency(false);
+        setStatus("signed_out");
+        return;
+      }
+
+      let { data: person, error: profileError } = await supabase
+        .from("people")
+        .select("id,name,email")
+        .eq("auth_user_id", user.id)
+        .eq("active", true)
+        .maybeSingle();
+      if (!active()) return;
+
+      if (!person && !profileError) {
+        const { error: claimError } = await supabase.rpc("claim_workspace_profile");
+        if (!active()) return;
+        if (!claimError) {
+          const retry = await supabase
+            .from("people")
+            .select("id,name,email")
+            .eq("auth_user_id", user.id)
+            .eq("active", true)
+            .maybeSingle();
+          if (!active()) return;
+          person = retry.data;
+          profileError = retry.error;
+        }
+      }
+
+      if (profileError) {
+        setError(profileError.message);
+        setStatus("error");
+        return;
+      }
+
+      if (!person) {
+        setProfile(null);
+        setPasswordRequired(false);
+        setCanManageAccess(false);
+        setCanTransferPresidency(false);
+        setStatus("not_invited");
+        return;
+      }
+
+      const next = person as Profile;
+      setProfile(next);
+      setEmail(next.email);
+      setStatus("signed_in");
+
+      try {
+        const [manageAccess, currentPresident] = await Promise.all([canInvitePeople(), isCurrentPresident()]);
+        if (!active()) return;
+        setCanManageAccess(manageAccess);
+        setCanTransferPresidency(currentPresident);
+      } catch {
+        if (!active()) return;
+        setCanManageAccess(false);
+        setCanTransferPresidency(false);
+      }
+
+      const passwordMarked = user.user_metadata?.sdbp_password_set === true;
+      const methods = readAuthenticationMethods(sessionData.session?.access_token);
+      const signedInWithPassword = methods.includes("password");
+
+      if (!passwordMarked && signedInWithPassword) {
+        const { error: markError } = await supabase.auth.updateUser({
+          data: { ...user.user_metadata, sdbp_password_set: true },
+        });
+        if (!active()) return;
+        if (!markError) setPasswordRequired(false);
+        return;
+      }
+
+      if (!passwordMarked) {
+        setPasswordRequired(true);
+        setPasswordEditor(true);
+      } else {
+        setPasswordRequired(false);
+      }
+    } catch (accessError) {
+      if (!active()) return;
+      setProfile(null);
+      setPasswordRequired(false);
       setCanManageAccess(false);
       setCanTransferPresidency(false);
-    }
-
-    const passwordMarked = user.user_metadata?.sdbp_password_set === true;
-    const methods = readAuthenticationMethods(sessionData.session?.access_token);
-    const signedInWithPassword = methods.includes("password");
-
-    if (!passwordMarked && signedInWithPassword) {
-      const { error: markError } = await supabase.auth.updateUser({
-        data: { ...user.user_metadata, sdbp_password_set: true },
-      });
-      if (!markError) setPasswordRequired(false);
-      return;
-    }
-
-    if (!passwordMarked) {
-      setPasswordRequired(true);
-      setPasswordEditor(true);
-    } else {
-      setPasswordRequired(false);
+      setError(readError(accessError));
+      setStatus("error");
+    } finally {
+      window.clearTimeout(timeout);
     }
   }, []);
 
@@ -124,7 +175,7 @@ export function AuthenticatedLaunch() {
     const authError = hash.get("error_description");
     if (authError) setError(authError);
 
-    void resolveUser();
+    void resolveUser(true);
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "PASSWORD_RECOVERY") {
         setRecoveryMode(true);
@@ -132,6 +183,7 @@ export function AuthenticatedLaunch() {
         setPasswordEditor(true);
       }
       if (!session?.user) {
+        accessCheckAttempt.current += 1;
         setProfile(null);
         setPasswordRequired(false);
         setCanManageAccess(false);
@@ -139,9 +191,12 @@ export function AuthenticatedLaunch() {
         setStatus("signed_out");
         return;
       }
-      window.setTimeout(() => void resolveUser(), 0);
+      window.setTimeout(() => void resolveUser(false), 0);
     });
-    return () => data.subscription.unsubscribe();
+    return () => {
+      accessCheckAttempt.current += 1;
+      data.subscription.unsubscribe();
+    };
   }, [resolveUser]);
 
   async function signIn(event: FormEvent<HTMLFormElement>) {
@@ -196,14 +251,39 @@ export function AuthenticatedLaunch() {
       setPasswordRequired(false);
       setRecoveryMode(false);
       setMessage(passwordRequired ? "Password created. Your account is ready." : "Password saved.");
-      await resolveUser();
+      await resolveUser(false);
     }
     setSending(false);
   }
 
   async function signOut() {
-    await supabase.auth.signOut();
+    accessCheckAttempt.current += 1;
+    await Promise.race([supabase.auth.signOut({ scope: "local" }), wait(SIGN_OUT_TIMEOUT_MS)]);
     setProfile(null); setPassword(""); setMessage(""); setError(""); setPasswordRequired(false); setPasswordEditor(false); setCanManageAccess(false); setCanTransferPresidency(false); setAccessOpen(false); setStatus("signed_out");
+  }
+
+  async function resetSignIn() {
+    accessCheckAttempt.current += 1;
+    setSending(true);
+    try {
+      await Promise.race([supabase.auth.signOut({ scope: "local" }), wait(SIGN_OUT_TIMEOUT_MS)]);
+    } catch {
+      // The local UI reset below still gives the user a fresh sign-in path.
+    }
+    setProfile(null);
+    setPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setPasswordRequired(false);
+    setPasswordEditor(false);
+    setRecoveryMode(false);
+    setCanManageAccess(false);
+    setCanTransferPresidency(false);
+    setAccessOpen(false);
+    setError("");
+    setMessage("Sign-in reset. Please sign in again.");
+    setStatus("signed_out");
+    setSending(false);
   }
 
   async function openAccessManager() {
@@ -270,7 +350,7 @@ export function AuthenticatedLaunch() {
       setAccessPresidentId(target.id);
       setTransferTargetId("");
       setMessage(`${target.name} is now President.`);
-      await resolveUser();
+      await resolveUser(false);
       window.dispatchEvent(new Event("focus"));
       setAccessOpen(false);
     } catch (transferError) {
@@ -280,7 +360,7 @@ export function AuthenticatedLaunch() {
     }
   }
 
-  if (status === "loading") return <AuthShell><div className="auth-state"><span className="auth-spinner" /><h1>Opening SDBP</h1><p>Checking your access.</p></div></AuthShell>;
+  if (status === "loading") return <AuthShell><div className="auth-state"><span className="auth-spinner" /><h1>Opening SDBP</h1><p>Checking your access. This should take only a few seconds.</p></div></AuthShell>;
 
   if (passwordEditor && status === "signed_in") {
     const firstPassword = passwordRequired && !recoveryMode;
@@ -291,7 +371,7 @@ export function AuthenticatedLaunch() {
 
   if (status === "not_invited") return <AuthShell><div className="auth-card"><span className="section-kicker">Access</span><h1>This email is not in the SDBP workspace.</h1><p>Ask the President to invite this email address from Organisation.</p><div className="auth-actions"><button className="secondary" onClick={() => void signOut()}>Sign out</button></div></div></AuthShell>;
 
-  if (status === "error") return <AuthShell><div className="auth-card"><span className="section-kicker">Connection</span><h1>We could not open the workspace.</h1><p>{error}</p><div className="auth-actions"><button className="primary" onClick={() => void resolveUser()}>Try again</button><button className="secondary" onClick={() => void signOut()}>Sign out</button></div></div></AuthShell>;
+  if (status === "error") return <AuthShell><div className="auth-card"><span className="section-kicker">Connection</span><h1>We could not finish checking your access.</h1><p>{error}</p><div className="auth-actions"><button className="primary" disabled={sending} onClick={() => void resolveUser(true)}>Try again</button><button className="secondary" disabled={sending} onClick={() => void resetSignIn()}>{sending ? "Resetting…" : "Reset sign-in"}</button></div><small className="auth-footnote">Reset sign-in clears only this browser session. It does not remove your SDBP Workspace access.</small></div></AuthShell>;
 
   return <>{profile && <div className="auth-session-chip"><div><strong>{profile.name}</strong><small>{message || "Shared SDBP workspace"}</small></div><div className="auth-session-actions">{canManageAccess && <button onClick={() => void openAccessManager()}>People access</button>}<button onClick={() => { setMessage(""); setError(""); setPasswordEditor(true); }}>Password</button><button onClick={() => void signOut()}>Sign out</button></div></div>}{profile && <Prototype liveProfile={profile} />}{profile && accessOpen && <AccessManager people={accessPeople} currentProfileId={profile.id} presidentId={accessPresidentId} canTransferPresidency={canTransferPresidency} transferTargetId={transferTargetId} setTransferTargetId={setTransferTargetId} loading={accessLoading} busyId={accessBusyId} error={accessError} onTransfer={transferPresident} onResend={resendInvitation} onRemove={removeAccess} onClose={() => setAccessOpen(false)} />}</>;
 }
@@ -333,6 +413,10 @@ function readAuthenticationMethods(accessToken?: string) {
   } catch {
     return [] as string[];
   }
+}
+
+function wait(ms: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 }
 
 function readError(error: unknown) {
