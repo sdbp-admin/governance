@@ -17,6 +17,7 @@ import "./next-steps.css";
 import "./coi.css";
 import "./interaction-refinements.css";
 import "./drafts.css";
+import "./visual-refinement.css";
 
 export const metadata: Metadata = {
   title: "SDBP Workspace",
