@@ -190,12 +190,12 @@ function QuickConsentPanel({ proposal, people, currentUserId, personName, onStar
   if (!round) {
     const switching = proposal.stage === "present_proposal";
     return <div className="governance-round">
-      <span className="kind">Choose how to process</span>
-      <h4>{switching ? "Switch this item to quick consent?" : "Quick consent or governance meeting?"}</h4>
-      <p>{switching ? "The meeting has only been opened to the proposal-presentation stage. The proposer can still reroute it to explicit asynchronous consent. Once governance processing moves beyond presenting the proposal, continue in the meeting." : "Use quick consent when the proposal is clear enough to process asynchronously. Everyone must explicitly record no objection. A single objection sends it to a governance meeting."}</p>
+      <span className="kind">Processing choice</span>
+      <h4>{switching ? "Switch this item to quick consent?" : "How should this proposal be processed?"}</h4>
+      <p>{switching ? "The meeting has only been opened to the proposal-presentation stage. The proposer can still reroute it to explicit asynchronous consent. Once governance processing moves beyond presenting the proposal, continue in the meeting." : "Choose quick consent when the proposal is clear enough to process asynchronously. Everyone must explicitly record no objection. A single objection sends it to a governance meeting."}</p>
       <div className="process-actions">
         {proposal.proposerId === currentUserId && <button className="secondary" type="button" disabled={busy || supported === null} onClick={() => void startConsent()}>{busy ? "Starting…" : switching ? "Switch to quick consent" : "Quick consent"}</button>}
-        <button className="primary" type="button" onClick={() => void onStartMeeting(proposal)}>{switching ? "Continue governance meeting" : "Start governance meeting"}</button>
+        <button className="primary" type="button" onClick={() => void onStartMeeting(proposal)}>{switching ? "Continue governance meeting" : "Governance meeting"}</button>
       </div>
       {error && <div className="auth-message error">{error}</div>}
     </div>;
@@ -274,7 +274,21 @@ function ProposalStarter({ tension, mine, personName, workspace, currentUserId, 
     setOpen(false);
   }
 
-  return <article className="governance-starter"><span className="kind">Raised by {personName(tension.raiserId)}</span><h3 className="governance-tension-title">{tension.title}</h3>{!mine ? <small>The person who raised this tension can prepare the proposal.</small> : !open ? <button className="primary small" onClick={() => setOpen(true)}>Prepare proposal</button> : <div className="governance-inline-form"><label className="field"><span>Proposal title</span><input value={title} onChange={(event) => setTitle(event.target.value)} /></label><label className="field"><span>What should change?</span><textarea rows={4} value={text} onChange={(event) => setText(event.target.value)} /></label><GovernanceEffectEditor effect={effect} roles={workspace.roles} standingAgreements={workspace.standingAgreements} onChange={setEffect} />{hasDraft && <small className="draft-saved-note">Draft saved on this device.</small>}<div className="process-actions"><button className="quiet" onClick={discard}>Discard draft</button><button className="primary small" disabled={!valid} onClick={() => void save()}>Save proposal</button></div></div>}</article>;
+  return <article className="governance-starter">
+    <span className="kind">Raised by {personName(tension.raiserId)}</span>
+    <h3 className="governance-tension-title">{tension.title}</h3>
+    {!mine ? <small>The person who raised this tension can prepare the proposal.</small> : !open ? <>
+      <p>Define the concrete governance change first. After saving it, choose Quick consent or a Governance meeting.</p>
+      <button className="primary small" onClick={() => setOpen(true)}>Prepare proposal</button>
+    </> : <div className="governance-inline-form">
+      <div className="editor-note"><strong>Step 1 · Define the proposal.</strong><br />Once it is saved, this screen will ask whether to use Quick consent or a Governance meeting.</div>
+      <label className="field"><span>Proposal title</span><input value={title} onChange={(event) => setTitle(event.target.value)} /></label>
+      <label className="field"><span>What should change?</span><textarea rows={4} value={text} onChange={(event) => setText(event.target.value)} /></label>
+      <GovernanceEffectEditor effect={effect} roles={workspace.roles} standingAgreements={workspace.standingAgreements} onChange={setEffect} />
+      {hasDraft && <small className="draft-saved-note">Draft saved on this device.</small>}
+      <div className="process-actions"><button className="quiet" onClick={discard}>Discard draft</button><button className="primary small" disabled={!valid} onClick={() => void save()}>Save proposal & choose process</button></div>
+    </div>}
+  </article>;
 }
 
 function stageName(stage: GovernanceProposal["stage"]) { return ({ prepared: "Prepared", present_proposal: "Present proposal", clarifying_questions: "Clarifying questions", reaction_round: "Reaction round", clarify: "Option to clarify", objection_round: "Objection round", integration: "Integration", accepted: "Accepted" } as Record<GovernanceProposal["stage"], string>)[stage]; }
