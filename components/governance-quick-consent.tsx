@@ -15,6 +15,7 @@ type ConsentRound = {
 };
 
 type ObjectionStatus = "pending_validation" | "valid" | "invalid" | "withdrawn";
+type ReviewMode = "neutral" | "process_steward_override";
 type ConsentResponse = {
   proposal_id: string;
   person_id: string;
@@ -24,6 +25,7 @@ type ConsentResponse = {
   objection_reviewed_by?: string | null;
   objection_reviewed_at?: string | null;
   objection_review_reason?: string | null;
+  objection_review_mode?: ReviewMode | null;
   responded_at: string;
 };
 type ReviewDecision = "valid" | "invalid";
@@ -47,6 +49,7 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
   const [round, setRound] = useState<ConsentRound | null>(null);
   const [responses, setResponses] = useState<ConsentResponse[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [isProcessSteward, setIsProcessSteward] = useState(false);
   const [objectionOpen, setObjectionOpen] = useState(false);
   const [objectionText, setObjectionText, clearObjection] = useLocalDraft(`governance:objection:${proposal.id}:${currentUserId}`, "");
   const [reviewingPersonId, setReviewingPersonId] = useState<string | null>(null);
@@ -58,6 +61,9 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
   const consentEligible = proposal.stage === "prepared" || proposal.stage === "present_proposal";
 
   async function load() {
+    const stewardResult = await supabase.rpc("is_process_steward");
+    if (!stewardResult.error) setIsProcessSteward(Boolean(stewardResult.data));
+
     const roundResult = await supabase
       .from("governance_consent_rounds")
       .select("proposal_id,status,started_by,started_at,ended_at")
@@ -75,7 +81,7 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
 
     const responseResult = await supabase
       .from("governance_consent_responses")
-      .select("proposal_id,person_id,response,objection_text,objection_status,objection_reviewed_by,objection_reviewed_at,objection_review_reason,responded_at")
+      .select("proposal_id,person_id,response,objection_text,objection_status,objection_reviewed_by,objection_reviewed_at,objection_review_reason,objection_review_mode,responded_at")
       .eq("proposal_id", proposal.id)
       .order("responded_at", { ascending: true });
     if (responseResult.error) throw responseResult.error;
@@ -169,7 +175,12 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
   }
 
   async function reviewObjection() {
-    if (!reviewingPersonId || !reviewDecision || busy || (reviewDecision === "invalid" && !reviewReason)) return;
+    const stewardOverride = currentUserId === proposal.proposerId && isProcessSteward;
+    const missingRequiredReason = reviewDecision === "invalid"
+      ? !reviewReason
+      : stewardOverride && !reviewDetails.trim();
+    if (!reviewingPersonId || !reviewDecision || busy || missingRequiredReason) return;
+
     const reason = reviewDecision === "invalid"
       ? [reviewReason, reviewDetails.trim()].filter(Boolean).join(" — ")
       : reviewDetails.trim() || null;
@@ -236,13 +247,14 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
   const objections = responses.filter((response) => response.response === "objection");
   const pendingObjections = objections.filter((response) => response.objection_status === "pending_validation");
   const validObjections = objections.filter((response) => response.objection_status === "valid");
+  const reviewingAsProcessSteward = Boolean(reviewingPersonId && currentUserId === proposal.proposerId && isProcessSteward);
 
   if (round.status === "meeting_required") {
     return <div className="governance-round">
       <span className="kind">Valid objection</span>
       <h4>Governance meeting required</h4>
-      <p>A neutral process check found concrete harm that needs integration. This proposal cannot pass as written.</p>
-      {validObjections.length > 0 && <div className="governance-entry-list">{validObjections.map((response) => <ObjectionEntry key={response.person_id} response={response} proposal={proposal} currentUserId={currentUserId} personName={personName} busy={busy} onWithdraw={withdrawObjection} onCreateTension={createTensionFromObjection} />)}</div>}
+      <p>A validity check found concrete harm that needs integration. This proposal cannot pass as written.</p>
+      {validObjections.length > 0 && <div className="governance-entry-list">{validObjections.map((response) => <ObjectionEntry key={response.person_id} response={response} proposal={proposal} currentUserId={currentUserId} personName={personName} busy={busy} isProcessSteward={isProcessSteward} onWithdraw={withdrawObjection} onCreateTension={createTensionFromObjection} />)}</div>}
       <div className="process-actions"><button className="primary" type="button" onClick={() => void onStartMeeting(proposal)}>{proposal.stage === "prepared" ? "Start governance meeting" : "Continue governance meeting"}</button></div>
       {error && <div className="auth-message error">{error}</div>}
     </div>;
@@ -257,13 +269,14 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
     <h4>{responses.length} of {people.length} responded</h4>
     <p>Silence does not count as consent. Everyone must respond. Raising an objection does not stop other responses: it is first tested for validity. Final acceptance waits while an objection is pending; only a valid objection routes the proposal to a governance meeting.</p>
 
-    {objections.length > 0 && <div className="governance-entry-list">{objections.map((response) => <ObjectionEntry key={response.person_id} response={response} proposal={proposal} currentUserId={currentUserId} personName={personName} busy={busy} onWithdraw={withdrawObjection} onBeginReview={beginReview} onCreateTension={createTensionFromObjection} />)}</div>}
+    {objections.length > 0 && <div className="governance-entry-list">{objections.map((response) => <ObjectionEntry key={response.person_id} response={response} proposal={proposal} currentUserId={currentUserId} personName={personName} busy={busy} isProcessSteward={isProcessSteward} onWithdraw={withdrawObjection} onBeginReview={beginReview} onCreateTension={createTensionFromObjection} />)}</div>}
 
     {reviewingPersonId && reviewDecision && <div className="governance-inline-form">
+      {reviewingAsProcessSteward && <div className="objection-essential"><strong>Process Steward override</strong><p>You are the proposer. This is a procedural ruling made under Process Steward authority, not a neutral review. The override and your reason will be preserved in the governance record.</p></div>}
       <div className="objection-essential"><strong>{reviewDecision === "valid" ? "Validate this objection" : "Invalidate this objection"}</strong><p>Test the objection against the proposal, not against whether you agree with the objector.</p></div>
       {reviewDecision === "invalid" && <label className="field"><span>Why is it invalid?</span><select value={reviewReason} onChange={(event) => setReviewReason(event.target.value)}><option value="">Choose a process reason</option>{INVALID_REASONS.map((reason) => <option key={reason} value={reason}>{reason}</option>)}</select></label>}
-      <label className="field"><span>{reviewDecision === "valid" ? "Process note (optional)" : "Additional note (optional)"}</span><textarea rows={3} value={reviewDetails} onChange={(event) => setReviewDetails(event.target.value)} /></label>
-      <div className="process-actions"><button className="quiet" type="button" disabled={busy} onClick={closeReview}>Cancel</button><button className="primary" type="button" disabled={busy || (reviewDecision === "invalid" && !reviewReason)} onClick={() => void reviewObjection()}>{busy ? "Saving…" : reviewDecision === "valid" ? "Confirm valid objection" : "Confirm invalid objection"}</button></div>
+      <label className="field"><span>{reviewDecision === "valid" ? (reviewingAsProcessSteward ? "Process Steward reason (required)" : "Process note (optional)") : "Additional note (optional)"}</span><textarea rows={3} value={reviewDetails} onChange={(event) => setReviewDetails(event.target.value)} /></label>
+      <div className="process-actions"><button className="quiet" type="button" disabled={busy} onClick={closeReview}>Cancel</button><button className="primary" type="button" disabled={busy || (reviewDecision === "invalid" && !reviewReason) || (reviewingAsProcessSteward && reviewDecision === "valid" && !reviewDetails.trim())} onClick={() => void reviewObjection()}>{busy ? "Saving…" : reviewDecision === "valid" ? "Confirm valid objection" : "Confirm invalid objection"}</button></div>
     </div>}
 
     <div className="round-participation"><strong>Board response</strong><div>{people.map((person) => {
@@ -290,30 +303,33 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
   </div>;
 }
 
-function ObjectionEntry({ response, proposal, currentUserId, personName, busy, onWithdraw, onBeginReview, onCreateTension }: {
+function ObjectionEntry({ response, proposal, currentUserId, personName, busy, isProcessSteward, onWithdraw, onBeginReview, onCreateTension }: {
   response: ConsentResponse;
   proposal: GovernanceProposal;
   currentUserId: string;
   personName: (id: string) => string;
   busy: boolean;
+  isProcessSteward: boolean;
   onWithdraw: () => Promise<void>;
   onBeginReview?: (personId: string, decision: ReviewDecision) => void;
   onCreateTension: (response: ConsentResponse) => Promise<void>;
 }) {
   const status = response.objection_status ?? "pending_validation";
-  const canReview = status === "pending_validation" && currentUserId !== response.person_id && currentUserId !== proposal.proposerId;
+  const neutralReview = status === "pending_validation" && currentUserId !== response.person_id && currentUserId !== proposal.proposerId;
+  const stewardOverride = status === "pending_validation" && currentUserId !== response.person_id && currentUserId === proposal.proposerId && isProcessSteward;
+  const canReview = neutralReview || stewardOverride;
   const mine = currentUserId === response.person_id;
 
   return <div className={`governance-entry ${status === "valid" ? "objection-valid" : ""}`}>
     <strong>Objection · {personName(response.person_id)} · {objectionStatusLabel(status)}</strong>
     <p>{response.objection_text}</p>
-    {response.objection_reviewed_by && <small>Reviewed by {personName(response.objection_reviewed_by)}{response.objection_review_reason ? ` · ${response.objection_review_reason}` : ""}</small>}
-    {status === "pending_validation" && <small>This does not block further responses. Final acceptance waits for a neutral validity check.</small>}
+    {response.objection_reviewed_by && <small>{response.objection_review_mode === "process_steward_override" ? "Process Steward override by " : "Reviewed by "}{personName(response.objection_reviewed_by)}{response.objection_review_reason ? ` · ${response.objection_review_reason}` : ""}</small>}
+    {status === "pending_validation" && <small>This does not block further responses. Final acceptance waits for a validity check.</small>}
     {status === "invalid" && <small>This objection is retained in the record but does not block the proposal.</small>}
     {status === "withdrawn" && <small>The objector withdrew this objection. It remains in the record.</small>}
     <div className="process-actions">
       {mine && (status === "pending_validation" || status === "valid") && <button className="quiet small" type="button" disabled={busy} onClick={() => void onWithdraw()}>Withdraw objection</button>}
-      {canReview && onBeginReview && <><button className="secondary small" type="button" disabled={busy} onClick={() => onBeginReview(response.person_id, "valid")}>Validate objection</button><button className="quiet small" type="button" disabled={busy} onClick={() => onBeginReview(response.person_id, "invalid")}>Invalidate objection</button></>}
+      {canReview && onBeginReview && <><button className="secondary small" type="button" disabled={busy} onClick={() => onBeginReview(response.person_id, "valid")}>{stewardOverride ? "Process Steward · Validate" : "Validate objection"}</button><button className="quiet small" type="button" disabled={busy} onClick={() => onBeginReview(response.person_id, "invalid")}>{stewardOverride ? "Process Steward · Invalidate" : "Invalidate objection"}</button></>}
       {mine && status === "invalid" && <button className="quiet small" type="button" disabled={busy} onClick={() => void onCreateTension(response)}>Create tension from concern</button>}
     </div>
   </div>;
