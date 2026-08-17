@@ -60,10 +60,10 @@ export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
     const meeting=new URLSearchParams(window.location.search).get("meeting");
     if(meeting){setActiveMeetingId(meeting);setView("governance");}
     void refresh();
-    const onFocus=()=>void refresh(true);
-    window.addEventListener("focus",onFocus);
-    const timer=window.setInterval(()=>void refresh(true),30000);
-    return()=>{window.removeEventListener("focus",onFocus);window.clearInterval(timer);};
+    const refreshIfIdle=()=>{if(!userIsEditing())void refresh(true);};
+    window.addEventListener("focus",refreshIfIdle);
+    const timer=window.setInterval(refreshIfIdle,30000);
+    return()=>{window.removeEventListener("focus",refreshIfIdle);window.clearInterval(timer);};
   },[refresh]);
   useEffect(()=>{if(!notice)return;const timer=window.setTimeout(()=>setNotice(""),3600);return()=>window.clearTimeout(timer);},[notice]);
 
@@ -140,6 +140,10 @@ export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
   </div>;
 }
 
+function userIsEditing(){
+ const active=document.activeElement;
+ return active instanceof HTMLTextAreaElement||active instanceof HTMLInputElement||active instanceof HTMLSelectElement||(active instanceof HTMLElement&&active.isContentEditable);
+}
 function PageHeader({view,attentionCount,currentName}:{view:View;attentionCount:number;currentName:string}){
  const description:Record<View,React.ReactNode>={
   attention:attentionCount===0?`Nothing needs ${currentName}'s attention right now.`:`${attentionCount} ${attentionCount===1?"thing needs":"things need"} ${currentName}'s attention. The Workspace does not rank them by importance; use your judgement.`,
