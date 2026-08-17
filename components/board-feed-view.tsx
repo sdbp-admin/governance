@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { WorkAttachmentsButton } from "@/components/work-attachments";
 import { addBoardPostComment, createBoardPost, loadBoardFeed, setBoardPostPinned, type BoardFeedPost } from "@/lib/supabase/board-feed";
 import type { WorkspacePerson } from "@/lib/supabase/workspace";
+import { useLocalDraft } from "@/lib/local-draft";
 
 export function BoardFeedView({ people, currentUserId, personName, openPostId, onOpenedPost }: {
   people: WorkspacePerson[];
@@ -13,7 +14,7 @@ export function BoardFeedView({ people, currentUserId, personName, openPostId, o
   onOpenedPost?: () => void;
 }) {
   const [posts, setPosts] = useState<BoardFeedPost[]>([]);
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft, clearDraft] = useLocalDraft(`board-feed:post:${currentUserId}`, "");
   const [mentions, setMentions] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -50,7 +51,7 @@ export function BoardFeedView({ people, currentUserId, personName, openPostId, o
     setSaving(true); setError("");
     try {
       await createBoardPost(draft, mentions);
-      setDraft(""); setMentions([]);
+      clearDraft(); setMentions([]);
       await refresh();
       window.dispatchEvent(new Event("focus"));
     } catch (err) { setError(readError(err)); }
@@ -66,7 +67,7 @@ export function BoardFeedView({ people, currentUserId, personName, openPostId, o
   return <>
     <section className="feed-composer">
       <div><span className="section-kicker">Shared board communication</span><h2>Post once. Keep it findable.</h2><p>Use this for general notices, requests and context that should not disappear into email or WhatsApp.</p></div>
-      <div className="feed-compose-fields"><textarea rows={4} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Share an update, request or useful context…" /><MentionPicker people={people} currentUserId={currentUserId} selected={mentions} setSelected={setMentions} /><div className="feed-compose-actions"><span>{mentions.length ? `${mentions.length} ${mentions.length === 1 ? "person" : "people"} mentioned` : "No one specifically mentioned"}</span><button className="primary" type="button" disabled={!draft.trim() || saving} onClick={() => void publish()}>{saving ? "Posting…" : "Post to Board Feed"}</button></div></div>
+      <div className="feed-compose-fields"><textarea rows={4} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Share an update, request or useful context…" />{draft.trim() && <small className="draft-saved-note">Draft saved on this device.</small>}<MentionPicker people={people} currentUserId={currentUserId} selected={mentions} setSelected={setMentions} /><div className="feed-compose-actions"><span>{mentions.length ? `${mentions.length} ${mentions.length === 1 ? "person" : "people"} mentioned` : "No one specifically mentioned"}</span><button className="primary" type="button" disabled={!draft.trim() || saving} onClick={() => void publish()}>{saving ? "Posting…" : "Post to Board Feed"}</button></div></div>
     </section>
 
     {error && <div className="records-status error launch-error">{error}</div>}
@@ -103,7 +104,7 @@ function FeedComments({ post, people, currentUserId, personName, onRefresh }: {
   personName: (id: string) => string;
   onRefresh: () => Promise<void>;
 }) {
-  const [body, setBody] = useState("");
+  const [body, setBody, clearBody] = useLocalDraft(`comment:board-feed:${post.id}:${currentUserId}`, "");
   const [mentions, setMentions] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -113,7 +114,7 @@ function FeedComments({ post, people, currentUserId, personName, onRefresh }: {
     setSaving(true); setError("");
     try {
       await addBoardPostComment(post.id, body, mentions);
-      setBody(""); setMentions([]);
+      clearBody(); setMentions([]);
       await onRefresh();
       window.dispatchEvent(new Event("focus"));
     } catch (err) { setError(readError(err)); }
@@ -122,7 +123,7 @@ function FeedComments({ post, people, currentUserId, personName, onRefresh }: {
 
   return <div className="feed-comments">
     {post.comments.length > 0 && <div className="feed-comment-list">{post.comments.map((comment) => <article className="feed-comment" key={comment.id}><div><strong>{personName(comment.authorId)}</strong><time>{formatTimestamp(comment.createdAt)}</time></div><LinkifiedText text={comment.body} />{comment.mentionedIds.length > 0 && <small>Mentioned: {comment.mentionedIds.map(personName).join(", ")}</small>}</article>)}</div>}
-    <div className="feed-comment-compose"><textarea rows={2} value={body} onChange={(event) => setBody(event.target.value)} placeholder="Add a short comment…"/><MentionPicker people={people} currentUserId={currentUserId} selected={mentions} setSelected={setMentions} compact />{error && <div className="auth-message error">{error}</div>}<button className="primary small" type="button" disabled={!body.trim() || saving} onClick={() => void add()}>{saving ? "Adding…" : "Add comment"}</button></div>
+    <div className="feed-comment-compose"><textarea rows={2} value={body} onChange={(event) => setBody(event.target.value)} placeholder="Add a short comment…"/>{body.trim() && <small className="draft-saved-note">Draft saved on this device.</small>}<MentionPicker people={people} currentUserId={currentUserId} selected={mentions} setSelected={setMentions} compact />{error && <div className="auth-message error">{error}</div>}<button className="primary small" type="button" disabled={!body.trim() || saving} onClick={() => void add()}>{saving ? "Adding…" : "Add comment"}</button></div>
   </div>;
 }
 
