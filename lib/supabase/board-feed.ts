@@ -7,6 +7,7 @@ export type BoardFeedComment = {
   body: string;
   mentionedIds: string[];
   createdAt: string;
+  editedAt?: string;
 };
 
 export type BoardFeedPost = {
@@ -52,12 +53,13 @@ type CommentRow = {
   body: string;
   mentioned_ids: string[] | null;
   created_at: string;
+  edited_at: string | null;
 };
 
 export async function loadBoardFeed(): Promise<BoardFeedPost[]> {
   const [postsResult, commentsResult] = await Promise.all([
     supabase.from("board_posts").select("id,author_id,body,mentioned_ids,is_pinned,pinned_by,pinned_at,created_at,edited_at").order("is_pinned", { ascending: false }).order("created_at", { ascending: false }),
-    supabase.from("board_post_comments").select("id,post_id,author_id,body,mentioned_ids,created_at").order("created_at", { ascending: true }),
+    supabase.from("board_post_comments").select("id,post_id,author_id,body,mentioned_ids,created_at,edited_at").order("created_at", { ascending: true }),
   ]);
   const error = postsResult.error || commentsResult.error;
   if (error) throw error;
@@ -79,6 +81,7 @@ export async function loadBoardFeed(): Promise<BoardFeedPost[]> {
       body: comment.body,
       mentionedIds: comment.mentioned_ids ?? [],
       createdAt: comment.created_at,
+      editedAt: comment.edited_at ?? undefined,
     })),
   }));
 }
@@ -95,6 +98,11 @@ export async function editBoardPost(postId: string, body: string) {
 
 export async function addBoardPostComment(postId: string, body: string, mentionIds: string[]) {
   const { error } = await supabase.rpc("add_board_post_comment", { target_post_id: postId, comment_body: body.trim(), mention_ids: mentionIds });
+  if (error) throw error;
+}
+
+export async function editBoardPostComment(commentId: string, body: string) {
+  const { error } = await supabase.rpc("edit_board_post_comment", { target_comment_id: commentId, comment_body: body.trim() });
   if (error) throw error;
 }
 
