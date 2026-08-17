@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { WorkAttachmentsButton } from "@/components/work-attachments";
-import { addBoardPostComment, createBoardPost, loadBoardFeed, setBoardPostPinned, type BoardFeedPost } from "@/lib/supabase/board-feed";
+import { addBoardPostComment, createBoardPost, editBoardPost, loadBoardFeed, setBoardPostPinned, type BoardFeedPost } from "@/lib/supabase/board-feed";
 import type { WorkspacePerson } from "@/lib/supabase/workspace";
 import { useLocalDraft } from "@/lib/local-draft";
 
@@ -88,11 +88,50 @@ function FeedPost({ post, people, currentUserId, personName, expanded, onToggle,
   onRefresh: () => Promise<void>;
   onPin: () => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [editBody, setEditBody, clearEditBody] = useLocalDraft(`board-feed:edit:${post.id}:${currentUserId}`, "");
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState("");
+  const mine = post.authorId === currentUserId;
+
+  function beginEdit() {
+    if (!editBody.trim()) setEditBody(post.body);
+    setEditError("");
+    setEditing(true);
+  }
+
+  function cancelEdit() {
+    clearEditBody();
+    setEditError("");
+    setEditing(false);
+  }
+
+  async function saveEdit() {
+    if (!mine || !editBody.trim() || editSaving) return;
+    setEditSaving(true);
+    setEditError("");
+    try {
+      await editBoardPost(post.id, editBody);
+      clearEditBody();
+      setEditing(false);
+      await onRefresh();
+    } catch (err) {
+      setEditError(readError(err));
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
   return <article className={`feed-post${post.pinned ? " pinned" : ""}`} id={`feed-post-${post.id}`}>
-    <div className="feed-post-head"><div className="feed-author"><span className="mini-avatar">{personName(post.authorId).charAt(0)}</span><div><strong>{personName(post.authorId)}</strong><time>{formatTimestamp(post.createdAt)}</time></div></div>{post.pinned && <span className="feed-pin-badge">Pinned</span>}</div>
-    <LinkifiedText text={post.body} />
+    <div className="feed-post-head"><div className="feed-author"><span className="mini-avatar">{personName(post.authorId).charAt(0)}</span><div><strong>{personName(post.authorId)}</strong><time>{formatTimestamp(post.createdAt)}{post.editedAt ? ` · Edited ${formatTimestamp(post.editedAt)}` : ""}</time></div></div>{post.pinned && <span className="feed-pin-badge">Pinned</span>}</div>
+    {editing ? <div className="feed-comment-compose">
+      <textarea rows={4} value={editBody} onChange={(event) => setEditBody(event.target.value)} autoFocus />
+      {editBody.trim() && <small className="draft-saved-note">Edit draft saved on this device.</small>}
+      {editError && <div className="auth-message error">{editError}</div>}
+      <div className="actions compact-actions"><button className="quiet small" type="button" disabled={editSaving} onClick={cancelEdit}>Cancel</button><button className="primary small" type="button" disabled={!editBody.trim() || editSaving} onClick={() => void saveEdit()}>{editSaving ? "Saving…" : "Save edit"}</button></div>
+    </div> : <LinkifiedText text={post.body} />}
     {post.mentionedIds.length > 0 && <div className="feed-mentioned">Mentioned: {post.mentionedIds.map(personName).join(", ")}</div>}
-    <div className="actions compact-actions feed-post-actions"><button className="quiet small" type="button" onClick={onToggle}>{post.comments.length} {post.comments.length === 1 ? "comment" : "comments"}</button><WorkAttachmentsButton parentType="board_post" parentId={post.id} parentTitle="Board Feed post" personName={personName} /><button className="quiet small" type="button" onClick={onPin}>{post.pinned ? "Unpin" : "Pin"}</button></div>
+    <div className="actions compact-actions feed-post-actions">{mine && !editing && <button className="quiet small" type="button" onClick={beginEdit}>Edit</button>}<button className="quiet small" type="button" onClick={onToggle}>{post.comments.length} {post.comments.length === 1 ? "comment" : "comments"}</button><WorkAttachmentsButton parentType="board_post" parentId={post.id} parentTitle="Board Feed post" personName={personName} /><button className="quiet small" type="button" onClick={onPin}>{post.pinned ? "Unpin" : "Pin"}</button></div>
     {expanded && <FeedComments post={post} people={people} currentUserId={currentUserId} personName={personName} onRefresh={onRefresh} />}
   </article>;
 }
