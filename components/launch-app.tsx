@@ -167,7 +167,16 @@ function PulseView({workspace,urgentTensionIds}:{workspace:WorkspaceData;urgentT
  function nav(label:string,after?:()=>void){const button=Array.from(document.querySelectorAll<HTMLButtonElement>(".nav button")).find(item=>item.querySelector("strong")?.textContent?.trim()===label);button?.click();if(after)window.setTimeout(after,180);}
  function focus(element:HTMLElement|null){if(!element)return;element.scrollIntoView({behavior:"smooth",block:"center"});element.classList.add("context-focus-flash");window.setTimeout(()=>element.classList.remove("context-focus-flash"),1800);}
  function openUpdates(){nav("Work",()=>focus(dueProjects[0]?document.getElementById(`project-card-${dueProjects[0].id}`):null));}
- function openOverdue(){nav("Work",()=>{document.querySelector<HTMLButtonElement>(".commitments-launch")?.click();window.setTimeout(()=>{const overdue=document.querySelector<HTMLElement>(".commitment-card .action-overdue")?.closest<HTMLElement>(".commitment-card")??null;focus(overdue);},120);});}
+ function openOverdue(){
+  const action=overdueActions[0];
+  if(!action)return;
+  const target=action.sourceTensionId?"Tensions":"Work";
+  nav(target,()=>{
+   const rows=Array.from(document.querySelectorAll<HTMLElement>(".context-step-row"));
+   const row=rows.find(item=>item.querySelector("strong")?.textContent?.trim()===action.title)??null;
+   focus(row);
+  });
+ }
  function openTensionList(){nav("Tensions",()=>document.querySelector<HTMLElement>(".tension-stream")?.scrollIntoView({behavior:"smooth",block:"start"}));}
  function openUrgent(){nav("Tensions",()=>focus(document.querySelector<HTMLElement>(".urgent-tension-card")));}
  function openGovernance(){nav("Governance",()=>focus(document.querySelector<HTMLElement>(".governance-starter, .governance-proposal-card")));}
