@@ -18,6 +18,7 @@ export type BoardFeedPost = {
   pinnedBy?: string;
   pinnedAt?: string;
   createdAt: string;
+  editedAt?: string;
   comments: BoardFeedComment[];
 };
 
@@ -41,6 +42,7 @@ type PostRow = {
   pinned_by: string | null;
   pinned_at: string | null;
   created_at: string;
+  edited_at: string | null;
 };
 
 type CommentRow = {
@@ -54,7 +56,7 @@ type CommentRow = {
 
 export async function loadBoardFeed(): Promise<BoardFeedPost[]> {
   const [postsResult, commentsResult] = await Promise.all([
-    supabase.from("board_posts").select("id,author_id,body,mentioned_ids,is_pinned,pinned_by,pinned_at,created_at").order("is_pinned", { ascending: false }).order("created_at", { ascending: false }),
+    supabase.from("board_posts").select("id,author_id,body,mentioned_ids,is_pinned,pinned_by,pinned_at,created_at,edited_at").order("is_pinned", { ascending: false }).order("created_at", { ascending: false }),
     supabase.from("board_post_comments").select("id,post_id,author_id,body,mentioned_ids,created_at").order("created_at", { ascending: true }),
   ]);
   const error = postsResult.error || commentsResult.error;
@@ -69,6 +71,7 @@ export async function loadBoardFeed(): Promise<BoardFeedPost[]> {
     pinnedBy: row.pinned_by ?? undefined,
     pinnedAt: row.pinned_at ?? undefined,
     createdAt: row.created_at,
+    editedAt: row.edited_at ?? undefined,
     comments: comments.filter((comment) => comment.post_id === row.id).map((comment) => ({
       id: comment.id,
       postId: comment.post_id,
@@ -82,6 +85,11 @@ export async function loadBoardFeed(): Promise<BoardFeedPost[]> {
 
 export async function createBoardPost(body: string, mentionIds: string[]) {
   const { error } = await supabase.rpc("create_board_post", { post_body: body.trim(), mention_ids: mentionIds });
+  if (error) throw error;
+}
+
+export async function editBoardPost(postId: string, body: string) {
+  const { error } = await supabase.rpc("edit_board_post", { target_post_id: postId, post_body: body.trim() });
   if (error) throw error;
 }
 
