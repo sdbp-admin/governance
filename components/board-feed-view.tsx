@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { WorkAttachmentsButton } from "@/components/work-attachments";
-import { addBoardPostComment, createBoardPost, editBoardPost, loadBoardFeed, setBoardPostPinned, type BoardFeedPost } from "@/lib/supabase/board-feed";
+import { addBoardPostComment, createBoardPost, editBoardPost, editBoardPostComment, loadBoardFeed, setBoardPostPinned, type BoardFeedComment, type BoardFeedPost } from "@/lib/supabase/board-feed";
 import type { WorkspacePerson } from "@/lib/supabase/workspace";
 import { useLocalDraft } from "@/lib/local-draft";
 
@@ -161,9 +161,62 @@ function FeedComments({ post, people, currentUserId, personName, onRefresh }: {
   }
 
   return <div className="feed-comments">
-    {post.comments.length > 0 && <div className="feed-comment-list">{post.comments.map((comment) => <article className="feed-comment" key={comment.id}><div><strong>{personName(comment.authorId)}</strong><time>{formatTimestamp(comment.createdAt)}</time></div><LinkifiedText text={comment.body} />{comment.mentionedIds.length > 0 && <small>Mentioned: {comment.mentionedIds.map(personName).join(", ")}</small>}</article>)}</div>}
+    {post.comments.length > 0 && <div className="feed-comment-list">{post.comments.map((comment) => <FeedComment key={comment.id} comment={comment} currentUserId={currentUserId} personName={personName} onRefresh={onRefresh} />)}</div>}
     <div className="feed-comment-compose"><textarea rows={2} value={body} onChange={(event) => setBody(event.target.value)} placeholder="Add a short comment…"/>{body.trim() && <small className="draft-saved-note">Draft saved on this device.</small>}<MentionPicker people={people} currentUserId={currentUserId} selected={mentions} setSelected={setMentions} compact />{error && <div className="auth-message error">{error}</div>}<button className="primary small" type="button" disabled={!body.trim() || saving} onClick={() => void add()}>{saving ? "Adding…" : "Add comment"}</button></div>
   </div>;
+}
+
+function FeedComment({ comment, currentUserId, personName, onRefresh }: {
+  comment: BoardFeedComment;
+  currentUserId: string;
+  personName: (id: string) => string;
+  onRefresh: () => Promise<void>;
+}) {
+  const mine = comment.authorId === currentUserId;
+  const [editing, setEditing] = useState(false);
+  const [editBody, setEditBody, clearEditBody] = useLocalDraft(`board-feed:comment-edit:${comment.id}:${currentUserId}`, "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  function beginEdit() {
+    if (!editBody.trim()) setEditBody(comment.body);
+    setError("");
+    setEditing(true);
+  }
+
+  function cancelEdit() {
+    clearEditBody();
+    setError("");
+    setEditing(false);
+  }
+
+  async function saveEdit() {
+    if (!mine || !editBody.trim() || saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      await editBoardPostComment(comment.id, editBody);
+      clearEditBody();
+      setEditing(false);
+      await onRefresh();
+    } catch (err) {
+      setError(readError(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <article className="feed-comment">
+    <div><strong>{personName(comment.authorId)}</strong><time>{formatTimestamp(comment.createdAt)}{comment.editedAt ? ` · Edited ${formatTimestamp(comment.editedAt)}` : ""}</time></div>
+    {editing ? <div className="feed-comment-compose">
+      <textarea rows={3} value={editBody} onChange={(event) => setEditBody(event.target.value)} autoFocus />
+      {editBody.trim() && <small className="draft-saved-note">Edit draft saved on this device.</small>}
+      {error && <div className="auth-message error">{error}</div>}
+      <div className="actions compact-actions"><button className="quiet small" type="button" disabled={saving} onClick={cancelEdit}>Cancel</button><button className="primary small" type="button" disabled={!editBody.trim() || saving} onClick={() => void saveEdit()}>{saving ? "Saving…" : "Save edit"}</button></div>
+    </div> : <LinkifiedText text={comment.body} />}
+    {comment.mentionedIds.length > 0 && <small>Mentioned: {comment.mentionedIds.map(personName).join(", ")}</small>}
+    {mine && !editing && <div className="actions compact-actions"><button className="quiet small" type="button" onClick={beginEdit}>Edit</button></div>}
+  </article>;
 }
 
 function MentionPicker({ people, currentUserId, selected, setSelected, compact = false }: { people: WorkspacePerson[]; currentUserId: string; selected: string[]; setSelected: (ids: string[]) => void; compact?: boolean }) {
