@@ -78,7 +78,7 @@ export function WorkspaceWorkView({
 
     <section className="work-main work-main-refined">
       <div className="section-head"><div><span className="section-kicker">Current outcomes</span><h2>Active projects</h2></div></div>
-      {activeProjects.length ? <div className="project-grid">{activeProjects.map((project) => <article className={`project-card ${projectToneClass(project.id)}`} key={project.id}>
+      {activeProjects.length ? <div className="project-grid">{activeProjects.map((project) => <article id={`project-card-${project.id}`} className={`project-card ${projectToneClass(project.id)}`} key={project.id}>
         <div className="project-accent" />
         <span className="kind">{project.role ?? "SDBP project"}</span>
         <h3>{project.title}</h3>
@@ -127,20 +127,52 @@ function CommitmentsModal({ workspace, currentUserId, personName, personInitial,
   const projectById = new Map(workspace.projects.map((project) => [project.id, project]));
   const tensionById = new Map(workspace.tensions.map((tension) => [tension.id, tension]));
 
+  function focusElement(element: HTMLElement | null) {
+    if (!element) return;
+    element.scrollIntoView({ behavior: "smooth", block: "center" });
+    element.classList.add("context-focus-flash");
+    window.setTimeout(() => element.classList.remove("context-focus-flash"), 1800);
+  }
+
+  function openProject(projectId: string) {
+    onClose();
+    window.setTimeout(() => focusElement(document.getElementById(`project-card-${projectId}`)), 100);
+  }
+
+  function openTension(title: string) {
+    onClose();
+    const tensionsNav = Array.from(document.querySelectorAll<HTMLButtonElement>(".nav button")).find((button) => button.querySelector("strong")?.textContent?.trim() === "Tensions");
+    tensionsNav?.click();
+    window.setTimeout(() => {
+      const card = Array.from(document.querySelectorAll<HTMLElement>(".tension-card")).find((item) => item.querySelector("h3")?.textContent?.trim() === title);
+      focusElement(card ?? null);
+    }, 180);
+  }
+
   return <div className="modal-backdrop commitments-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="workflow-editor commitments-modal" role="dialog" aria-modal="true">
-      <div className="editor-head"><div><span className="section-kicker">Aggregate view</span><h2>All commitments</h2><p className="commitments-intro">The same concrete next steps from projects and tensions, collected here when you need the overview.</p></div><button className="quiet editor-close" onClick={onClose}>×</button></div>
+      <div className="editor-head"><div><span className="section-kicker">Aggregate view</span><h2>All commitments</h2><p className="commitments-intro">A quiet overview of concrete next steps. Select a card to return to the project or tension it belongs to.</p></div><button className="quiet editor-close" onClick={onClose}>×</button></div>
       {actions.length ? <div className="commitment-grid">{actions.map((action) => {
         const project = action.projectId ? projectById.get(action.projectId) : undefined;
         const tension = action.sourceTensionId ? tensionById.get(action.sourceTensionId) : undefined;
-        return <article className={`commitment-card${action.ownerId === currentUserId ? " mine" : ""}`} key={action.id}>
+        const hasContext = Boolean(tension || project);
+        const openContext = () => tension ? openTension(tension.title) : project ? openProject(project.id) : undefined;
+        return <article
+          className={`commitment-card${action.ownerId === currentUserId ? " mine" : ""}${hasContext ? " clickable" : ""}`}
+          key={action.id}
+          role={hasContext ? "button" : undefined}
+          tabIndex={hasContext ? 0 : undefined}
+          aria-label={hasContext ? `Open ${tension ? "tension" : "project"} for ${action.title}` : undefined}
+          onClick={hasContext ? openContext : undefined}
+          onKeyDown={hasContext ? (event) => { if (event.target !== event.currentTarget) return; if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openContext(); } } : undefined}
+        >
           <div className="commitment-card-head"><span className="action-status">{action.status}</span>{action.due && <small className={action.due < todayISO() ? "action-overdue" : ""}>Due {formatDate(action.due)}</small>}</div>
           <h3>{action.title}</h3>
-          {project ? <span className={`commitment-context ${projectToneClass(project.id)}`}>Project · {project.title}</span> : tension ? <span className="commitment-context tension-context">Tension · {tension.title}</span> : null}
-          {action.source && <p>{action.source}</p>}
+          {tension ? <span className="commitment-context tension-context">Tension · {tension.title}</span> : project ? <span className={`commitment-context ${projectToneClass(project.id)}`}>Project · {project.title}</span> : null}
+          {action.source && <p className="commitment-source">{action.source}</p>}
           <div className="commitment-footer"><div className="action-owner"><span className="mini-avatar">{personInitial(action.ownerId)}</span>{personName(action.ownerId)}</div>
-            {action.status === "proposed" && action.ownerId === currentUserId && <button className="secondary small" onClick={() => void onActionStatus(action.id, "open")}>Accept</button>}
-            {action.status === "open" && action.ownerId === currentUserId && <button className="secondary small" onClick={() => void onActionStatus(action.id, "done")}>Mark done</button>}
+            {action.status === "proposed" && action.ownerId === currentUserId && <button className="secondary small" onClick={(event) => { event.stopPropagation(); void onActionStatus(action.id, "open"); }}>Accept</button>}
+            {action.status === "open" && action.ownerId === currentUserId && <button className="secondary small" onClick={(event) => { event.stopPropagation(); void onActionStatus(action.id, "done"); }}>Mark done</button>}
           </div>
         </article>;
       })}</div> : <div className="calm-empty compact-empty"><span>✓</span><h3>No open commitments</h3></div>}
