@@ -5,6 +5,7 @@ import { LaunchApp } from "@/components/launch-app";
 import { ProjectSettings } from "@/components/project-settings";
 import { TacticalMeeting } from "@/components/tactical-meeting";
 import { TemporaryWorkFileCleanup } from "@/components/temporary-work-file-cleanup";
+import { GovernanceAvailabilityPrompt } from "@/components/governance-availability-prompt";
 import styles from "@/components/tactical-meeting.module.css";
 import { supabase } from "@/lib/supabase/client";
 
@@ -108,6 +109,7 @@ export function Prototype({ liveProfile }: { liveProfile?: LiveProfile }) {
   return <>
     {liveProfile && <TemporaryWorkFileCleanup />}
     <LaunchApp liveProfile={liveProfile} />
+    {liveProfile && <GovernanceAvailabilityPrompt liveProfile={liveProfile} />}
     {liveProfile && !governanceMeetingMode && <ProjectSettings />}
     {liveProfile && !governanceMeetingMode && <button className={styles.launcher} type="button" onClick={launchTacticalMeeting} title="Open a live facilitation view in a separate tab">
       <strong>Start tactical meeting</strong>
