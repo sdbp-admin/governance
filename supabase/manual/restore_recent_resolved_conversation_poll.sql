@@ -11,8 +11,8 @@ DECLARE
   v_tension_id uuid;
   v_original_need_note text;
 BEGIN
-  SELECT count(*), min(t.id)
-    INTO v_count, v_tension_id
+  SELECT count(*)
+    INTO v_count
   FROM public.tensions t
   WHERE t.status = 'resolved'
     AND t.resolved_at >= now() - interval '60 minutes'
@@ -29,6 +29,19 @@ BEGIN
   IF v_count > 1 THEN
     RAISE EXCEPTION 'More than one recently resolved tension with a poll was found. Nothing changed; identify the tension explicitly before restoring it.';
   END IF;
+
+  SELECT t.id
+    INTO v_tension_id
+  FROM public.tensions t
+  WHERE t.status = 'resolved'
+    AND t.resolved_at >= now() - interval '60 minutes'
+    AND EXISTS (
+      SELECT 1
+      FROM public.tension_polls p
+      WHERE p.tension_id = t.id
+    )
+  ORDER BY t.resolved_at DESC
+  LIMIT 1;
 
   SELECT s.message
     INTO v_original_need_note
