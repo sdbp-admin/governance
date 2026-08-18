@@ -61,9 +61,10 @@ export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
     if(meeting){setActiveMeetingId(meeting);setView("governance");}
     void refresh();
     const refreshIfIdle=()=>{if(!userIsEditing())void refresh(true);};
-    window.addEventListener("focus",refreshIfIdle);
+    const refreshFromAppSignal=(event:Event)=>{if(event.isTrusted)return;refreshIfIdle();};
+    window.addEventListener("focus",refreshFromAppSignal);
     const timer=window.setInterval(refreshIfIdle,30000);
-    return()=>{window.removeEventListener("focus",refreshIfIdle);window.clearInterval(timer);};
+    return()=>{window.removeEventListener("focus",refreshFromAppSignal);window.clearInterval(timer);};
   },[refresh]);
   useEffect(()=>{if(!notice)return;const timer=window.setTimeout(()=>setNotice(""),3600);return()=>window.clearTimeout(timer);},[notice]);
 
