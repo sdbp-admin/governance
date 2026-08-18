@@ -69,27 +69,31 @@ export function TensionAvailabilityPoll({ tension, currentUserId, personName, on
     if (await onVote(poll.id, availabilityDraft.selected)) clearAvailabilityDraft();
   }
 
+  const suppressPrematureResolution = <style>{`.tension-card:has(.availability-poll-shell) .tension-resolution-check{display:none}`}</style>;
+
   if (!poll) {
-    return mine ? <div className="availability-poll-shell compact-poll-shell">
+    return mine ? <>{suppressPrematureResolution}<div className="availability-poll-shell compact-poll-shell">
       {!editing
         ? <button className="secondary small" onClick={beginCreate}>Find a time</button>
         : <PollTimeEditor times={times} setTimes={setTimes} onCancel={cancelTimes} onSave={saveTimes} />}
-    </div> : null;
+    </div></> : null;
   }
 
   const participant = poll.participantIds.includes(currentUserId);
   const chosen = poll.chosenOptionId ? poll.options.find((option) => option.id === poll.chosenOptionId) : undefined;
   const responded = poll.options.some((option) => option.votes.some((vote) => vote.personId === currentUserId));
+  const highestAvailability = Math.max(0, ...poll.options.map((option) => option.votes.filter((vote) => vote.available).length));
 
-  return <div className="availability-poll-shell">
+  return <>{suppressPrematureResolution}<div className="availability-poll-shell">
     <div className="availability-poll-head">
       <div><span className="kind">Find a time</span><h4>{chosen ? "Time chosen" : "When can everyone meet?"}</h4><p>{poll.participantIds.map(personName).join(", ")}</p></div>
       {mine && !editing && <button className="quiet small" onClick={beginChange}>Change options</button>}
     </div>
-    {chosen && <div className="chosen-time"><strong>{formatPollTime(chosen.startsAt)}</strong><span>Arrange the actual call however is easiest.</span></div>}
+    {chosen && <div className="chosen-time"><strong>{formatPollTime(chosen.startsAt)}</strong><span>Meeting time selected. The tension stays open until the conversation actually resolves it.</span></div>}
     {!chosen && <div className="poll-options">{poll.options.map((option) => {
       const yes = option.votes.filter((vote) => vote.available);
       const checked = availabilityDraft.selected.includes(option.id);
+      const mostAvailable = highestAvailability > 0 && yes.length === highestAvailability;
       return <div className="poll-option" key={option.id}>
         <label className={participant ? "poll-time-choice" : "poll-time-choice read-only"}>
           {participant && <input type="checkbox" checked={checked} onChange={(event) => setAvailabilityDraft((current) => ({
@@ -98,14 +102,14 @@ export function TensionAvailabilityPoll({ tension, currentUserId, personName, on
               : current.selected.filter((id) => id !== option.id),
             dirty: true,
           }))} />}
-          <span><strong>{formatPollTime(option.startsAt)}</strong><small>{yes.length} available · {option.votes.length}/{poll.participantIds.length} responded{yes.length ? ` · ${yes.map((vote) => personName(vote.personId)).join(", ")}` : ""}</small></span>
+          <span><strong>{formatPollTime(option.startsAt)}</strong><small>{mostAvailable ? "Most available · " : ""}{yes.length} available · {option.votes.length}/{poll.participantIds.length} responded{yes.length ? ` · ${yes.map((vote) => personName(vote.personId)).join(", ")}` : ""}</small></span>
         </label>
-        {mine && <button className="secondary small" onClick={() => void onChoose(poll.id, option.id)}>Choose</button>}
+        {mine && <button className="quiet small" title="This locks in the meeting time; it is not an availability vote." onClick={() => void onChoose(poll.id, option.id)}>Set final time</button>}
       </div>;
     })}</div>}
-    {!chosen && participant && <div className="poll-actions"><span>{availabilityDraft.dirty ? "Your unsaved choices are kept on this device." : responded ? "Your availability is recorded." : "Check every time that works for you."}</span><button className="primary small" onClick={() => void saveAvailability()}>Save availability</button></div>}
+    {!chosen && participant && <div className="poll-actions"><span>{availabilityDraft.dirty ? "Your unsaved choices are kept on this device." : responded ? "Your availability is recorded. You can select more than one time." : "Select every time that works for you — multiple choices are allowed."}</span><button className="primary small" onClick={() => void saveAvailability()}>Save availability</button></div>}
     {editing && mine && <PollTimeEditor times={times} setTimes={setTimes} onCancel={cancelTimes} onSave={saveTimes} warning="Changing the options clears the existing responses." />}
-  </div>;
+  </div></>;
 }
 
 function PollTimeEditor({ times, setTimes, onCancel, onSave, warning }: {
@@ -116,7 +120,7 @@ function PollTimeEditor({ times, setTimes, onCancel, onSave, warning }: {
   warning?: string;
 }) {
   return <div className="poll-time-editor">
-    <div><strong>Propose a few times</strong><p>People simply check the times that work. Your unsaved options are kept on this device.</p>{warning && <small className="poll-warning">{warning}</small>}</div>
+    <div><strong>Propose a few times</strong><p>People can select every time that works for them. Their availability is not limited to one choice. Your unsaved options are kept on this device.</p>{warning && <small className="poll-warning">{warning}</small>}</div>
     <div className="poll-time-inputs">{times.map((value, index) => <div className="poll-time-input" key={index}><input type="datetime-local" value={value} onChange={(event) => setTimes(times.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} />{times.length > 2 && <button className="quiet" type="button" onClick={() => setTimes(times.filter((_, itemIndex) => itemIndex !== index))}>×</button>}</div>)}</div>
     <div className="poll-editor-actions">{times.length < 6 && <button className="quiet small" type="button" onClick={() => setTimes([...times, ""])}>+ Add time</button>}<div><button className="quiet small" type="button" onClick={onCancel}>Cancel</button><button className="primary small" type="button" disabled={times.filter(Boolean).length < 2} onClick={onSave}>Create poll</button></div></div>
   </div>;
