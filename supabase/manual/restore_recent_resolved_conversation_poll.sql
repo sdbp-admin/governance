@@ -1,7 +1,7 @@
 -- One-off recovery for an accidentally resolved conversation tension.
 --
 -- This deliberately refuses to change anything unless there is exactly ONE tension
--- resolved in the last 60 minutes that still has an availability poll.
+-- resolved in the last 6 hours that still has an availability poll.
 -- The poll itself is not recreated: it should still exist and will become visible
 -- again when the tension returns to needs_sync.
 
@@ -15,7 +15,7 @@ BEGIN
     INTO v_count
   FROM public.tensions t
   WHERE t.status = 'resolved'
-    AND t.resolved_at >= now() - interval '60 minutes'
+    AND t.resolved_at >= now() - interval '6 hours'
     AND EXISTS (
       SELECT 1
       FROM public.tension_polls p
@@ -23,7 +23,7 @@ BEGIN
     );
 
   IF v_count = 0 THEN
-    RAISE EXCEPTION 'No tension resolved in the last 60 minutes with an existing poll was found. Nothing changed.';
+    RAISE EXCEPTION 'No tension resolved in the last 6 hours with an existing poll was found. Nothing changed.';
   END IF;
 
   IF v_count > 1 THEN
@@ -34,7 +34,7 @@ BEGIN
     INTO v_tension_id
   FROM public.tensions t
   WHERE t.status = 'resolved'
-    AND t.resolved_at >= now() - interval '60 minutes'
+    AND t.resolved_at >= now() - interval '6 hours'
     AND EXISTS (
       SELECT 1
       FROM public.tension_polls p
