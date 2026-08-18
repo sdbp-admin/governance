@@ -28,6 +28,11 @@ type ConsentResponse = {
   objection_review_mode?: ReviewMode | null;
   responded_at: string;
 };
+type GovernanceAvailability = {
+  id: string;
+  governance_available: boolean;
+  governance_leave_expected_return_on?: string | null;
+};
 type ReviewDecision = "valid" | "invalid";
 
 const INVALID_REASONS = [
@@ -48,6 +53,7 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
 }) {
   const [round, setRound] = useState<ConsentRound | null>(null);
   const [responses, setResponses] = useState<ConsentResponse[]>([]);
+  const [availability, setAvailability] = useState<GovernanceAvailability[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [isProcessSteward, setIsProcessSteward] = useState(false);
   const [objectionOpen, setObjectionOpen] = useState(false);
@@ -61,8 +67,16 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
   const consentEligible = proposal.stage === "prepared" || proposal.stage === "present_proposal";
 
   async function load() {
-    const stewardResult = await supabase.rpc("is_process_steward");
+    const [stewardResult, availabilityResult] = await Promise.all([
+      supabase.rpc("is_process_steward"),
+      supabase.from("people").select("id,governance_available,governance_leave_expected_return_on").eq("active", true),
+    ]);
     if (!stewardResult.error) setIsProcessSteward(Boolean(stewardResult.data));
+    if (!availabilityResult.error) {
+      setAvailability((availabilityResult.data ?? []) as GovernanceAvailability[]);
+    } else if (!isAvailabilitySchemaError(availabilityResult.error)) {
+      throw availabilityResult.error;
+    }
 
     const roundResult = await supabase
       .from("governance_consent_rounds")
@@ -134,6 +148,26 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
       clearObjection();
       await load();
       if (result.data === "accepted") window.dispatchEvent(new Event("focus"));
+    } catch (err) {
+      setError(readError(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resumeGovernanceParticipation() {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await supabase.rpc("set_governance_availability", {
+        target_person_id: currentUserId,
+        available: true,
+        expected_return_on: null,
+      });
+      if (result.error) throw result.error;
+      await load();
+      window.dispatchEvent(new Event("focus"));
     } catch (err) {
       setError(readError(err));
     } finally {
@@ -226,6 +260,10 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
   if (!loaded && !error) return <div className="governance-round"><span className="kind">Governance</span><p>Loading consent round…</p></div>;
   if (error && !loaded) return <div className="governance-round"><div className="auth-message error">{error}</div></div>;
 
+  const availabilityByPerson = new Map(availability.map((entry) => [entry.id, entry] as const));
+  const isAvailable = (personId: string) => availabilityByPerson.get(personId)?.governance_available !== false;
+  const ownAvailable = isAvailable(currentUserId);
+
   if (!round) {
     const switching = proposal.stage === "present_proposal";
     return <div className="governance-round">
@@ -233,9 +271,10 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
       <h4>{switching ? "Switch this item to quick consent?" : "How should this proposal be processed?"}</h4>
       <p>{switching
         ? "The meeting has only been opened to the proposal-presentation stage. The proposer can still reroute it to explicit asynchronous consent. Once governance processing moves beyond presenting the proposal, continue in the meeting."
-        : "Choose quick consent when the proposal is clear enough to process asynchronously. Everyone responds explicitly. An objection is tested for validity before it can block the proposal."}</p>
+        : "Choose quick consent when the proposal is clear enough to process asynchronously. Everyone currently participating in governance responds explicitly. An objection is tested for validity before it can block the proposal."}</p>
+      {!ownAvailable && <div className="objection-essential"><strong>You are currently marked on leave.</strong><p>Return to governance participation before starting or responding to asynchronous governance.</p><button className="secondary small" type="button" disabled={busy} onClick={() => void resumeGovernanceParticipation()}>Mark me available again</button></div>}
       <div className="process-actions">
-        {proposal.proposerId === currentUserId && <button className="secondary" type="button" disabled={busy} onClick={() => void startConsent()}>{busy ? "Starting…" : switching ? "Switch to quick consent" : "Quick consent"}</button>}
+        {proposal.proposerId === currentUserId && ownAvailable && <button className="secondary" type="button" disabled={busy} onClick={() => void startConsent()}>{busy ? "Starting…" : switching ? "Switch to quick consent" : "Quick consent"}</button>}
         <button className="primary" type="button" onClick={() => void onStartMeeting(proposal)}>{switching ? "Continue governance meeting" : "Governance meeting"}</button>
       </div>
       {error && <div className="auth-message error">{error}</div>}
@@ -247,6 +286,9 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
   const objections = responses.filter((response) => response.response === "objection");
   const pendingObjections = objections.filter((response) => response.objection_status === "pending_validation");
   const validObjections = objections.filter((response) => response.objection_status === "valid");
+  const requiredPeople = people.filter((person) => isAvailable(person.id));
+  const onLeavePeople = people.filter((person) => !isAvailable(person.id));
+  const requiredResponses = requiredPeople.filter((person) => responseByPerson.has(person.id)).length;
   const reviewingAsProcessSteward = Boolean(reviewingPersonId && currentUserId === proposal.proposerId && isProcessSteward);
 
   if (round.status === "meeting_required") {
@@ -261,13 +303,14 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
   }
 
   if (round.status === "accepted") {
-    return <div className="governance-round"><span className="kind">Quick consent</span><h4>Accepted by explicit consent</h4><p>Everyone responded and no valid objection remained. The proposal is being moved into Current Governance.</p></div>;
+    return <div className="governance-round"><span className="kind">Quick consent</span><h4>Accepted by explicit consent</h4><p>All required participants responded and no valid objection remained. The proposal is being moved into Current Governance.</p></div>;
   }
 
   return <div className="governance-round">
     <span className="kind">Quick consent</span>
-    <h4>{responses.length} of {people.length} responded</h4>
-    <p>Silence does not count as consent. Everyone must respond. Raising an objection does not stop other responses: it is first tested for validity. Final acceptance waits while an objection is pending; only a valid objection routes the proposal to a governance meeting.</p>
+    <h4>{requiredResponses} of {requiredPeople.length} required responses</h4>
+    <p>Silence does not count as consent. Everyone currently participating in governance must respond. Board members on leave remain board members but are not counted as waiting. Raising an objection does not stop other responses: it is first tested for validity. Final acceptance waits while an objection is pending; only a valid objection routes the proposal to a governance meeting.</p>
+    {onLeavePeople.length > 0 && <small className="draft-saved-note">{onLeavePeople.length} board {onLeavePeople.length === 1 ? "member is" : "members are"} currently on leave and not included in the required response count.</small>}
 
     {objections.length > 0 && <div className="governance-entry-list">{objections.map((response) => <ObjectionEntry key={response.person_id} response={response} proposal={proposal} currentUserId={currentUserId} personName={personName} busy={busy} isProcessSteward={isProcessSteward} onWithdraw={withdrawObjection} onBeginReview={beginReview} onCreateTension={createTensionFromObjection} />)}</div>}
 
@@ -281,17 +324,22 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
 
     <div className="round-participation"><strong>Board response</strong><div>{people.map((person) => {
       const response = responseByPerson.get(person.id);
-      const complete = response?.response === "no_objection" || response?.objection_status === "invalid" || response?.objection_status === "withdrawn";
-      return <span className={complete ? "complete" : "waiting"} key={person.id}>{person.name} · {responseLabel(response)}</span>;
+      const available = isAvailable(person.id);
+      const complete = !available || response?.response === "no_objection" || response?.objection_status === "invalid" || response?.objection_status === "withdrawn";
+      const leave = availabilityByPerson.get(person.id);
+      const leaveLabel = leave?.governance_leave_expected_return_on ? `on leave · expected ${formatDate(leave.governance_leave_expected_return_on)}` : "on leave";
+      return <span className={complete ? "complete" : "waiting"} key={person.id}>{person.name} · {!available ? `${leaveLabel}${response ? ` · ${responseLabel(response)}` : ""}` : responseLabel(response)}</span>;
     })}</div></div>
 
+    {!ownAvailable && <div className="objection-essential"><strong>You are currently marked on leave.</strong><p>You are not counted as waiting in this round. If you are participating again, mark yourself available before casting a new response.</p><button className="secondary small" type="button" disabled={busy} onClick={() => void resumeGovernanceParticipation()}>Mark me available again</button></div>}
+
     <div className="process-actions">
-      {ownResponse?.response !== "objection" && <button className={ownResponse?.response === "no_objection" ? "secondary" : "primary"} type="button" disabled={busy} onClick={() => void respond("no_objection")}>{ownResponse?.response === "no_objection" ? "No objection ✓" : "No objection"}</button>}
+      {ownAvailable && ownResponse?.response !== "objection" && <button className={ownResponse?.response === "no_objection" ? "secondary" : "primary"} type="button" disabled={busy} onClick={() => void respond("no_objection")}>{ownResponse?.response === "no_objection" ? "No objection ✓" : "No objection"}</button>}
       {ownResponse?.response === "objection" && (ownResponse.objection_status === "pending_validation" || ownResponse.objection_status === "valid") && <button className="secondary" type="button" disabled={busy} onClick={() => void withdrawObjection()}>Withdraw objection</button>}
-      {ownResponse?.response !== "objection" && <button className="secondary" type="button" disabled={busy} onClick={() => setObjectionOpen((value) => !value)}>Objection</button>}
+      {ownAvailable && ownResponse?.response !== "objection" && <button className="secondary" type="button" disabled={busy} onClick={() => setObjectionOpen((value) => !value)}>Objection</button>}
     </div>
 
-    {objectionOpen && ownResponse?.response !== "objection" && <div className="governance-inline-form">
+    {objectionOpen && ownAvailable && ownResponse?.response !== "objection" && <div className="governance-inline-form">
       <div className="objection-essential"><strong>State the concrete harm or risk.</strong><p>An objection is not a preference, disagreement, or a better idea. It identifies a concrete way this proposal could harm SDBP or move us backward. It will be recorded as awaiting validation; other board members can continue responding.</p></div>
       <label className="field"><span>Objection</span><textarea rows={3} value={objectionText} onChange={(event) => setObjectionText(event.target.value)} placeholder="If we adopt this proposal, what concrete harm or risk could result?" /></label>
       {objectionText.trim() && <small className="draft-saved-note">Draft saved on this device.</small>}
@@ -348,6 +396,14 @@ function responseLabel(response?: ConsentResponse) {
 
 function objectionStatusLabel(status: ObjectionStatus) {
   return ({ pending_validation: "Awaiting validation", valid: "Valid", invalid: "Invalid", withdrawn: "Withdrawn" } as Record<ObjectionStatus, string>)[status];
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("en", { day: "numeric", month: "short" }).format(new Date(`${value}T12:00:00`));
+}
+
+function isAvailabilitySchemaError(error: { code?: string; message?: string }) {
+  return error.code === "42703" || error.code === "PGRST204" || /governance_available|schema cache|does not exist/i.test(error.message ?? "");
 }
 
 function readError(error: unknown) {
