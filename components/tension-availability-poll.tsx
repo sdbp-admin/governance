@@ -134,6 +134,9 @@ export function TensionAvailabilityPoll({ tension, currentUserId, personName, on
       <p className="editor-note">Select every time that works for you. You may select more than one.</p>
       <div className="poll-options">{poll.options.map((option) => {
         const yes = option.votes.filter((vote) => vote.available);
+        const no = option.votes.filter((vote) => !vote.available);
+        const respondedIds = new Set(option.votes.map((vote) => vote.personId));
+        const waiting = poll.participantIds.filter((personId) => !respondedIds.has(personId));
         const checked = availabilityDraft.selected.includes(option.id);
         const mostAvailable = highestAvailability > 0 && yes.length === highestAvailability;
         return <div className="poll-option" key={option.id}>
@@ -144,7 +147,13 @@ export function TensionAvailabilityPoll({ tension, currentUserId, personName, on
                 : current.selected.filter((id) => id !== option.id),
               dirty: true,
             }))} />}
-            <span><strong>{formatPollTime(option.startsAt)}</strong><small>{mostAvailable ? "Most available · " : ""}{yes.length} available · {option.votes.length}/{poll.participantIds.length} responded{yes.length ? ` · ${yes.map((vote) => personName(vote.personId)).join(", ")}` : ""}</small></span>
+            <span>
+              <strong>{formatPollTime(option.startsAt)}</strong>
+              <small>{mostAvailable ? "Most available · " : ""}{yes.length} available · {option.votes.length}/{poll.participantIds.length} responded</small>
+              <small><strong>Available:</strong> {yes.length ? yes.map((vote) => personName(vote.personId)).join(", ") : "No one yet"}</small>
+              {no.length > 0 && <small><strong>Not available:</strong> {no.map((vote) => personName(vote.personId)).join(", ")}</small>}
+              {waiting.length > 0 && <small><strong>Waiting for:</strong> {waiting.map(personName).join(", ")}</small>}
+            </span>
           </label>
         </div>;
       })}</div>
@@ -159,7 +168,7 @@ export function TensionAvailabilityPoll({ tension, currentUserId, personName, on
         <div className="people-picker">{poll.options.map((option) => {
           const yes = option.votes.filter((vote) => vote.available);
           const mostAvailable = highestAvailability > 0 && yes.length === highestAvailability;
-          return <label key={option.id}><input type="radio" name={`final-time-${poll.id}`} checked={finalOptionId === option.id} onChange={() => setFinalOptionId(option.id)} /><span>{formatPollTime(option.startsAt)} · {yes.length} available{mostAvailable ? " · Most available" : ""}</span></label>;
+          return <label key={option.id}><input type="radio" name={`final-time-${poll.id}`} checked={finalOptionId === option.id} onChange={() => setFinalOptionId(option.id)} /><span>{formatPollTime(option.startsAt)} · {yes.length} available{yes.length ? ` · ${yes.map((vote) => personName(vote.personId)).join(", ")}` : ""}{mostAvailable ? " · Most available" : ""}</span></label>;
         })}</div>
         {finalizingError && <small className="tension-project-error">{finalizingError}</small>}
         <div className="poll-editor-actions"><button className="quiet small" type="button" disabled={finalizingBusy} onClick={() => setFinalizing(false)}>Cancel</button><button className="primary small" type="button" disabled={!finalOptionId || finalizingBusy} onClick={() => void confirmFinalTime()}>{finalizingBusy ? "Saving…" : "Confirm meeting time"}</button></div>
