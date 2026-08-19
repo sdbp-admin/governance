@@ -10,6 +10,7 @@ export type WorkspacePresenceSnapshot = {
 };
 
 type LastSeenRow = { id: string; last_seen_at: string | null };
+type PresenceMeta = { personId?: string };
 
 export function useWorkspacePresence(currentPersonId: string): WorkspacePresenceSnapshot {
   const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
@@ -21,13 +22,18 @@ export function useWorkspacePresence(currentPersonId: string): WorkspacePresence
 
     let alive = true;
     let heartbeat: number | undefined;
-    const channel = supabase.channel("sdbp-workspace-presence", {
-      config: { presence: { key: currentPersonId } },
-    });
+    const channel = supabase.channel("sdbp-workspace-presence");
 
     function syncOnline() {
       if (!alive) return;
-      setOnlineIds(new Set(Object.keys(channel.presenceState())));
+      const state = channel.presenceState() as Record<string, PresenceMeta[]>;
+      const people = new Set<string>();
+      for (const presences of Object.values(state)) {
+        for (const presence of presences) {
+          if (presence.personId) people.add(presence.personId);
+        }
+      }
+      setOnlineIds(people);
     }
 
     async function loadLastSeen() {
@@ -67,29 +73,26 @@ export function useWorkspacePresence(currentPersonId: string): WorkspacePresence
       }
     }
 
-    async function announcePresence() {
-      if (document.visibilityState === "hidden") return;
-      await channel.track({ personId: currentPersonId, seenAt: new Date().toISOString() });
-      void touchLastSeen();
-    }
-
     channel
       .on("presence", { event: "sync" }, syncOnline)
       .on("presence", { event: "join" }, syncOnline)
       .on("presence", { event: "leave" }, syncOnline)
       .subscribe((status) => {
-        if (status === "SUBSCRIBED") void announcePresence();
+        if (status === "SUBSCRIBED") {
+          void channel.track({ personId: currentPersonId, onlineAt: new Date().toISOString() });
+          void touchLastSeen();
+        }
       });
 
     void loadLastSeen();
     heartbeat = window.setInterval(() => {
-      void announcePresence();
+      void touchLastSeen();
       void loadLastSeen();
     }, 60_000);
 
     const onVisibility = () => {
       if (document.visibilityState === "visible") {
-        void announcePresence();
+        void touchLastSeen();
         void loadLastSeen();
       }
     };
