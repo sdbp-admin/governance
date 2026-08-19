@@ -6,7 +6,7 @@ import type { ContextualNextStepInput } from "@/components/contextual-next-steps
 import { RecordsView } from "@/components/records-view";
 import { CompassModal } from "@/components/guidance";
 import { WorkspaceWorkView } from "@/components/work-view";
-import { AttentionView, deriveAttention } from "@/components/attention-view";
+import { AttentionView, deriveAttention, type NavigableAttentionItem } from "@/components/attention-view";
 import { TensionsWorkspaceView } from "@/components/tensions-workspace-view";
 import { BoardFeedView } from "@/components/board-feed-view";
 import { OrganisationWorkspaceView } from "@/components/organisation-workspace-view";
@@ -15,6 +15,7 @@ import { WorkspaceGovernanceMeeting } from "@/components/governance-workspace-me
 import { loadCommunicationAttentionSignals, type CommunicationAttentionSignal } from "@/lib/supabase/board-feed";
 import { reopenProject, saveProjectSettings } from "@/lib/supabase/project-management";
 import { loadUrgentTensionIds, setTensionUrgency } from "@/lib/supabase/tension-urgency";
+import { useWorkspacePresence } from "@/lib/supabase/presence";
 import {
   acceptGovernanceProposal, acknowledgeAttentionSignal, canInvitePeople, chooseTensionPollOption,
   completeProject, createAction, createGovernanceProposal, createProject, createTension,
@@ -46,7 +47,9 @@ export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
   const [feedPostId,setFeedPostId]=useState<string|null>(null);
   const [activeMeetingId,setActiveMeetingId]=useState<string|null>(null);
   const [compassOpen,setCompassOpen]=useState(false);
+  const [sourceFocusId,setSourceFocusId]=useState<string|null>(null);
   const currentUserId=liveProfile?.id??"";
+  const presence=useWorkspacePresence(currentUserId);
 
   const refresh=useCallback(async(quiet=false)=>{
     if(!liveProfile)return;
@@ -67,6 +70,28 @@ export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
     return()=>{window.removeEventListener("focus",refreshFromAppSignal);window.clearInterval(timer);};
   },[refresh]);
   useEffect(()=>{if(!notice)return;const timer=window.setTimeout(()=>setNotice(""),3600);return()=>window.clearTimeout(timer);},[notice]);
+  useEffect(()=>{
+    if(!sourceFocusId)return;
+    let cancelled=false;
+    let attempts=0;
+    let timer:number|undefined;
+    const findSource=()=>{
+      if(cancelled)return;
+      const element=document.getElementById(sourceFocusId);
+      if(element){
+        element.scrollIntoView({behavior:"smooth",block:"center"});
+        element.classList.add("context-focus-flash");
+        window.setTimeout(()=>element.classList.remove("context-focus-flash"),1800);
+        setSourceFocusId(null);
+        return;
+      }
+      attempts+=1;
+      if(attempts<30)timer=window.setTimeout(findSource,50);
+      else setSourceFocusId(null);
+    };
+    timer=window.setTimeout(findSource,0);
+    return()=>{cancelled=true;if(timer!==undefined)window.clearTimeout(timer);};
+  },[view,sourceFocusId]);
 
   const peopleById=useMemo(()=>new Map(workspace.people.map(p=>[p.id,p])),[workspace.people]);
   const personName=(id:string)=>peopleById.get(id)?.name??"Unknown";
@@ -86,6 +111,19 @@ export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
     if(item.kind==="action"&&item.targetId){const action=workspace.actions.find(a=>a.id===item.targetId);if(!action)return;const next=action.status==="proposed"?"open":"done";await changeActionStatus(action.id,next);return;}
     if(item.kind==="tension"){setView("tensions");return;}
     if(item.kind==="governance")setView("governance");
+  }
+  async function handleOpenAttentionSource(item:NavigableAttentionItem){
+    if(item.kind==="action"&&item.targetId){
+      if(item.sourceKind==="tension"){setView("tensions");setSourceFocusId(`action-row-${item.targetId}`);return;}
+      if(item.sourceKind==="project"){setView("work");setSourceFocusId(`action-row-${item.targetId}`);return;}
+      setView("work");setNotice("This action has no linked project or tension.");return;
+    }
+    if(item.kind==="project_update"&&item.targetId){setView("work");setSourceFocusId(`project-card-${item.targetId}`);return;}
+    if(item.kind==="comment"&&item.targetId){if(item.signalId&&!await run(()=>acknowledgeAttentionSignal(item.signalId)))return;setProjectCommentsId(item.targetId);setView("work");return;}
+    if(item.kind==="tension_comment"&&item.targetId){if(item.signalId&&!await run(()=>acknowledgeAttentionSignal(item.signalId)))return;setTensionCommentsId(item.targetId);setView("tensions");return;}
+    if(item.kind==="feed"){if(item.signalId&&!await run(()=>acknowledgeAttentionSignal(item.signalId)))return;setFeedPostId(item.targetId??null);setView("feed");return;}
+    if(item.kind==="tension"&&item.targetId){setView("tensions");setSourceFocusId(`tension-card-${item.targetId}`);return;}
+    if(item.kind==="governance"&&item.targetId){setView("governance");setSourceFocusId(`governance-tension-${item.targetId}`);return;}
   }
 
   const addNextStep=(input:ContextualNextStepInput)=>run(()=>createAction({...input,status:input.ownerId===currentUserId?"open":"proposed"}),input.ownerId===currentUserId?"Next step added.":`Next step proposed to ${personName(input.ownerId)}.`);
@@ -126,11 +164,11 @@ export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
   return <div className="shell launch-shell">
     <aside className="sidebar"><div className="brand-lockup"><div className="brand-mark" aria-hidden="true"><span/><span/></div><div className="brand">SDBP Workspace<small>Structure · rhythm · memory</small></div></div><nav className="nav">{(Object.keys(LABELS) as View[]).map(key=><button key={key} className={view===key?"active":""} onClick={()=>setView(key)}><strong>{LABELS[key]}</strong><small>{NAV_META[key]}</small></button>)}</nav><div className="sidebar-foot launch-sidebar-foot"><div className="avatar">{liveProfile.name.charAt(0)}</div><div><strong>{liveProfile.name}</strong><small>Signed in</small></div><button className="sidebar-compass" type="button" onClick={()=>setCompassOpen(true)}>Compass</button></div></aside>
     <main className="main"><PageHeader view={view} attentionCount={attention.length} currentName={liveProfile.name}/>{error&&<div className="records-status error launch-error">{error}</div>}
-      {view==="attention"&&<AttentionView items={attention} urgentTensionIds={urgentTensionIds} onPrimary={handleAttention} onRaiseTension={()=>setView("tensions")}/>}
+      {view==="attention"&&<AttentionView items={attention} urgentTensionIds={urgentTensionIds} onPrimary={handleAttention} onOpenSource={handleOpenAttentionSource} onRaiseTension={()=>setView("tensions")}/>}
       {view==="feed"&&<BoardFeedView people={workspace.people} currentUserId={currentUserId} personName={personName} openPostId={feedPostId} onOpenedPost={()=>setFeedPostId(null)}/>}
       {view==="work"&&<WorkspaceWorkView workspace={workspace} currentUserId={currentUserId} personName={personName} personInitial={personInitial} onAddNextStep={addNextStep} onAddProject={addProject} onActionStatus={changeActionStatus} onCompleteProject={markProjectComplete} onReopenProject={reopenCompletedProject} onSaveProjectSettings={changeProjectSettings} onUpdateProject={setProjectEditorId} openCommentsProjectId={projectCommentsId} onCommentsOpened={()=>setProjectCommentsId(null)}/>}
       {view==="tensions"&&<TensionsWorkspaceView workspace={workspace} currentUserId={currentUserId} personName={personName} urgentTensionIds={urgentTensionIds} openCommentsTensionId={tensionCommentsId} onCommentsOpened={()=>setTensionCommentsId(null)} onRaise={async title=>raiseTension(title)} onAddNextStep={addNextStep} onActionStatus={changeActionStatus} onMarkResolved={markTensionResolved} onKeepOpen={keepTensionOpen} onNeed={recordTensionNeed} onMoveGovernance={moveTensionToGovernance} onResolve={resolveWithNote} onCreatePoll={addTensionPoll} onVotePoll={saveTensionPollVote} onChoosePoll={choosePollTime} onUrgency={changeTensionUrgency}/>}
-      {view==="organisation"&&<OrganisationWorkspaceView workspace={workspace} currentUserId={currentUserId} canInvite={inviteAllowed} personName={personName} onInvite={async(name,email)=>{const ok=await run(()=>invitePerson(name,email),`Invitation sent to ${email}.`);return ok;}} onSaveRole={role=>run(()=>saveRole(role),"Role saved.")} onDeleteRole={id=>run(()=>deleteRole(id),"Role removed.")} onOpenProject={()=>setView("work")}/>}
+      {view==="organisation"&&<OrganisationWorkspaceView workspace={workspace} currentUserId={currentUserId} canInvite={inviteAllowed} personName={personName} presence={presence} onInvite={async(name,email)=>{const ok=await run(()=>invitePerson(name,email),`Invitation sent to ${email}.`);return ok;}} onSaveRole={role=>run(()=>saveRole(role),"Role saved.")} onDeleteRole={id=>run(()=>deleteRole(id),"Role removed.")} onOpenProject={()=>setView("work")}/>}
       {view==="governance"&&<GovernanceWorkspaceView workspace={workspace} currentUserId={currentUserId} personName={personName} onCreateProposal={addProposal} onStartMeeting={startMeeting} onGoTensions={()=>setView("tensions")} onGoRecords={()=>setView("records")}/>}
       {view==="records"&&<RecordsView governanceProposals={workspace.governanceProposals} tensions={workspace.tensions} profileId={liveProfile.id} onNotice={setNotice}/>}
       {view==="pulse"&&<PulseView workspace={workspace} urgentTensionIds={urgentTensionIds}/>}
@@ -189,4 +227,4 @@ function PulseView({workspace,urgentTensionIds}:{workspace:WorkspaceData;urgentT
 }
 function PulseCard({label,value,onOpen}:{label:string;value:number;onOpen:()=>void}){return <button className="pulse-card pulse-link-card" type="button" disabled={value===0} onClick={onOpen}><span className="kind">{label}</span><strong>{value}</strong><small>{value===0?"Nothing waiting":"Open →"}</small></button>}
 function Toast({message}:{message:string}){return <div className="save-toast" role="status"><span>✓</span>{message}</div>}
-function readError(error:unknown){return error instanceof Error?error.message:"Something could not be saved."}
+function readError(error:unknown){return error instanceof Error?error.message:"Something could not be saved.";}
