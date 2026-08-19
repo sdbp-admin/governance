@@ -159,7 +159,7 @@ async function buildAttentionDeliveries(
     if (!tension) return [];
     const ids = uniqueIds([tension.raiser_id as string, ...(((comment.mentioned_ids as string[] | null) ?? []))]);
     const recipients = await peopleByIds(supabase, ids);
-    return attentionDeliveries(recipients, actor, `Tension · ${tension.title}`, `${actor.name} added a comment that needs your attention.`, appUrl);
+    return attentionDeliveries(recipients, actor, "tension comment", `${actor.name} added a comment that needs your attention.`, appUrl);
   }
 
   if (payload.kind === "action_proposed") {
