@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase/client";
+import { notifyAttention } from "@/lib/supabase/attention-notifications";
 
 export type MeetingType = "governance" | "strategic";
 
@@ -72,13 +73,14 @@ export async function createMeetingPoll(input: {
   participantIds: string[];
   optionTimes: string[];
 }) {
-  const { error } = await supabase.rpc("create_meeting_poll", {
+  const { data, error } = await supabase.rpc("create_meeting_poll", {
     poll_meeting_type: input.meetingType,
     poll_title: input.title,
     participant_ids: input.participantIds,
     option_times: input.optionTimes.map((value) => new Date(value).toISOString()),
   });
   if (error) throw error;
+  if (data) await notifyAttention({ kind: "meeting_poll", pollId: String(data) });
 }
 
 export async function voteMeetingPoll(pollId: string, optionIds: string[]) {
