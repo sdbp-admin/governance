@@ -92,6 +92,7 @@ function TensionCard(props: Props & { tension: Tension; processing: string | nul
   const mine = tension.raiserId === props.currentUserId;
   const processable = tension.status === "open" || tension.status === "needs_sync";
   const hasNeed = Boolean(tension.latestNote);
+  const meetingScheduled = Boolean(tension.status === "needs_sync" && tension.poll?.chosenOptionId);
   const urgent = props.urgentTensionIds.has(tension.id);
   const linkedProject = tension.linkedProjectId ? props.workspace.projects.find((project) => project.id === tension.linkedProjectId) : undefined;
 
@@ -109,6 +110,11 @@ function TensionCard(props: Props & { tension: Tension; processing: string | nul
 
       {tension.status === "needs_sync" && <TensionAvailabilityPoll tension={tension} currentUserId={props.currentUserId} personName={props.personName} onCreate={props.onCreatePoll} onVote={props.onVotePoll} onChoose={props.onChoosePoll} />}
 
+      {mine && meetingScheduled && props.processing !== tension.id && <div className="tension-resolution-check">
+        <span className="kind">Conversation happened</span><h4>Did this resolve the tension?</h4><p>Close it only if you got what you needed from the conversation. Otherwise keep it open and adjust the next step.</p>
+        <div className="process-actions"><button className="secondary" onClick={() => props.setProcessing(tension.id)}>Not yet · adjust</button><button className="primary" onClick={() => void props.onResolve(tension, `${props.personName(props.currentUserId)} confirmed the conversation resolved the tension.`)}>Yes, resolved</button></div>
+      </div>}
+
       {tension.status === "awaiting_confirmation" && mine && <div className="tension-process-panel">
         <span className="kind">Resolution check</span>
         <h4>{props.personName(tension.resolutionProposedBy ?? "")} believes this is resolved. Is it resolved for you?</h4>
@@ -117,7 +123,7 @@ function TensionCard(props: Props & { tension: Tension; processing: string | nul
 
       {props.processing === tension.id && mine && processable && <Process tension={tension} people={props.workspace.people} currentUserId={props.currentUserId} onClose={() => props.setProcessing(null)} onNeed={props.onNeed} onMoveGovernance={props.onMoveGovernance} />}
 
-      {mine && processable && hasNeed && props.processing !== tension.id && <div className="tension-resolution-check">
+      {mine && processable && hasNeed && !meetingScheduled && props.processing !== tension.id && <div className="tension-resolution-check">
         <span className="kind">Check the real situation</span><h4>Did you get what you need?</h4><p>If yes, close the tension. If not, adjust what would help.</p>
         <div className="process-actions"><button className="secondary" onClick={() => props.setProcessing(tension.id)}>Not yet · adjust</button><button className="primary" onClick={() => void props.onResolve(tension, `${props.personName(props.currentUserId)} got what was needed and resolved the tension.`)}>Yes, resolved</button></div>
       </div>}
