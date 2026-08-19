@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase/client";
+import { notifyAttention } from "@/lib/supabase/attention-notifications";
 
 export type TensionCommentEntry = {
   id: string;
@@ -47,24 +48,28 @@ export async function loadTensionComments(tensionId: string): Promise<TensionCom
 }
 
 export async function addTensionComment(tensionId: string, body: string, mentionedIds: string[] = []) {
-  const { error } = await supabase.rpc("add_tension_comment", {
+  const result = await supabase.rpc("add_tension_comment", {
     target_tension_id: tensionId,
     comment_body: body.trim(),
     mention_ids: mentionedIds,
   });
-  if (!error) return;
-
-  // Before migration 0015, non-mentioned comments can still use the existing RPC.
-  if (!mentionedIds.length && isMissingRpcSignature(error)) {
-    const { error: legacyError } = await supabase.rpc("add_tension_comment", {
-      target_tension_id: tensionId,
-      comment_body: body.trim(),
-    });
-    if (legacyError) throw legacyError;
+  if (!result.error) {
+    if (result.data) await notifyAttention({ kind: "tension_comment", commentId: String(result.data) });
     return;
   }
 
-  throw error;
+  // Before migration 0015, non-mentioned comments can still use the existing RPC.
+  if (!mentionedIds.length && isMissingRpcSignature(result.error)) {
+    const legacy = await supabase.rpc("add_tension_comment", {
+      target_tension_id: tensionId,
+      comment_body: body.trim(),
+    });
+    if (legacy.error) throw legacy.error;
+    if (legacy.data) await notifyAttention({ kind: "tension_comment", commentId: String(legacy.data) });
+    return;
+  }
+
+  throw result.error;
 }
 
 function isOptionalSchemaError(error: { code?: string; message?: string }) {
