@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase/client";
 
 export type AttentionNotificationRequest =
+  | { tensionId: string }
   | { kind: "board_post"; postId: string }
   | { kind: "board_post_comment"; commentId: string }
   | { kind: "project_comment"; commentId: string }
