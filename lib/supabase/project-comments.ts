@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase/client";
+import { notifyAttention } from "@/lib/supabase/attention-notifications";
 
 export type ProjectCommentEntry = {
   id: string;
@@ -46,14 +47,20 @@ export async function addProjectComment(projectId: string, body: string, mention
     mention_ids: mentionedIds,
   });
 
-  if (!result.error) return;
+  if (!result.error) {
+    if (result.data) await notifyAttention({ kind: "project_comment", commentId: String(result.data) });
+    return;
+  }
 
   if (mentionedIds.length === 0 && isOptionalFunctionError(result.error)) {
     const legacy = await supabase.rpc("add_project_comment", {
       target_project_id: projectId,
       comment_body: body.trim(),
     });
-    if (!legacy.error) return;
+    if (!legacy.error) {
+      if (legacy.data) await notifyAttention({ kind: "project_comment", commentId: String(legacy.data) });
+      return;
+    }
     throw legacy.error;
   }
 
