@@ -4,23 +4,31 @@ import type { AttentionItem } from "@/lib/domain";
 import type { CommunicationAttentionSignal } from "@/lib/supabase/board-feed";
 import { todayISO, type WorkspaceData } from "@/lib/supabase/workspace";
 
+type AttentionSourceKind = "project" | "tension";
+type NavigableAttentionItem = AttentionItem & {
+  sourceKind?: AttentionSourceKind;
+  sourceId?: string;
+};
+
 export function deriveAttention(
   workspace: WorkspaceData,
   userId: string,
   personName: (id: string) => string,
   urgentTensionIds: ReadonlySet<string> = new Set(),
   communicationSignals: CommunicationAttentionSignal[] = [],
-): AttentionItem[] {
+): NavigableAttentionItem[] {
   const today = todayISO();
-  const items: AttentionItem[] = [];
+  const items: NavigableAttentionItem[] = [];
   for (const project of workspace.projects) {
     if (project.status !== "active" || project.ownerId !== userId || project.nextPrompt > today) continue;
-    items.push({ id: `project-${project.id}`, ownerId: userId, kind: "project_update", targetId: project.id, title: project.title, reason: `Project update is due. Last checked ${formatDate(project.lastUpdate)}.`, primaryAction: "Update project", status: "needs_action" });
+    items.push({ id: `project-${project.id}`, ownerId: userId, kind: "project_update", targetId: project.id, sourceKind: "project", sourceId: project.id, title: project.title, reason: `Project update is due. Last checked ${formatDate(project.lastUpdate)}.`, primaryAction: "Update project", status: "needs_action" });
   }
   for (const action of workspace.actions) {
     if (action.ownerId !== userId || (action.status !== "proposed" && action.status !== "open")) continue;
     const project = action.projectId ? workspace.projects.find((candidate) => candidate.id === action.projectId) : undefined;
-    items.push({ id: `action-${action.id}`, ownerId: userId, kind: "action", targetId: action.id, title: action.title, reason: `${project ? `Project: ${project.title}. ` : ""}${action.status === "proposed" ? `${action.source ? `From ${action.source}. ` : ""}Accept it if this is your commitment.` : `${action.source ? `From ${action.source}. ` : ""}This is an open commitment.`}`, primaryAction: action.status === "proposed" ? "Accept action" : "Mark done", status: "needs_action", due: action.due });
+    const sourceKind: AttentionSourceKind | undefined = action.sourceTensionId ? "tension" : action.projectId ? "project" : undefined;
+    const sourceId = action.sourceTensionId ?? action.projectId;
+    items.push({ id: `action-${action.id}`, ownerId: userId, kind: "action", targetId: action.id, sourceKind, sourceId, title: action.title, reason: `${project ? `Project: ${project.title}. ` : ""}${action.status === "proposed" ? `${action.source ? `From ${action.source}. ` : ""}Accept it if this is your commitment.` : `${action.source ? `From ${action.source}. ` : ""}This is an open commitment.`}`, primaryAction: action.status === "proposed" ? "Accept action" : "Mark done", status: "needs_action", due: action.due });
   }
   for (const signal of workspace.attentionSignals ?? []) {
     if (signal.recipientId !== userId) continue;
@@ -30,18 +38,18 @@ export function deriveAttention(
       const creator = personName(signal.createdBy ?? tension.raiserId);
       const request = tension.status === "needs_sync" ? "a real conversation" : "input or help";
       const detail = compactNeedDetail(signal.message);
-      items.push({ id: `signal-${signal.id}`, ownerId: userId, kind: "tension", targetId: tension.id, signalId: signal.id, title: tension.title, reason: `${creator} needs ${request} from you.${detail ? ` ${detail}` : ""}`, primaryAction: "Open tension", status: "needs_action" });
+      items.push({ id: `signal-${signal.id}`, ownerId: userId, kind: "tension", targetId: tension.id, sourceKind: "tension", sourceId: tension.id, signalId: signal.id, title: tension.title, reason: `${creator} needs ${request} from you.${detail ? ` ${detail}` : ""}`, primaryAction: "Open tension", status: "needs_action" });
     }
     if (signal.signalType === "project_comment" && signal.projectId) {
       const project = workspace.projects.find((candidate) => candidate.id === signal.projectId);
-      if (project) items.push({ id: `signal-${signal.id}`, ownerId: userId, kind: "comment", targetId: project.id, signalId: signal.id, title: project.title, reason: signal.message, primaryAction: "Open comments", status: "needs_action" });
+      if (project) items.push({ id: `signal-${signal.id}`, ownerId: userId, kind: "comment", targetId: project.id, sourceKind: "project", sourceId: project.id, signalId: signal.id, title: project.title, reason: signal.message, primaryAction: "Open comments", status: "needs_action" });
     }
   }
   for (const signal of communicationSignals) {
     if (signal.recipientId !== userId) continue;
     if (signal.signalType === "tension_comment" && signal.tensionId) {
       const tension = workspace.tensions.find((candidate) => candidate.id === signal.tensionId);
-      if (tension) items.push({ id: `comm-${signal.id}`, ownerId: userId, kind: "tension_comment", targetId: tension.id, signalId: signal.id, title: tension.title, reason: signal.message, primaryAction: "Open comments", status: "needs_action" });
+      if (tension) items.push({ id: `comm-${signal.id}`, ownerId: userId, kind: "tension_comment", targetId: tension.id, sourceKind: "tension", sourceId: tension.id, signalId: signal.id, title: tension.title, reason: signal.message, primaryAction: "Open comments", status: "needs_action" });
     }
     if (signal.signalType === "board_feed_mention" && signal.boardPostId) {
       items.push({ id: `comm-${signal.id}`, ownerId: userId, kind: "feed", targetId: signal.boardPostId, signalId: signal.id, title: "Board Feed mention", reason: signal.message, primaryAction: "Open Board Feed", status: "needs_action" });
@@ -49,22 +57,22 @@ export function deriveAttention(
   }
   for (const tension of workspace.tensions) {
     if (tension.raiserId !== userId) continue;
-    if (tension.status === "awaiting_confirmation") items.push({ id: `tension-${tension.id}`, ownerId: userId, kind: "tension", targetId: tension.id, title: tension.title, reason: `${personName(tension.resolutionProposedBy ?? "")} believes this is resolved. Check the real situation.`, primaryAction: "Review tension", status: "needs_action" });
-    if (tension.status === "open") items.push({ id: `tension-${tension.id}`, ownerId: userId, kind: "tension", targetId: tension.id, title: tension.title, reason: tension.latestNote ? "This tension is still open. Did you get what you needed?" : "You raised this tension and it is still open.", primaryAction: tension.latestNote ? "Review tension" : "Process tension", status: "needs_action" });
-    if (tension.status === "needs_sync") items.push({ id: `tension-${tension.id}`, ownerId: userId, kind: "tension", targetId: tension.id, title: tension.title, reason: tension.poll?.chosenOptionId ? "A time has been chosen. The conversation still needs to happen." : tension.poll ? "The conversation still needs scheduling or completion." : "You marked this for a real conversation. Did you get what you needed?", primaryAction: "Review tension", status: "needs_action" });
+    if (tension.status === "awaiting_confirmation") items.push({ id: `tension-${tension.id}`, ownerId: userId, kind: "tension", targetId: tension.id, sourceKind: "tension", sourceId: tension.id, title: tension.title, reason: `${personName(tension.resolutionProposedBy ?? "")} believes this is resolved. Check the real situation.`, primaryAction: "Review tension", status: "needs_action" });
+    if (tension.status === "open") items.push({ id: `tension-${tension.id}`, ownerId: userId, kind: "tension", targetId: tension.id, sourceKind: "tension", sourceId: tension.id, title: tension.title, reason: tension.latestNote ? "This tension is still open. Did you get what you needed?" : "You raised this tension and it is still open.", primaryAction: tension.latestNote ? "Review tension" : "Process tension", status: "needs_action" });
+    if (tension.status === "needs_sync") items.push({ id: `tension-${tension.id}`, ownerId: userId, kind: "tension", targetId: tension.id, sourceKind: "tension", sourceId: tension.id, title: tension.title, reason: tension.poll?.chosenOptionId ? "A time has been chosen. The conversation still needs to happen." : tension.poll ? "The conversation still needs scheduling or completion." : "You marked this for a real conversation. Did you get what you needed?", primaryAction: "Review tension", status: "needs_action" });
     if (tension.status === "governance" && !workspace.governanceProposals.some((proposal) => proposal.tensionId === tension.id)) items.push({ id: `governance-${tension.id}`, ownerId: userId, kind: "governance", targetId: tension.id, title: tension.title, reason: "This structural tension needs a proposal before it can be processed in Governance.", primaryAction: "Prepare proposal", status: "needs_action" });
   }
   return items.sort((a, b) => objectiveAttentionOrder(a, b, urgentTensionIds));
 }
 
-export function AttentionView({ items, urgentTensionIds, onPrimary, onRaiseTension }: { items: AttentionItem[]; urgentTensionIds: ReadonlySet<string>; onPrimary: (item: AttentionItem) => void; onRaiseTension: () => void }) {
+export function AttentionView({ items, urgentTensionIds, onPrimary, onRaiseTension }: { items: NavigableAttentionItem[]; urgentTensionIds: ReadonlySet<string>; onPrimary: (item: AttentionItem) => void; onRaiseTension: () => void }) {
   if (!items.length) return <div className="calm-empty"><span>✓</span><h2>Clear for now</h2><p>Nothing is waiting for you.</p><button className="text-action" onClick={onRaiseTension}>+ Raise a tension</button></div>;
   return <><div className="attention-compact-head"><div><span className="section-kicker">Needs you now</span><h2>{items.length} open {items.length === 1 ? "interaction" : "interactions"}</h2></div><p>Overdue deadlines and tensions explicitly marked urgent are surfaced first. The Workspace does not decide importance itself.</p></div><div className="attention-grid compact-attention-grid">{items.map((item) => {
     const urgent = (item.kind === "tension" || item.kind === "tension_comment") && Boolean(item.targetId && urgentTensionIds.has(item.targetId));
     return <article
       className={`attention-card compact-attention-card${urgent ? " attention-urgent" : ""}`}
       key={item.id}
-      role="button"
+      role="link"
       tabIndex={0}
       aria-label={`Open source for ${item.title}`}
       style={{ cursor: "pointer" }}
@@ -80,37 +88,43 @@ export function AttentionView({ items, urgentTensionIds, onPrimary, onRaiseTensi
   })}</div><button className="text-action attention-raise" onClick={onRaiseTension}>+ Raise a tension</button></>;
 }
 
-function openSource(item: AttentionItem, onPrimary: (item: AttentionItem) => void) {
+function openSource(item: NavigableAttentionItem, onPrimary: (item: AttentionItem) => void) {
   if (item.kind === "action" && item.targetId) {
-    openActionContext(item.targetId);
-    return;
-  }
-  if (item.kind === "project_update" && item.targetId) {
-    clickNav("Work");
-    focusAfter(`project-card-${item.targetId}`);
-    return;
-  }
-
-  onPrimary(item);
-  if (item.kind === "tension" && item.targetId) focusAfter(`tension-card-${item.targetId}`);
-  if (item.kind === "governance" && item.targetId) {
-    window.setTimeout(() => {
-      focusElement(document.getElementById(`governance-tension-${item.targetId}`) ?? document.getElementById(`governance-proposal-${item.targetId}`));
-    }, 180);
-  }
-}
-
-function openActionContext(actionId: string) {
-  clickNav("Work");
-  window.setTimeout(() => {
-    const workRow = document.getElementById(`action-row-${actionId}`);
-    if (workRow) {
-      focusElement(workRow);
+    if (item.sourceKind === "tension" && item.sourceId) {
+      navigateAndFocus("Tensions", `action-row-${item.targetId}`);
       return;
     }
-    clickNav("Tensions");
-    focusAfter(`action-row-${actionId}`);
-  }, 180);
+    if (item.sourceKind === "project" && item.sourceId) {
+      navigateAndFocus("Work", `action-row-${item.targetId}`);
+      return;
+    }
+    clickNav("Work");
+    return;
+  }
+
+  if (item.kind === "project_update" && item.targetId) {
+    navigateAndFocus("Work", `project-card-${item.targetId}`);
+    return;
+  }
+
+  if (item.kind === "tension" && item.targetId) {
+    navigateAndFocus("Tensions", `tension-card-${item.targetId}`);
+    return;
+  }
+
+  if (item.kind === "governance" && item.targetId) {
+    navigateAndFocus("Governance", `governance-tension-${item.targetId}`);
+    return;
+  }
+
+  // Comment and Board Feed cards need the normal open handler because it also
+  // acknowledges the corresponding attention signal and opens the exact thread.
+  onPrimary(item);
+}
+
+function navigateAndFocus(label: string, elementId: string) {
+  clickNav(label);
+  focusWhenReady(elementId);
 }
 
 function clickNav(label: string) {
@@ -118,8 +132,15 @@ function clickNav(label: string) {
   button?.click();
 }
 
-function focusAfter(id: string) {
-  window.setTimeout(() => focusElement(document.getElementById(id)), 180);
+function focusWhenReady(id: string, attempts = 24) {
+  window.setTimeout(() => {
+    const element = document.getElementById(id);
+    if (element) {
+      focusElement(element);
+      return;
+    }
+    if (attempts > 1) focusWhenReady(id, attempts - 1);
+  }, 50);
 }
 
 function focusElement(element: HTMLElement | null) {
