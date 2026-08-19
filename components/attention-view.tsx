@@ -4,8 +4,8 @@ import type { AttentionItem } from "@/lib/domain";
 import type { CommunicationAttentionSignal } from "@/lib/supabase/board-feed";
 import { todayISO, type WorkspaceData } from "@/lib/supabase/workspace";
 
-type AttentionSourceKind = "project" | "tension";
-type NavigableAttentionItem = AttentionItem & {
+export type AttentionSourceKind = "project" | "tension";
+export type NavigableAttentionItem = AttentionItem & {
   sourceKind?: AttentionSourceKind;
   sourceId?: string;
 };
@@ -65,97 +65,47 @@ export function deriveAttention(
   return items.sort((a, b) => objectiveAttentionOrder(a, b, urgentTensionIds));
 }
 
-export function AttentionView({ items, urgentTensionIds, onPrimary, onRaiseTension }: { items: NavigableAttentionItem[]; urgentTensionIds: ReadonlySet<string>; onPrimary: (item: AttentionItem) => void; onRaiseTension: () => void }) {
+export function AttentionView({ items, urgentTensionIds, onPrimary, onOpenSource, onRaiseTension }: {
+  items: NavigableAttentionItem[];
+  urgentTensionIds: ReadonlySet<string>;
+  onPrimary: (item: AttentionItem) => void;
+  onOpenSource: (item: NavigableAttentionItem) => void;
+  onRaiseTension: () => void;
+}) {
   if (!items.length) return <div className="calm-empty"><span>✓</span><h2>Clear for now</h2><p>Nothing is waiting for you.</p><button className="text-action" onClick={onRaiseTension}>+ Raise a tension</button></div>;
   return <>
     <div className="attention-compact-head"><div><span className="section-kicker">Needs you now</span><h2>{items.length} open {items.length === 1 ? "interaction" : "interactions"}</h2></div><p>Overdue deadlines and tensions explicitly marked urgent are surfaced first. The Workspace does not decide importance itself.</p></div>
     <div className="attention-grid compact-attention-grid">{items.map((item) => {
       const urgent = (item.kind === "tension" || item.kind === "tension_comment") && Boolean(item.targetId && urgentTensionIds.has(item.targetId));
-      return <div key={item.id} style={{ position: "relative" }}>
-        <button
-          type="button"
-          className={`attention-card compact-attention-card${urgent ? " attention-urgent" : ""}`}
-          aria-label={`Open source for ${item.title}`}
-          onClick={() => openSource(item, onPrimary)}
-          style={{ width: "100%", color: "inherit", textAlign: "left", font: "inherit", cursor: "pointer", paddingRight: "9.5rem" }}
-        >
-          <div className={`type-dot type-${item.kind}`} />
-          <div className="attention-copy">
-            <span className="kind">{urgent ? "URGENT · " : ""}{humanKind(item.kind)}{item.due ? ` · due ${formatDate(item.due)}` : ""}</span>
-            <h3>{compactText(item.title, 170)}</h3>
-            <p>{compactText(item.reason, 220)}</p>
-            <small>Open source →</small>
-          </div>
-        </button>
-        <div className="actions compact-actions" style={{ position: "absolute", right: "1rem", bottom: "1rem", zIndex: 2, marginTop: 0 }}>
-          <button className="primary small" type="button" onClick={() => onPrimary(item)}>{item.primaryAction}</button>
+      return <article
+        className={`attention-card compact-attention-card${urgent ? " attention-urgent" : ""}`}
+        key={item.id}
+        role="link"
+        tabIndex={0}
+        onClick={() => onOpenSource(item)}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onOpenSource(item);
+          }
+        }}
+        style={{ cursor: "pointer" }}
+      >
+        <div className={`type-dot type-${item.kind}`} />
+        <div className="attention-copy">
+          <span className="kind">{urgent ? "URGENT · " : ""}{humanKind(item.kind)}{item.due ? ` · due ${formatDate(item.due)}` : ""}</span>
+          <h3>{compactText(item.title, 170)}</h3>
+          <p>{compactText(item.reason, 220)}</p>
         </div>
-      </div>;
+        <div className="actions compact-actions">
+          <button className="secondary small" type="button" onClick={(event) => { event.stopPropagation(); onOpenSource(item); }}>Open source →</button>
+          <button className="primary small" type="button" onClick={(event) => { event.stopPropagation(); onPrimary(item); }}>{item.primaryAction}</button>
+        </div>
+      </article>;
     })}</div>
     <button className="text-action attention-raise" onClick={onRaiseTension}>+ Raise a tension</button>
   </>;
-}
-
-function openSource(item: NavigableAttentionItem, onPrimary: (item: AttentionItem) => void) {
-  if (item.kind === "action" && item.targetId) {
-    if (item.sourceKind === "tension" && item.sourceId) {
-      navigateAndFocus("Tensions", `action-row-${item.targetId}`);
-      return;
-    }
-    if (item.sourceKind === "project" && item.sourceId) {
-      navigateAndFocus("Work", `action-row-${item.targetId}`);
-      return;
-    }
-    clickNav("Work");
-    return;
-  }
-
-  if (item.kind === "project_update" && item.targetId) {
-    navigateAndFocus("Work", `project-card-${item.targetId}`);
-    return;
-  }
-
-  if (item.kind === "tension" && item.targetId) {
-    navigateAndFocus("Tensions", `tension-card-${item.targetId}`);
-    return;
-  }
-
-  if (item.kind === "governance" && item.targetId) {
-    navigateAndFocus("Governance", `governance-tension-${item.targetId}`);
-    return;
-  }
-
-  // Comments and Board Feed items use the normal open handler because it also
-  // acknowledges the attention signal and opens the exact thread.
-  onPrimary(item);
-}
-
-function navigateAndFocus(label: string, elementId: string) {
-  clickNav(label);
-  focusWhenReady(elementId);
-}
-
-function clickNav(label: string) {
-  const button = Array.from(document.querySelectorAll<HTMLButtonElement>(".nav button")).find((item) => item.querySelector("strong")?.textContent?.trim() === label);
-  button?.click();
-}
-
-function focusWhenReady(id: string, attempts = 24) {
-  window.setTimeout(() => {
-    const element = document.getElementById(id);
-    if (element) {
-      focusElement(element);
-      return;
-    }
-    if (attempts > 1) focusWhenReady(id, attempts - 1);
-  }, 50);
-}
-
-function focusElement(element: HTMLElement | null) {
-  if (!element) return;
-  element.scrollIntoView({ behavior: "smooth", block: "center" });
-  element.classList.add("context-focus-flash");
-  window.setTimeout(() => element.classList.remove("context-focus-flash"), 1800);
 }
 
 function objectiveAttentionOrder(a: AttentionItem, b: AttentionItem, urgentTensionIds: ReadonlySet<string>) {
