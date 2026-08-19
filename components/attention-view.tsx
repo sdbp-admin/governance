@@ -59,7 +59,74 @@ export function deriveAttention(
 
 export function AttentionView({ items, urgentTensionIds, onPrimary, onRaiseTension }: { items: AttentionItem[]; urgentTensionIds: ReadonlySet<string>; onPrimary: (item: AttentionItem) => void; onRaiseTension: () => void }) {
   if (!items.length) return <div className="calm-empty"><span>✓</span><h2>Clear for now</h2><p>Nothing is waiting for you.</p><button className="text-action" onClick={onRaiseTension}>+ Raise a tension</button></div>;
-  return <><div className="attention-compact-head"><div><span className="section-kicker">Needs you now</span><h2>{items.length} open {items.length === 1 ? "interaction" : "interactions"}</h2></div><p>Overdue deadlines and tensions explicitly marked urgent are surfaced first. The Workspace does not decide importance itself.</p></div><div className="attention-grid compact-attention-grid">{items.map((item) => { const urgent = (item.kind === "tension" || item.kind === "tension_comment") && Boolean(item.targetId && urgentTensionIds.has(item.targetId)); return <article className={`attention-card compact-attention-card${urgent ? " attention-urgent" : ""}`} key={item.id}><div className={`type-dot type-${item.kind}`} /><div className="attention-copy"><span className="kind">{urgent ? "URGENT · " : ""}{humanKind(item.kind)}{item.due ? ` · due ${formatDate(item.due)}` : ""}</span><h3>{compactText(item.title, 170)}</h3><p>{compactText(item.reason, 220)}</p></div><div className="actions compact-actions"><button className="primary small" onClick={() => onPrimary(item)}>{item.primaryAction}</button></div></article>; })}</div><button className="text-action attention-raise" onClick={onRaiseTension}>+ Raise a tension</button></>;
+  return <><div className="attention-compact-head"><div><span className="section-kicker">Needs you now</span><h2>{items.length} open {items.length === 1 ? "interaction" : "interactions"}</h2></div><p>Overdue deadlines and tensions explicitly marked urgent are surfaced first. The Workspace does not decide importance itself.</p></div><div className="attention-grid compact-attention-grid">{items.map((item) => {
+    const urgent = (item.kind === "tension" || item.kind === "tension_comment") && Boolean(item.targetId && urgentTensionIds.has(item.targetId));
+    return <article
+      className={`attention-card compact-attention-card${urgent ? " attention-urgent" : ""}`}
+      key={item.id}
+      role="button"
+      tabIndex={0}
+      aria-label={`Open source for ${item.title}`}
+      style={{ cursor: "pointer" }}
+      onClick={() => openSource(item, onPrimary)}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          openSource(item, onPrimary);
+        }
+      }}
+    ><div className={`type-dot type-${item.kind}`} /><div className="attention-copy"><span className="kind">{urgent ? "URGENT · " : ""}{humanKind(item.kind)}{item.due ? ` · due ${formatDate(item.due)}` : ""}</span><h3>{compactText(item.title, 170)}</h3><p>{compactText(item.reason, 220)}</p></div><div className="actions compact-actions"><button className="primary small" onClick={(event) => { event.stopPropagation(); onPrimary(item); }}>{item.primaryAction}</button></div></article>;
+  })}</div><button className="text-action attention-raise" onClick={onRaiseTension}>+ Raise a tension</button></>;
+}
+
+function openSource(item: AttentionItem, onPrimary: (item: AttentionItem) => void) {
+  if (item.kind === "action" && item.targetId) {
+    openActionContext(item.targetId);
+    return;
+  }
+  if (item.kind === "project_update" && item.targetId) {
+    clickNav("Work");
+    focusAfter(`project-card-${item.targetId}`);
+    return;
+  }
+
+  onPrimary(item);
+  if (item.kind === "tension" && item.targetId) focusAfter(`tension-card-${item.targetId}`);
+  if (item.kind === "governance" && item.targetId) {
+    window.setTimeout(() => {
+      focusElement(document.getElementById(`governance-tension-${item.targetId}`) ?? document.getElementById(`governance-proposal-${item.targetId}`));
+    }, 180);
+  }
+}
+
+function openActionContext(actionId: string) {
+  clickNav("Work");
+  window.setTimeout(() => {
+    const workRow = document.getElementById(`action-row-${actionId}`);
+    if (workRow) {
+      focusElement(workRow);
+      return;
+    }
+    clickNav("Tensions");
+    focusAfter(`action-row-${actionId}`);
+  }, 180);
+}
+
+function clickNav(label: string) {
+  const button = Array.from(document.querySelectorAll<HTMLButtonElement>(".nav button")).find((item) => item.querySelector("strong")?.textContent?.trim() === label);
+  button?.click();
+}
+
+function focusAfter(id: string) {
+  window.setTimeout(() => focusElement(document.getElementById(id)), 180);
+}
+
+function focusElement(element: HTMLElement | null) {
+  if (!element) return;
+  element.scrollIntoView({ behavior: "smooth", block: "center" });
+  element.classList.add("context-focus-flash");
+  window.setTimeout(() => element.classList.remove("context-focus-flash"), 1800);
 }
 
 function objectiveAttentionOrder(a: AttentionItem, b: AttentionItem, urgentTensionIds: ReadonlySet<string>) {
