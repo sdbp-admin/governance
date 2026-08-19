@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { Tension } from "@/lib/domain";
 import { useLocalDraft } from "@/lib/local-draft";
+import { notifyAttention } from "@/lib/supabase/attention-notifications";
 
 const EMPTY_TIMES = ["", "", ""];
 type AvailabilityDraft = { selected: string[]; dirty: boolean };
@@ -53,6 +54,7 @@ export function TensionAvailabilityPoll({ tension, currentUserId, personName, on
     try {
       const ok = await onCreate(tension.id, optionTimes);
       if (ok) {
+        await notifyAttention({ kind: "tension_poll", tensionId: tension.id });
         clearTimes();
         setEditing(false);
       } else {
