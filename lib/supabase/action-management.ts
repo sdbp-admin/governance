@@ -1,5 +1,6 @@
 import type { Action } from "@/lib/domain";
 import { supabase } from "@/lib/supabase/client";
+import { notifyAttention } from "@/lib/supabase/attention-notifications";
 
 export type ActionEditInput = {
   title: string;
@@ -29,6 +30,14 @@ export async function updateActionDetails(actionId: string, input: ActionEditInp
   }).eq("id", actionId);
 
   if (error) throw error;
+  if (ownerChanged && nextStatus === "proposed") {
+    await notifyAttention({
+      kind: "action_proposed",
+      recipientId: input.ownerId,
+      title,
+      context: "Next step reassigned to you",
+    });
+  }
 }
 
 export async function removeAction(actionId: string) {
