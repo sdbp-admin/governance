@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import type { Action } from "@/lib/domain";
 import type { WorkspacePerson } from "@/lib/supabase/workspace";
 import { removeAction, updateActionDetails } from "@/lib/supabase/action-management";
+import { notifyAttention } from "@/lib/supabase/attention-notifications";
 
 export type ContextualNextStepInput = {
   title: string;
@@ -66,7 +67,18 @@ export function ContextualNextSteps({
       people={people}
       currentUserId={currentUserId}
       onClose={() => setOpen(false)}
-      onSave={async (input) => { if (await onAdd(input)) setOpen(false); }}
+      onSave={async (input) => {
+        if (!await onAdd(input)) return;
+        if (input.ownerId !== currentUserId) {
+          await notifyAttention({
+            kind: "action_proposed",
+            recipientId: input.ownerId,
+            title: input.title,
+            context: `${parentType === "tension" ? "Tension" : "Project"}: ${parentTitle}`,
+          });
+        }
+        setOpen(false);
+      }}
     />, document.body)}
     {editingAction && typeof document !== "undefined" && createPortal(<NextStepEditModal
       action={editingAction}
