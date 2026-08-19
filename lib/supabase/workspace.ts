@@ -10,6 +10,7 @@ import type {
   TensionPoll,
 } from "@/lib/domain";
 import { supabase } from "@/lib/supabase/client";
+import { notifyAttention } from "@/lib/supabase/attention-notifications";
 
 export type WorkspacePerson = Person & {
   linked: boolean;
@@ -594,10 +595,5 @@ function isOptionalSchemaError(error: { code?: string; message?: string }) {
 }
 
 async function notifyTensionChange(tensionId: string) {
-  try {
-    const { error } = await supabase.functions.invoke("tension-notify", { body: { tensionId } });
-    if (error) console.warn("Tension email notification failed", error);
-  } catch (error) {
-    console.warn("Tension email notification failed", error);
-  }
+  await notifyAttention({ tensionId });
 }
