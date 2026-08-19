@@ -95,7 +95,7 @@ function TensionCard(props: Props & { tension: Tension; processing: string | nul
   const urgent = props.urgentTensionIds.has(tension.id);
   const linkedProject = tension.linkedProjectId ? props.workspace.projects.find((project) => project.id === tension.linkedProjectId) : undefined;
 
-  return <article className={`tension-card${urgent ? " urgent-tension-card" : ""}`}>
+  return <article id={`tension-card-${tension.id}`} className={`tension-card${urgent ? " urgent-tension-card" : ""}`}>
     <div className="tension-line" />
     <div className="tension-content">
       <div className="tension-meta">
