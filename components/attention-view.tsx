@@ -67,30 +67,46 @@ export function deriveAttention(
 
 export function AttentionView({ items, urgentTensionIds, onPrimary, onRaiseTension }: { items: NavigableAttentionItem[]; urgentTensionIds: ReadonlySet<string>; onPrimary: (item: AttentionItem) => void; onRaiseTension: () => void }) {
   if (!items.length) return <div className="calm-empty"><span>✓</span><h2>Clear for now</h2><p>Nothing is waiting for you.</p><button className="text-action" onClick={onRaiseTension}>+ Raise a tension</button></div>;
-  return <><div className="attention-compact-head"><div><span className="section-kicker">Needs you now</span><h2>{items.length} open {items.length === 1 ? "interaction" : "interactions"}</h2></div><p>Overdue deadlines and tensions explicitly marked urgent are surfaced first. The Workspace does not decide importance itself.</p></div><div className="attention-grid compact-attention-grid">{items.map((item) => {
-    const urgent = (item.kind === "tension" || item.kind === "tension_comment") && Boolean(item.targetId && urgentTensionIds.has(item.targetId));
-    return <article
-      className={`attention-card compact-attention-card${urgent ? " attention-urgent" : ""}`}
-      key={item.id}
-      style={{ position: "relative" }}
-    >
-      <button
-        type="button"
-        aria-label={`Open source for ${item.title}`}
-        title="Open source"
-        onClick={() => openSource(item, onPrimary)}
-        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0, padding: 0, margin: 0, background: "transparent", cursor: "pointer", zIndex: 1 }}
-      />
-      <div className={`type-dot type-${item.kind}`} style={{ pointerEvents: "none", position: "relative", zIndex: 2 }} />
-      <div className="attention-copy" style={{ pointerEvents: "none", position: "relative", zIndex: 2 }}>
-        <span className="kind">{urgent ? "URGENT · " : ""}{humanKind(item.kind)}{item.due ? ` · due ${formatDate(item.due)}` : ""}</span>
-        <h3>{compactText(item.title, 170)}</h3>
-        <p>{compactText(item.reason, 220)}</p>
-        <small>Open source →</small>
-      </div>
-      <div className="actions compact-actions" style={{ position: "relative", zIndex: 3 }}><button className="primary small" onClick={() => onPrimary(item)}>{item.primaryAction}</button></div>
-    </article>;
-  })}</div><button className="text-action attention-raise" onClick={onRaiseTension}>+ Raise a tension</button></>;
+  return <>
+    <div className="attention-compact-head"><div><span className="section-kicker">Needs you now</span><h2>{items.length} open {items.length === 1 ? "interaction" : "interactions"}</h2></div><p>Overdue deadlines and tensions explicitly marked urgent are surfaced first. The Workspace does not decide importance itself.</p></div>
+    <div className="attention-grid compact-attention-grid">{items.map((item) => {
+      const urgent = (item.kind === "tension" || item.kind === "tension_comment") && Boolean(item.targetId && urgentTensionIds.has(item.targetId));
+      return <div className={`attention-card compact-attention-card${urgent ? " attention-urgent" : ""}`} key={item.id} style={{ position: "relative", padding: 0 }}>
+        <button
+          type="button"
+          aria-label={`Open source for ${item.title}`}
+          onClick={() => openSource(item, onPrimary)}
+          style={{
+            width: "100%",
+            minHeight: "100%",
+            display: "grid",
+            gridTemplateColumns: "auto 1fr",
+            gap: "inherit",
+            alignItems: "start",
+            border: 0,
+            background: "transparent",
+            color: "inherit",
+            textAlign: "left",
+            font: "inherit",
+            padding: "inherit",
+            cursor: "pointer",
+          }}
+        >
+          <div className={`type-dot type-${item.kind}`} />
+          <div className="attention-copy" style={{ paddingRight: "8.5rem" }}>
+            <span className="kind">{urgent ? "URGENT · " : ""}{humanKind(item.kind)}{item.due ? ` · due ${formatDate(item.due)}` : ""}</span>
+            <h3>{compactText(item.title, 170)}</h3>
+            <p>{compactText(item.reason, 220)}</p>
+            <small>Open source →</small>
+          </div>
+        </button>
+        <div className="actions compact-actions" style={{ position: "absolute", right: "1rem", bottom: "1rem", zIndex: 2 }}>
+          <button className="primary small" type="button" onClick={() => onPrimary(item)}>{item.primaryAction}</button>
+        </div>
+      </div>;
+    })}</div>
+    <button className="text-action attention-raise" onClick={onRaiseTension}>+ Raise a tension</button>
+  </>;
 }
 
 function openSource(item: NavigableAttentionItem, onPrimary: (item: AttentionItem) => void) {
@@ -122,8 +138,8 @@ function openSource(item: NavigableAttentionItem, onPrimary: (item: AttentionIte
     return;
   }
 
-  // Comment and Board Feed cards need the normal open handler because it also
-  // acknowledges the corresponding attention signal and opens the exact thread.
+  // Comments and Board Feed items use the normal open handler because it also
+  // acknowledges the attention signal and opens the exact thread.
   onPrimary(item);
 }
 
