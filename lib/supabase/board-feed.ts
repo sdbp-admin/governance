@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase/client";
+import { notifyAttention } from "@/lib/supabase/attention-notifications";
 
 export type BoardFeedComment = {
   id: string;
@@ -87,8 +88,9 @@ export async function loadBoardFeed(): Promise<BoardFeedPost[]> {
 }
 
 export async function createBoardPost(body: string, mentionIds: string[]) {
-  const { error } = await supabase.rpc("create_board_post", { post_body: body.trim(), mention_ids: mentionIds });
+  const { data, error } = await supabase.rpc("create_board_post", { post_body: body.trim(), mention_ids: mentionIds });
   if (error) throw error;
+  if (data) await notifyAttention({ kind: "board_post", postId: String(data) });
 }
 
 export async function editBoardPost(postId: string, body: string) {
@@ -97,8 +99,9 @@ export async function editBoardPost(postId: string, body: string) {
 }
 
 export async function addBoardPostComment(postId: string, body: string, mentionIds: string[]) {
-  const { error } = await supabase.rpc("add_board_post_comment", { target_post_id: postId, comment_body: body.trim(), mention_ids: mentionIds });
+  const { data, error } = await supabase.rpc("add_board_post_comment", { target_post_id: postId, comment_body: body.trim(), mention_ids: mentionIds });
   if (error) throw error;
+  if (data) await notifyAttention({ kind: "board_post_comment", commentId: String(data) });
 }
 
 export async function editBoardPostComment(commentId: string, body: string) {
