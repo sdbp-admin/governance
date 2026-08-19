@@ -5,6 +5,7 @@ import type { GovernanceProposal } from "@/lib/domain";
 import { supabase } from "@/lib/supabase/client";
 import { createTension, type WorkspacePerson } from "@/lib/supabase/workspace";
 import { useLocalDraft } from "@/lib/local-draft";
+import { notifyAttention } from "@/lib/supabase/attention-notifications";
 
 type ConsentRound = {
   proposal_id: string;
@@ -124,6 +125,7 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
     try {
       const result = await supabase.rpc("start_governance_quick_consent", { target_proposal_id: proposal.id });
       if (result.error) throw result.error;
+      await notifyAttention({ kind: "governance_consent", proposalId: proposal.id });
       await load();
       window.dispatchEvent(new Event("focus"));
     } catch (err) {
