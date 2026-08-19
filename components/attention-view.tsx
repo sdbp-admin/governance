@@ -72,6 +72,7 @@ export function AttentionView({ items, urgentTensionIds, onPrimary, onOpenSource
   onOpenSource: (item: NavigableAttentionItem) => void;
   onRaiseTension: () => void;
 }) {
+  void onPrimary;
   if (!items.length) return <div className="calm-empty"><span>✓</span><h2>Clear for now</h2><p>Nothing is waiting for you.</p><button className="text-action" onClick={onRaiseTension}>+ Raise a tension</button></div>;
   return <>
     <div className="attention-compact-head"><div><span className="section-kicker">Needs you now</span><h2>{items.length} open {items.length === 1 ? "interaction" : "interactions"}</h2></div><p>Overdue deadlines and tensions explicitly marked urgent are surfaced first. The Workspace does not decide importance itself.</p></div>
@@ -82,6 +83,7 @@ export function AttentionView({ items, urgentTensionIds, onPrimary, onOpenSource
         key={item.id}
         role="link"
         tabIndex={0}
+        aria-label={`Open source for ${item.title}`}
         onClick={() => onOpenSource(item)}
         onKeyDown={(event) => {
           if (event.target !== event.currentTarget) return;
@@ -97,10 +99,6 @@ export function AttentionView({ items, urgentTensionIds, onPrimary, onOpenSource
           <span className="kind">{urgent ? "URGENT · " : ""}{humanKind(item.kind)}{item.due ? ` · due ${formatDate(item.due)}` : ""}</span>
           <h3>{compactText(item.title, 170)}</h3>
           <p>{compactText(item.reason, 220)}</p>
-        </div>
-        <div className="actions compact-actions">
-          <button className="secondary small" type="button" onClick={(event) => { event.stopPropagation(); onOpenSource(item); }}>Open source →</button>
-          <button className="primary small" type="button" onClick={(event) => { event.stopPropagation(); onPrimary(item); }}>{item.primaryAction}</button>
         </div>
       </article>;
     })}</div>
