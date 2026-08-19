@@ -36,8 +36,10 @@ export function GovernanceAvailabilityPrompt({ liveProfile }: { liveProfile?: Li
 
   if (!liveProfile || !row || row.governance_available || dismissed) return null;
 
+  const profileId = liveProfile.id;
+
   function stayOnLeave() {
-    window.sessionStorage.setItem(`governance-leave-prompt-dismissed:${liveProfile.id}`, "1");
+    window.sessionStorage.setItem(`governance-leave-prompt-dismissed:${profileId}`, "1");
     setDismissed(true);
   }
 
@@ -47,13 +49,17 @@ export function GovernanceAvailabilityPrompt({ liveProfile }: { liveProfile?: Li
     setError("");
     try {
       const result = await supabase.rpc("set_governance_availability", {
-        target_person_id: liveProfile.id,
+        target_person_id: profileId,
         available: true,
         expected_return_on: null,
       });
       if (result.error) throw result.error;
-      setRow({ ...row, governance_available: true, governance_leave_expected_return_on: null });
-      window.sessionStorage.removeItem(`governance-leave-prompt-dismissed:${liveProfile.id}`);
+      setRow((current) => current ? {
+        ...current,
+        governance_available: true,
+        governance_leave_expected_return_on: null,
+      } : current);
+      window.sessionStorage.removeItem(`governance-leave-prompt-dismissed:${profileId}`);
       window.dispatchEvent(new Event("focus"));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Governance availability could not be updated.");
