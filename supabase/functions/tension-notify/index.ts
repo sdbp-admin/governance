@@ -10,6 +10,7 @@ type PersonRow = {
   id: string;
   name: string;
   email: string;
+  governance_available?: boolean;
 };
 
 type TensionRow = {
@@ -27,14 +28,31 @@ type Delivery = {
   body: string;
 };
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
+type NotificationPayload = {
+  tensionId?: string;
+  kind?:
+    | "board_post"
+    | "board_post_comment"
+    | "project_comment"
+    | "tension_comment"
+    | "action_proposed"
+    | "tension_poll"
+    | "meeting_poll"
+    | "governance_consent";
+  postId?: string;
+  commentId?: string;
+  recipientId?: string;
+  title?: string;
+  context?: string;
+  pollId?: string;
+  proposalId?: string;
+};
 
-  if (req.method !== "POST") {
-    return json({ error: "Method not allowed." }, 405);
-  }
+type SupabaseClient = ReturnType<typeof createClient>;
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") return json({ error: "Method not allowed." }, 405);
 
   try {
     const authHeader = req.headers.get("Authorization");
@@ -44,7 +62,7 @@ Deno.serve(async (req) => {
     const supabaseAnonKey = requiredEnv("SUPABASE_ANON_KEY");
     const smtpUser = requiredEnv("SMTP_USER");
     const smtpPassword = requiredEnv("SMTP_APP_PASSWORD");
-    const smtpFromName = Deno.env.get("SMTP_FROM_NAME")?.trim() || "SDBP Governance";
+    const smtpFromName = Deno.env.get("SMTP_FROM_NAME")?.trim() || "SDBP Workspace";
     const appUrl = Deno.env.get("APP_URL")?.trim() || "https://sdbp-admin.github.io/governance/";
 
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
@@ -55,31 +73,28 @@ Deno.serve(async (req) => {
     const { data: userData, error: userError } = await supabase.auth.getUser();
     if (userError || !userData.user) return json({ error: "Authentication required." }, 401);
 
-    const payload = await req.json().catch(() => ({})) as { tensionId?: string };
-    if (!payload.tensionId) return json({ error: "tensionId is required." }, 400);
-
     const { data: actor, error: actorError } = await supabase
       .from("people")
       .select("id,name,email")
       .eq("auth_user_id", userData.user.id)
       .eq("active", true)
       .maybeSingle();
-
     if (actorError) throw actorError;
     if (!actor) return json({ error: "Active workspace membership required." }, 403);
 
-    const { data: tension, error: tensionError } = await supabase
-      .from("tensions")
-      .select("id,title,raiser_id,status,resolution_proposed_by,latest_note")
-      .eq("id", payload.tensionId)
-      .maybeSingle();
+    const payload = await req.json().catch(() => ({})) as NotificationPayload;
+    let deliveries: Delivery[];
 
-    if (tensionError) throw tensionError;
-    if (!tension) return json({ error: "Tension not found." }, 404);
+    if (payload.kind) {
+      deliveries = await buildAttentionDeliveries(supabase, actor as PersonRow, payload, appUrl);
+    } else if (payload.tensionId) {
+      deliveries = await buildLegacyTensionDeliveries(supabase, actor as PersonRow, payload.tensionId, appUrl);
+    } else {
+      return json({ error: "A notification kind or tensionId is required." }, 400);
+    }
 
-    const deliveries = await buildDeliveries(supabase, actor as PersonRow, tension as TensionRow, appUrl);
-
-    for (const delivery of deliveries) {
+    const unique = dedupeDeliveries(deliveries).filter((delivery) => delivery.recipient.id !== actor.id);
+    for (const delivery of unique) {
       await sendMail({
         smtpUser,
         smtpPassword,
@@ -90,113 +105,251 @@ Deno.serve(async (req) => {
       });
     }
 
-    return json({ sent: deliveries.length });
+    return json({ sent: unique.length });
   } catch (error) {
-    console.error("tension-notify failed", error);
+    console.error("attention notification failed", error);
     return json({ error: error instanceof Error ? error.message : "Notification failed." }, 500);
   }
 });
 
-async function buildDeliveries(
-  supabase: ReturnType<typeof createClient>,
+async function buildAttentionDeliveries(
+  supabase: SupabaseClient,
   actor: PersonRow,
-  tension: TensionRow,
+  payload: NotificationPayload,
   appUrl: string,
 ): Promise<Delivery[]> {
-  if (
-    tension.status === "awaiting_confirmation" &&
-    tension.resolution_proposed_by === actor.id &&
-    tension.raiser_id !== actor.id
-  ) {
-    const { data: recipient, error } = await supabase
-      .from("people")
-      .select("id,name,email")
-      .eq("id", tension.raiser_id)
-      .eq("active", true)
-      .maybeSingle();
-
+  if (payload.kind === "board_post") {
+    if (!payload.postId) throw new Error("postId is required.");
+    const { data: post, error } = await supabase.from("board_posts").select("id,author_id,mentioned_ids").eq("id", payload.postId).maybeSingle();
     if (error) throw error;
-    if (!recipient) return [];
+    if (!post || post.author_id !== actor.id) return [];
+    const recipients = await peopleByIds(supabase, (post.mentioned_ids as string[] | null) ?? []);
+    return attentionDeliveries(recipients, actor, "Board Feed mention", `${actor.name} mentioned you in the Board Feed.`, appUrl);
+  }
 
-    return [{
-      recipient: recipient as PersonRow,
-      subject: "SDBP Governance - resolution check",
+  if (payload.kind === "board_post_comment") {
+    if (!payload.commentId) throw new Error("commentId is required.");
+    const { data: comment, error } = await supabase.from("board_post_comments").select("id,author_id,mentioned_ids").eq("id", payload.commentId).maybeSingle();
+    if (error) throw error;
+    if (!comment || comment.author_id !== actor.id) return [];
+    const recipients = await peopleByIds(supabase, (comment.mentioned_ids as string[] | null) ?? []);
+    return attentionDeliveries(recipients, actor, "Board Feed comment", `${actor.name} mentioned you in a Board Feed comment.`, appUrl);
+  }
+
+  if (payload.kind === "project_comment") {
+    if (!payload.commentId) throw new Error("commentId is required.");
+    const { data: comment, error } = await supabase.from("project_comments").select("id,project_id,author_id,mentioned_ids").eq("id", payload.commentId).maybeSingle();
+    if (error) throw error;
+    if (!comment || comment.author_id !== actor.id) return [];
+    const { data: project, error: projectError } = await supabase.from("projects").select("id,title,owner_id").eq("id", comment.project_id).maybeSingle();
+    if (projectError) throw projectError;
+    if (!project) return [];
+    const ids = uniqueIds([project.owner_id as string, ...(((comment.mentioned_ids as string[] | null) ?? []))]);
+    const recipients = await peopleByIds(supabase, ids);
+    return attentionDeliveries(recipients, actor, `Project · ${project.title}`, `${actor.name} added a comment that needs your attention.`, appUrl);
+  }
+
+  if (payload.kind === "tension_comment") {
+    if (!payload.commentId) throw new Error("commentId is required.");
+    const { data: comment, error } = await supabase.from("tension_comments").select("id,tension_id,author_id,mentioned_ids").eq("id", payload.commentId).maybeSingle();
+    if (error) throw error;
+    if (!comment || comment.author_id !== actor.id) return [];
+    const { data: tension, error: tensionError } = await supabase.from("tensions").select("id,title,raiser_id").eq("id", comment.tension_id).maybeSingle();
+    if (tensionError) throw tensionError;
+    if (!tension) return [];
+    const ids = uniqueIds([tension.raiser_id as string, ...(((comment.mentioned_ids as string[] | null) ?? []))]);
+    const recipients = await peopleByIds(supabase, ids);
+    return attentionDeliveries(recipients, actor, `Tension · ${tension.title}`, `${actor.name} added a comment that needs your attention.`, appUrl);
+  }
+
+  if (payload.kind === "action_proposed") {
+    if (!payload.recipientId || !payload.title) throw new Error("recipientId and title are required.");
+    const recipients = await peopleByIds(supabase, [payload.recipientId]);
+    const context = payload.context?.trim() ? `${payload.context.trim()}\n\n` : "";
+    return recipients.map((recipient) => ({
+      recipient,
+      subject: "SDBP Workspace - next step proposed",
+      body: [
+        `${recipient.name},`,
+        "",
+        `${actor.name} proposed a next step to you:`,
+        "",
+        payload.title!.trim(),
+        "",
+        context.trimEnd(),
+        "Open My Attention to review or accept it:",
+        appUrl,
+      ].filter((line) => line !== "").join("\n"),
+    }));
+  }
+
+  if (payload.kind === "tension_poll") {
+    if (!payload.tensionId) throw new Error("tensionId is required.");
+    const { data: poll, error } = await supabase.from("tension_polls").select("id,tension_id,created_by").eq("tension_id", payload.tensionId).maybeSingle();
+    if (error) throw error;
+    if (!poll || poll.created_by !== actor.id) return [];
+    const { data: tension, error: tensionError } = await supabase.from("tensions").select("id,title").eq("id", payload.tensionId).maybeSingle();
+    if (tensionError) throw tensionError;
+    const { data: participantRows, error: participantError } = await supabase.from("tension_poll_participants").select("person_id").eq("poll_id", poll.id);
+    if (participantError) throw participantError;
+    const recipients = await peopleByIds(supabase, (participantRows ?? []).map((row) => row.person_id as string));
+    return attentionDeliveries(recipients, actor, `Availability needed · ${tension?.title ?? "Conversation"}`, `${actor.name} created an availability poll for a conversation that needs you.`, appUrl);
+  }
+
+  if (payload.kind === "meeting_poll") {
+    if (!payload.pollId) throw new Error("pollId is required.");
+    const { data: poll, error } = await supabase.from("meeting_polls").select("id,title,created_by").eq("id", payload.pollId).maybeSingle();
+    if (error) throw error;
+    if (!poll || poll.created_by !== actor.id) return [];
+    const { data: participantRows, error: participantError } = await supabase.from("meeting_poll_participants").select("person_id").eq("poll_id", payload.pollId);
+    if (participantError) throw participantError;
+    const recipients = await peopleByIds(supabase, (participantRows ?? []).map((row) => row.person_id as string));
+    return attentionDeliveries(recipients, actor, `Availability needed · ${poll.title}`, `${actor.name} asked for your availability for a board meeting.`, appUrl);
+  }
+
+  if (payload.kind === "governance_consent") {
+    if (!payload.proposalId) throw new Error("proposalId is required.");
+    const { data: round, error } = await supabase.from("governance_consent_rounds").select("proposal_id,started_by,status").eq("proposal_id", payload.proposalId).maybeSingle();
+    if (error) throw error;
+    if (!round || round.started_by !== actor.id || round.status !== "open") return [];
+    const { data: proposal, error: proposalError } = await supabase.from("governance_proposals").select("id,title").eq("id", payload.proposalId).maybeSingle();
+    if (proposalError) throw proposalError;
+    const recipients = await activeGovernancePeople(supabase);
+    return attentionDeliveries(recipients, actor, `Governance response needed · ${proposal?.title ?? "Proposal"}`, `${actor.name} started quick consent. Your explicit response is required.`, appUrl);
+  }
+
+  throw new Error("Unknown notification kind.");
+}
+
+async function buildLegacyTensionDeliveries(
+  supabase: SupabaseClient,
+  actor: PersonRow,
+  tensionId: string,
+  appUrl: string,
+): Promise<Delivery[]> {
+  const { data: tension, error: tensionError } = await supabase
+    .from("tensions")
+    .select("id,title,raiser_id,status,resolution_proposed_by,latest_note")
+    .eq("id", tensionId)
+    .maybeSingle();
+  if (tensionError) throw tensionError;
+  if (!tension) return [];
+  const item = tension as TensionRow;
+
+  if (item.status === "awaiting_confirmation" && item.resolution_proposed_by === actor.id && item.raiser_id !== actor.id) {
+    const recipients = await peopleByIds(supabase, [item.raiser_id]);
+    return recipients.map((recipient) => ({
+      recipient,
+      subject: "SDBP Workspace - resolution check",
       body: [
         `${recipient.name},`,
         "",
         `${actor.name} believes a tension you raised is resolved:`,
         "",
-        tension.title,
+        item.title,
         "",
         "Please check the current situation and confirm whether you got what you needed.",
         "",
-        `Open SDBP Governance: ${appUrl}`,
+        `Open My Attention: ${appUrl}`,
       ].join("\n"),
-    }];
+    }));
   }
 
-  if ((tension.status === "open" || tension.status === "needs_sync") && tension.raiser_id === actor.id) {
-    const need = parseNeed(tension.latest_note);
-    if (!need || !need.names.length) return [];
+  if ((item.status === "open" || item.status === "needs_sync") && item.raiser_id === actor.id) {
+    const { data: signals, error: signalError } = await supabase
+      .from("attention_signals")
+      .select("recipient_id")
+      .eq("tension_id", tensionId)
+      .eq("signal_type", "tension_need")
+      .eq("created_by", actor.id)
+      .is("acknowledged_at", null);
+    if (signalError) throw signalError;
 
-    const { data: people, error } = await supabase
-      .from("people")
-      .select("id,name,email")
-      .eq("active", true)
-      .in("name", need.names);
+    let recipients = await peopleByIds(supabase, (signals ?? []).map((signal) => signal.recipient_id as string));
+    if (!recipients.length) {
+      const parsed = parseNeed(item.latest_note);
+      if (!parsed) return [];
+      const { data: people, error: peopleError } = await supabase.from("people").select("id,name,email").eq("active", true).in("name", parsed.names);
+      if (peopleError) throw peopleError;
+      recipients = (people ?? []) as PersonRow[];
+    }
 
-    if (error) throw error;
-
-    return ((people ?? []) as PersonRow[])
-      .filter((person) => person.id !== actor.id)
-      .map((recipient) => ({
-        recipient,
-        subject: need.kind === "conversation"
-          ? "SDBP Governance - conversation needed"
-          : "SDBP Governance - input needed",
-        body: [
-          `${recipient.name},`,
-          "",
-          "A tension needs your attention:",
-          "",
-          tension.title,
-          "",
-          need.kind === "conversation"
-            ? `${actor.name} indicated that a real conversation with you is needed.`
-            : `${actor.name} indicated that your input or help is needed.`,
-          "",
-          `Open SDBP Governance to see the current context: ${appUrl}`,
-          "",
-          "Handle the actual conversation however is easiest; the app keeps the shared context visible.",
-        ].join("\n"),
-      }));
+    const conversation = item.status === "needs_sync";
+    return recipients.map((recipient) => ({
+      recipient,
+      subject: conversation ? "SDBP Workspace - conversation needed" : "SDBP Workspace - input needed",
+      body: [
+        `${recipient.name},`,
+        "",
+        "A tension needs your attention:",
+        "",
+        item.title,
+        "",
+        conversation
+          ? `${actor.name} indicated that a real conversation with you is needed.`
+          : `${actor.name} indicated that your input or help is needed.`,
+        "",
+        `Open My Attention: ${appUrl}`,
+      ].join("\n"),
+    }));
   }
 
   return [];
 }
 
+function attentionDeliveries(recipients: PersonRow[], actor: PersonRow, subjectContext: string, message: string, appUrl: string): Delivery[] {
+  return recipients.map((recipient) => ({
+    recipient,
+    subject: `SDBP Workspace - ${subjectContext}`,
+    body: [
+      `${recipient.name},`,
+      "",
+      message,
+      "",
+      "Open My Attention to see the context and respond:",
+      appUrl,
+    ].join("\n"),
+  }));
+}
+
+async function peopleByIds(supabase: SupabaseClient, ids: string[]) {
+  const clean = uniqueIds(ids);
+  if (!clean.length) return [] as PersonRow[];
+  const { data, error } = await supabase.from("people").select("id,name,email").eq("active", true).in("id", clean);
+  if (error) throw error;
+  return (data ?? []) as PersonRow[];
+}
+
+async function activeGovernancePeople(supabase: SupabaseClient) {
+  const rich = await supabase.from("people").select("id,name,email,governance_available").eq("active", true);
+  if (!rich.error) return ((rich.data ?? []) as PersonRow[]).filter((person) => person.governance_available !== false);
+  if (!/governance_available|does not exist|schema cache/i.test(rich.error.message ?? "")) throw rich.error;
+  const legacy = await supabase.from("people").select("id,name,email").eq("active", true);
+  if (legacy.error) throw legacy.error;
+  return (legacy.data ?? []) as PersonRow[];
+}
+
+function uniqueIds(ids: string[]) {
+  return [...new Set(ids.filter(Boolean))];
+}
+
+function dedupeDeliveries(deliveries: Delivery[]) {
+  const byRecipient = new Map<string, Delivery>();
+  for (const delivery of deliveries) byRecipient.set(delivery.recipient.id, delivery);
+  return [...byRecipient.values()];
+}
+
 function parseNeed(note: string | null) {
   if (!note) return null;
-
   const inputPrefix = "Needs input or help from ";
   const conversationPrefix = "Needs a real conversation with ";
-
-  let kind: "input" | "conversation";
   let rest: string;
-
-  if (note.startsWith(inputPrefix)) {
-    kind = "input";
-    rest = note.slice(inputPrefix.length);
-  } else if (note.startsWith(conversationPrefix)) {
-    kind = "conversation";
-    rest = note.slice(conversationPrefix.length);
-  } else {
-    return null;
-  }
-
+  if (note.startsWith(inputPrefix)) rest = note.slice(inputPrefix.length);
+  else if (note.startsWith(conversationPrefix)) rest = note.slice(conversationPrefix.length);
+  else return null;
   const namesPart = rest.split(" — ", 1)[0].replace(/\.$/, "").trim();
   const names = namesPart.split(",").map((name) => name.trim()).filter(Boolean);
-  return { kind, names };
+  return { names };
 }
 
 async function sendMail(input: {
@@ -212,7 +365,7 @@ async function sendMail(input: {
 
   try {
     await smtp.expect(220);
-    await smtp.command("EHLO sdbp-governance", 250);
+    await smtp.command("EHLO sdbp-workspace", 250);
     await smtp.command("AUTH LOGIN", 334);
     await smtp.command(btoa(input.smtpUser), 334);
     await smtp.command(btoa(input.smtpPassword), 235);
@@ -220,10 +373,7 @@ async function sendMail(input: {
     await smtp.command(`RCPT TO:<${input.to}>`, [250, 251]);
     await smtp.command("DATA", 354);
 
-    const body = input.body
-      .replace(/\r?\n/g, "\r\n")
-      .replace(/^\./gm, "..");
-
+    const body = input.body.replace(/\r?\n/g, "\r\n").replace(/^\./gm, "..");
     const message = [
       `From: ${sanitizeHeader(input.fromName)} <${input.smtpUser}>`,
       `To: <${input.to}>`,
@@ -261,32 +411,25 @@ class SmtpConnection {
   async write(value: string) {
     const data = this.encoder.encode(value);
     let offset = 0;
-    while (offset < data.length) {
-      offset += await this.conn.write(data.subarray(offset));
-    }
+    while (offset < data.length) offset += await this.conn.write(data.subarray(offset));
   }
 
   async expect(expected: number | number[]) {
     const reply = await this.readReply();
     const allowed = Array.isArray(expected) ? expected : [expected];
-    if (!allowed.includes(reply.code)) {
-      throw new Error(`SMTP ${reply.code}: ${reply.text}`);
-    }
+    if (!allowed.includes(reply.code)) throw new Error(`SMTP ${reply.code}: ${reply.text}`);
   }
 
   private async readReply() {
     const lines: string[] = [];
     let code: string | null = null;
-
     while (true) {
       const line = await this.readLine();
       lines.push(line);
       const match = line.match(/^(\d{3})([ -])/);
       if (!match) continue;
       if (!code) code = match[1];
-      if (match[1] === code && match[2] === " ") {
-        return { code: Number(code), text: lines.join("\n") };
-      }
+      if (match[1] === code && match[2] === " ") return { code: Number(code), text: lines.join("\n") };
     }
   }
 
@@ -298,7 +441,6 @@ class SmtpConnection {
         this.buffer = this.buffer.slice(newline + 1);
         return line;
       }
-
       const chunk = new Uint8Array(4096);
       const read = await this.conn.read(chunk);
       if (read === null) throw new Error("SMTP connection closed unexpectedly.");
