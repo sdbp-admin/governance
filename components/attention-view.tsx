@@ -72,19 +72,24 @@ export function AttentionView({ items, urgentTensionIds, onPrimary, onRaiseTensi
     return <article
       className={`attention-card compact-attention-card${urgent ? " attention-urgent" : ""}`}
       key={item.id}
-      role="link"
-      tabIndex={0}
-      aria-label={`Open source for ${item.title}`}
-      style={{ cursor: "pointer" }}
-      onClick={() => openSource(item, onPrimary)}
-      onKeyDown={(event) => {
-        if (event.target !== event.currentTarget) return;
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          openSource(item, onPrimary);
-        }
-      }}
-    ><div className={`type-dot type-${item.kind}`} /><div className="attention-copy"><span className="kind">{urgent ? "URGENT · " : ""}{humanKind(item.kind)}{item.due ? ` · due ${formatDate(item.due)}` : ""}</span><h3>{compactText(item.title, 170)}</h3><p>{compactText(item.reason, 220)}</p></div><div className="actions compact-actions"><button className="primary small" onClick={(event) => { event.stopPropagation(); onPrimary(item); }}>{item.primaryAction}</button></div></article>;
+      style={{ position: "relative" }}
+    >
+      <button
+        type="button"
+        aria-label={`Open source for ${item.title}`}
+        title="Open source"
+        onClick={() => openSource(item, onPrimary)}
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0, padding: 0, margin: 0, background: "transparent", cursor: "pointer", zIndex: 1 }}
+      />
+      <div className={`type-dot type-${item.kind}`} style={{ pointerEvents: "none", position: "relative", zIndex: 2 }} />
+      <div className="attention-copy" style={{ pointerEvents: "none", position: "relative", zIndex: 2 }}>
+        <span className="kind">{urgent ? "URGENT · " : ""}{humanKind(item.kind)}{item.due ? ` · due ${formatDate(item.due)}` : ""}</span>
+        <h3>{compactText(item.title, 170)}</h3>
+        <p>{compactText(item.reason, 220)}</p>
+        <small>Open source →</small>
+      </div>
+      <div className="actions compact-actions" style={{ position: "relative", zIndex: 3 }}><button className="primary small" onClick={() => onPrimary(item)}>{item.primaryAction}</button></div>
+    </article>;
   })}</div><button className="text-action attention-raise" onClick={onRaiseTension}>+ Raise a tension</button></>;
 }
 
