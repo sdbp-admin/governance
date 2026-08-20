@@ -149,7 +149,7 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
       setObjectionOpen(false);
       clearObjection();
       await load();
-      if (result.data === "accepted") window.dispatchEvent(new Event("focus"));
+      window.dispatchEvent(new Event("focus"));
     } catch (err) {
       setError(readError(err));
     } finally {
@@ -318,7 +318,7 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
 
     {reviewingPersonId && reviewDecision && <div className="governance-inline-form">
       {reviewingAsProcessSteward && <div className="objection-essential"><strong>Process Steward override</strong><p>You are the proposer. This is a procedural ruling made under Process Steward authority, not a neutral review. The override and your reason will be preserved in the governance record.</p></div>}
-      <div className="objection-essential"><strong>{reviewDecision === "valid" ? "Validate this objection" : "Invalidate this objection"}</strong><p>Test the objection against the proposal, not against whether you agree with the objector.</p></div>
+      <div className="objection-essential"><strong>{reviewDecision === "valid" ? "Validate this objection" : "Invalidate this objection"}</strong><p>Test the objection against the proposal, not against whether you agree with the objector.</p></div>}
       {reviewDecision === "invalid" && <label className="field"><span>Why is it invalid?</span><select value={reviewReason} onChange={(event) => setReviewReason(event.target.value)}><option value="">Choose a process reason</option>{INVALID_REASONS.map((reason) => <option key={reason} value={reason}>{reason}</option>)}</select></label>}
       <label className="field"><span>{reviewDecision === "valid" ? (reviewingAsProcessSteward ? "Process Steward reason (required)" : "Process note (optional)") : "Additional note (optional)"}</span><textarea rows={3} value={reviewDetails} onChange={(event) => setReviewDetails(event.target.value)} /></label>
       <div className="process-actions"><button className="quiet" type="button" disabled={busy} onClick={closeReview}>Cancel</button><button className="primary" type="button" disabled={busy || (reviewDecision === "invalid" && !reviewReason) || (reviewingAsProcessSteward && reviewDecision === "valid" && !reviewDetails.trim())} onClick={() => void reviewObjection()}>{busy ? "Saving…" : reviewDecision === "valid" ? "Confirm valid objection" : "Confirm invalid objection"}</button></div>
