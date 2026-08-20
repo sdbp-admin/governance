@@ -52,12 +52,12 @@ export function LaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
   const presence=useWorkspacePresence(currentUserId);
 
   const refresh=useCallback(async(quiet=false)=>{
-    if(!liveProfile)return;
+    if(!currentUserId)return;
     if(!quiet)setLoading(true);
     try{const[next,canInvite,urgentIds,commSignals]=await Promise.all([loadWorkspace(),canInvitePeople(),loadUrgentTensionIds(),loadCommunicationAttentionSignals()]);setWorkspace(next);setInviteAllowed(canInvite);setUrgentTensionIds(urgentIds);setCommunicationSignals(commSignals);setError("");}
     catch(e){setError(readError(e));}
     finally{if(!quiet)setLoading(false);}
-  },[liveProfile]);
+  },[currentUserId]);
 
   useEffect(()=>{
     const meeting=new URLSearchParams(window.location.search).get("meeting");
