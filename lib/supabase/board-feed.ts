@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase/client";
 import { notifyAttention } from "@/lib/supabase/attention-notifications";
+import { loadGovernanceConsentState } from "@/lib/supabase/governance-attention";
 
 export type BoardFeedComment = {
   id: string;
@@ -29,7 +30,9 @@ export type CommunicationAttentionSignal = {
   recipientId: string;
   tensionId?: string;
   boardPostId?: string;
-  signalType: "tension_comment" | "board_feed_mention";
+  proposalId?: string;
+  signalType: "tension_comment" | "board_feed_mention" | "governance_consent";
+  governancePending?: boolean;
   message: string;
   createdBy?: string;
   createdAt: string;
@@ -115,26 +118,47 @@ export async function setBoardPostPinned(postId: string, pinned: boolean) {
 }
 
 export async function loadCommunicationAttentionSignals(): Promise<CommunicationAttentionSignal[]> {
-  const { data, error } = await supabase
-    .from("attention_signals")
-    .select("id,recipient_id,tension_id,board_post_id,signal_type,message,created_by,created_at")
-    .in("signal_type", ["tension_comment", "board_feed_mention"])
-    .is("acknowledged_at", null)
-    .order("created_at", { ascending: false });
-  if (error) {
-    if (isOptionalSchemaError(error)) return [];
-    throw error;
+  const [signalResult, governanceState] = await Promise.all([
+    supabase
+      .from("attention_signals")
+      .select("id,recipient_id,tension_id,board_post_id,signal_type,message,created_by,created_at")
+      .in("signal_type", ["tension_comment", "board_feed_mention"])
+      .is("acknowledged_at", null)
+      .order("created_at", { ascending: false }),
+    loadGovernanceConsentState(),
+  ]);
+
+  let persisted: CommunicationAttentionSignal[] = [];
+  if (signalResult.error) {
+    if (!isOptionalSchemaError(signalResult.error)) throw signalResult.error;
+  } else {
+    persisted = (signalResult.data ?? []).map((row) => ({
+      id: row.id as string,
+      recipientId: row.recipient_id as string,
+      tensionId: (row.tension_id as string | null) ?? undefined,
+      boardPostId: (row.board_post_id as string | null) ?? undefined,
+      signalType: row.signal_type as CommunicationAttentionSignal["signalType"],
+      message: row.message as string,
+      createdBy: (row.created_by as string | null) ?? undefined,
+      createdAt: row.created_at as string,
+    }));
   }
-  return (data ?? []).map((row) => ({
-    id: row.id as string,
-    recipientId: row.recipient_id as string,
-    tensionId: (row.tension_id as string | null) ?? undefined,
-    boardPostId: (row.board_post_id as string | null) ?? undefined,
-    signalType: row.signal_type as CommunicationAttentionSignal["signalType"],
-    message: row.message as string,
-    createdBy: (row.created_by as string | null) ?? undefined,
-    createdAt: row.created_at as string,
+
+  if (!governanceState.personId) return persisted;
+  const pending = new Set(governanceState.pendingProposalIds);
+  const governanceSignals: CommunicationAttentionSignal[] = governanceState.consentProposalIds.map((proposalId) => ({
+    id: `governance-consent-${proposalId}`,
+    recipientId: governanceState.personId!,
+    proposalId,
+    signalType: "governance_consent",
+    governancePending: pending.has(proposalId),
+    message: pending.has(proposalId)
+      ? "Quick consent is waiting for your explicit response."
+      : "Your quick-consent response is already recorded.",
+    createdAt: "1970-01-01T00:00:00.000Z",
   }));
+
+  return [...persisted, ...governanceSignals];
 }
 
 function isOptionalSchemaError(error: { code?: string; message?: string }) {
