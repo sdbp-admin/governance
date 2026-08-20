@@ -187,10 +187,17 @@ function Process({ tension, people, currentUserId, onClose, onNeed, onMoveGovern
   const [choice, setChoice] = useState<Need | "governance" | null>(tension.status === "needs_sync" ? "sync" : null);
   const [ids, setIds] = useState<string[]>([]);
   const [detail, setDetail] = useState("");
+  const [saving, setSaving] = useState(false);
   const available = people.filter((person) => person.id !== currentUserId);
 
   async function save(kind: Need) {
-    if (ids.length && await onNeed(tension, kind, ids, detail)) onClose();
+    if (!ids.length || saving) return;
+    setSaving(true);
+    try {
+      if (await onNeed(tension, kind, ids, detail)) onClose();
+    } finally {
+      setSaving(false);
+    }
   }
 
   return <div className="tension-process-panel">
@@ -200,7 +207,7 @@ function Process({ tension, people, currentUserId, onClose, onNeed, onMoveGovern
       <p>{choice === "sync" ? "Choose who should be involved. After saving, you can optionally add a simple availability poll." : "Choose the people who may help, then reach out in whatever way is quickest."}</p>
       <Picker people={available} selected={ids} setSelected={setIds} />
       <label className="field"><span>{choice === "sync" ? "What needs to be worked through?" : "What do you need?"} <em>optional</em></span><textarea rows={3} value={detail} onChange={(event) => setDetail(event.target.value)} /></label>
-      <button className="primary small" disabled={!ids.length} onClick={() => void save(choice)}>Keep {choice === "sync" ? "conversation" : "this"} visible</button>
+      <button className="primary small" disabled={!ids.length || saving} onClick={() => void save(choice)}>{saving ? "Saving…" : `Keep ${choice === "sync" ? "conversation" : "this"} visible`}</button>
     </div>}
     {choice === "governance" && <div className="outcome-form"><p>Use this when an ongoing role, responsibility, authority or standing way of working should change.</p><button className="primary small" onClick={() => void onMoveGovernance(tension)}>Move to Governance</button></div>}
     <div className="process-actions"><button className="quiet" onClick={onClose}>Close</button></div>
