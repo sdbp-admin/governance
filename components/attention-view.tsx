@@ -26,6 +26,8 @@ export function deriveAttention(
   for (const action of workspace.actions) {
     if (action.ownerId !== userId || (action.status !== "proposed" && action.status !== "open")) continue;
     const project = action.projectId ? workspace.projects.find((candidate) => candidate.id === action.projectId) : undefined;
+    const tension = action.sourceTensionId ? workspace.tensions.find((candidate) => candidate.id === action.sourceTensionId) : undefined;
+    if ((tension && tension.status === "resolved") || (project && project.status === "complete")) continue;
     const sourceKind: AttentionSourceKind | undefined = action.sourceTensionId ? "tension" : action.projectId ? "project" : undefined;
     const sourceId = action.sourceTensionId ?? action.projectId;
     items.push({ id: `action-${action.id}`, ownerId: userId, kind: "action", targetId: action.id, sourceKind, sourceId, title: action.title, reason: `${project ? `Project: ${project.title}. ` : ""}${action.status === "proposed" ? `${action.source ? `From ${action.source}. ` : ""}Accept it if this is your commitment.` : `${action.source ? `From ${action.source}. ` : ""}This is an open commitment.`}`, primaryAction: action.status === "proposed" ? "Accept action" : "Mark done", status: "needs_action", due: action.due });
