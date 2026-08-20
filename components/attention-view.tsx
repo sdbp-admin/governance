@@ -19,15 +19,6 @@ export function deriveAttention(
 ): NavigableAttentionItem[] {
   const today = todayISO();
   const items: NavigableAttentionItem[] = [];
-  const governanceConsentSignals = communicationSignals.filter(
-    (signal) => signal.recipientId === userId && signal.signalType === "governance_consent" && signal.proposalId,
-  );
-  const consentProposalIds = new Set(governanceConsentSignals.map((signal) => signal.proposalId!));
-  const consentTensionIds = new Set(
-    workspace.governanceProposals
-      .filter((proposal) => consentProposalIds.has(proposal.id))
-      .map((proposal) => proposal.tensionId),
-  );
 
   for (const project of workspace.projects) {
     if (project.status !== "active" || project.ownerId !== userId || project.nextPrompt > today) continue;
@@ -35,12 +26,7 @@ export function deriveAttention(
   }
   for (const action of workspace.actions) {
     if (action.ownerId !== userId || (action.status !== "proposed" && action.status !== "open")) continue;
-    const sourceTension = action.sourceTensionId ? workspace.tensions.find((candidate) => candidate.id === action.sourceTensionId) : undefined;
-    if (
-      action.sourceTensionId &&
-      isLegacyGovernanceVoteAction(action.title) &&
-      (sourceTension?.status === "resolved" || consentTensionIds.has(action.sourceTensionId))
-    ) continue;
+    if (comesFromResolvedLegacyTension(workspace, action.source)) continue;
     const project = action.projectId ? workspace.projects.find((candidate) => candidate.id === action.projectId) : undefined;
     const sourceKind: AttentionSourceKind | undefined = action.sourceTensionId ? "tension" : action.projectId ? "project" : undefined;
     const sourceId = action.sourceTensionId ?? action.projectId;
@@ -140,8 +126,15 @@ function objectiveAttentionOrder(a: AttentionItem, b: AttentionItem, urgentTensi
   if (a.due !== b.due) return a.due ? -1 : 1;
   return 0;
 }
+function comesFromResolvedLegacyTension(workspace: WorkspaceData, source?: string) {
+  if (!source) return false;
+  const prefix = "Tension · ";
+  if (!source.startsWith(prefix)) return false;
+  const sourceTitle = normalize(source.slice(prefix.length));
+  return workspace.tensions.some((tension) => tension.status === "resolved" && normalize(tension.title) === sourceTitle);
+}
+function normalize(value: string) { return value.replace(/\s+/g, " ").trim().toLowerCase(); }
 function compactNeedDetail(message: string) { const marker = " — "; const index = message.indexOf(marker); return index >= 0 ? compactText(message.slice(index + marker.length), 150) : ""; }
 function compactText(value: string, max: number) { const clean = value.replace(/\s+/g, " ").trim(); return clean.length <= max ? clean : `${clean.slice(0, max - 1).trimEnd()}…`; }
-function isLegacyGovernanceVoteAction(value: string) { return value.replace(/\s+/g, " ").trim().toLowerCase() === "please vote under the governance tab"; }
 function humanKind(value: string) { if (value === "feed") return "Board Feed"; if (value === "tension_comment") return "tension comment"; return value.replace("_", " "); }
 function formatDate(value: string) { return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(new Date(`${value}T12:00:00`)); }
