@@ -149,7 +149,7 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
       setObjectionOpen(false);
       clearObjection();
       await load();
-      window.dispatchEvent(new Event("focus"));
+      if (result.data === "accepted") window.dispatchEvent(new Event("focus"));
     } catch (err) {
       setError(readError(err));
     } finally {

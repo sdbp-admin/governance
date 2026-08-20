@@ -11,8 +11,6 @@ import { TensionCommentsButton } from "@/components/tension-comments";
 import { useLocalDraft } from "@/lib/local-draft";
 
 type Need = "input" | "sync";
-type ProcessChoice = Need | "governance" | null;
-type ProcessDraft = { choice: ProcessChoice; ids: string[]; detail: string };
 
 type Props = {
   workspace: WorkspaceData;
@@ -43,9 +41,7 @@ export function TensionsWorkspaceView(props: Props) {
   const setDraftProjectId = (projectId: string) => setDraftState((current) => ({ ...current, projectId }));
   const [raising, setRaising] = useState(false);
   const [raiseError, setRaiseError] = useState("");
-  const [processingState, setProcessingState] = useLocalDraft(`tension:processing:${props.currentUserId}`, { id: "" });
-  const processing = processingState.id || null;
-  const setProcessing = (id: string | null) => setProcessingState({ id: id ?? "" });
+  const [processing, setProcessing] = useState<string | null>(null);
   const active = props.workspace.tensions.filter((tension) => tension.status !== "resolved");
   const activeProjects = props.workspace.projects.filter((project) => project.status === "active");
 
@@ -188,29 +184,13 @@ function Process({ tension, people, currentUserId, onClose, onNeed, onMoveGovern
   onNeed: (tension: Tension, kind: Need, ids: string[], detail: string) => Promise<boolean>;
   onMoveGovernance: (tension: Tension) => Promise<void>;
 }) {
-  const [draft, setDraft, clearDraft] = useLocalDraft<ProcessDraft>(`tension:process:${tension.id}:${currentUserId}`, {
-    choice: tension.status === "needs_sync" ? "sync" : null,
-    ids: [],
-    detail: "",
-  });
-  const choice = draft.choice;
-  const ids = draft.ids;
-  const detail = draft.detail;
-  const setChoice = (next: ProcessChoice) => setDraft((current) => ({ ...current, choice: next }));
-  const setIds = (next: string[]) => setDraft((current) => ({ ...current, ids: next }));
-  const setDetail = (next: string) => setDraft((current) => ({ ...current, detail: next }));
+  const [choice, setChoice] = useState<Need | "governance" | null>(tension.status === "needs_sync" ? "sync" : null);
+  const [ids, setIds] = useState<string[]>([]);
+  const [detail, setDetail] = useState("");
   const available = people.filter((person) => person.id !== currentUserId);
 
   async function save(kind: Need) {
-    if (ids.length && await onNeed(tension, kind, ids, detail)) {
-      clearDraft();
-      onClose();
-    }
-  }
-
-  function discard() {
-    clearDraft();
-    onClose();
+    if (ids.length && await onNeed(tension, kind, ids, detail)) onClose();
   }
 
   return <div className="tension-process-panel">
@@ -220,11 +200,10 @@ function Process({ tension, people, currentUserId, onClose, onNeed, onMoveGovern
       <p>{choice === "sync" ? "Choose who should be involved. After saving, you can optionally add a simple availability poll." : "Choose the people who may help, then reach out in whatever way is quickest."}</p>
       <Picker people={available} selected={ids} setSelected={setIds} />
       <label className="field"><span>{choice === "sync" ? "What needs to be worked through?" : "What do you need?"} <em>optional</em></span><textarea rows={3} value={detail} onChange={(event) => setDetail(event.target.value)} /></label>
-      {(detail.trim() || ids.length > 0) && <small className="draft-saved-note">Draft saved on this device.</small>}
       <button className="primary small" disabled={!ids.length} onClick={() => void save(choice)}>Keep {choice === "sync" ? "conversation" : "this"} visible</button>
     </div>}
     {choice === "governance" && <div className="outcome-form"><p>Use this when an ongoing role, responsibility, authority or standing way of working should change.</p><button className="primary small" onClick={() => void onMoveGovernance(tension)}>Move to Governance</button></div>}
-    <div className="process-actions"><button className="quiet" onClick={discard}>Discard draft</button><button className="quiet" onClick={onClose}>Close</button></div>
+    <div className="process-actions"><button className="quiet" onClick={onClose}>Close</button></div>
   </div>;
 }
 

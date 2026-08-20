@@ -4,7 +4,7 @@ import type { AttentionItem } from "@/lib/domain";
 import type { CommunicationAttentionSignal } from "@/lib/supabase/board-feed";
 import { todayISO, type WorkspaceData } from "@/lib/supabase/workspace";
 
-export type AttentionSourceKind = "project" | "tension" | "governance_proposal";
+export type AttentionSourceKind = "project" | "tension";
 export type NavigableAttentionItem = AttentionItem & {
   sourceKind?: AttentionSourceKind;
   sourceId?: string;
@@ -19,14 +19,12 @@ export function deriveAttention(
 ): NavigableAttentionItem[] {
   const today = todayISO();
   const items: NavigableAttentionItem[] = [];
-
   for (const project of workspace.projects) {
     if (project.status !== "active" || project.ownerId !== userId || project.nextPrompt > today) continue;
     items.push({ id: `project-${project.id}`, ownerId: userId, kind: "project_update", targetId: project.id, sourceKind: "project", sourceId: project.id, title: project.title, reason: `Project update is due. Last checked ${formatDate(project.lastUpdate)}.`, primaryAction: "Update project", status: "needs_action" });
   }
   for (const action of workspace.actions) {
     if (action.ownerId !== userId || (action.status !== "proposed" && action.status !== "open")) continue;
-    if (comesFromResolvedLegacyTension(workspace, action.source)) continue;
     const project = action.projectId ? workspace.projects.find((candidate) => candidate.id === action.projectId) : undefined;
     const sourceKind: AttentionSourceKind | undefined = action.sourceTensionId ? "tension" : action.projectId ? "project" : undefined;
     const sourceId = action.sourceTensionId ?? action.projectId;
@@ -55,12 +53,6 @@ export function deriveAttention(
     }
     if (signal.signalType === "board_feed_mention" && signal.boardPostId) {
       items.push({ id: `comm-${signal.id}`, ownerId: userId, kind: "feed", targetId: signal.boardPostId, signalId: signal.id, title: "Board Feed mention", reason: signal.message, primaryAction: "Open Board Feed", status: "needs_action" });
-    }
-    if (signal.signalType === "governance_consent" && signal.proposalId && signal.governancePending) {
-      const proposal = workspace.governanceProposals.find((candidate) => candidate.id === signal.proposalId);
-      if (proposal && proposal.stage !== "accepted") {
-        items.push({ id: `governance-consent-${proposal.id}`, ownerId: userId, kind: "governance", targetId: proposal.tensionId, sourceKind: "governance_proposal", sourceId: proposal.id, title: proposal.title, reason: "Quick consent is waiting for your explicit response.", primaryAction: "Respond in Governance", status: "needs_action" });
-      }
     }
   }
   for (const tension of workspace.tensions) {
@@ -126,14 +118,6 @@ function objectiveAttentionOrder(a: AttentionItem, b: AttentionItem, urgentTensi
   if (a.due !== b.due) return a.due ? -1 : 1;
   return 0;
 }
-function comesFromResolvedLegacyTension(workspace: WorkspaceData, source?: string) {
-  if (!source) return false;
-  const prefix = "Tension · ";
-  if (!source.startsWith(prefix)) return false;
-  const sourceTitle = normalize(source.slice(prefix.length));
-  return workspace.tensions.some((tension) => tension.status === "resolved" && normalize(tension.title) === sourceTitle);
-}
-function normalize(value: string) { return value.replace(/\s+/g, " ").trim().toLowerCase(); }
 function compactNeedDetail(message: string) { const marker = " — "; const index = message.indexOf(marker); return index >= 0 ? compactText(message.slice(index + marker.length), 150) : ""; }
 function compactText(value: string, max: number) { const clean = value.replace(/\s+/g, " ").trim(); return clean.length <= max ? clean : `${clean.slice(0, max - 1).trimEnd()}…`; }
 function humanKind(value: string) { if (value === "feed") return "Board Feed"; if (value === "tension_comment") return "tension comment"; return value.replace("_", " "); }
