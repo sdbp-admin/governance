@@ -109,7 +109,9 @@ export function TensionAvailabilityPoll({ tension, currentUserId, personName, on
     }
   }
 
-  const suppressPrematureResolution = <style>{`.tension-card:has(.availability-poll-shell) .tension-resolution-check{display:none}`}</style>;
+  const suppressPrematureResolution = poll?.chosenOptionId
+    ? null
+    : <style>{`.tension-card:has(.availability-poll-shell) .tension-resolution-check{display:none}`}</style>;
 
   if (!poll) {
     return mine ? <>{suppressPrematureResolution}<div className="availability-poll-shell compact-poll-shell">
