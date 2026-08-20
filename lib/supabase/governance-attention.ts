@@ -1,51 +1,89 @@
 import { supabase } from "@/lib/supabase/client";
 
-export type GovernanceConsentAttention = {
-  proposalId: string;
+export type GovernanceConsentState = {
+  personId?: string;
+  consentProposalIds: string[];
+  pendingProposalIds: string[];
 };
 
-export async function loadGovernanceConsentAttention(personId: string): Promise<GovernanceConsentAttention[]> {
-  if (!personId) return [];
+const EMPTY_STATE: GovernanceConsentState = {
+  consentProposalIds: [],
+  pendingProposalIds: [],
+};
 
-  const availabilityResult = await supabase
+export async function loadGovernanceConsentState(): Promise<GovernanceConsentState> {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) throw userError;
+  if (!userData.user) return EMPTY_STATE;
+
+  let personId: string | undefined;
+  let available = true;
+  const personResult = await supabase
     .from("people")
-    .select("governance_available")
-    .eq("id", personId)
+    .select("id,governance_available")
+    .eq("auth_user_id", userData.user.id)
+    .eq("active", true)
     .maybeSingle();
 
-  if (availabilityResult.error && !isOptionalSchemaError(availabilityResult.error)) {
-    throw availabilityResult.error;
+  if (!personResult.error) {
+    personId = (personResult.data?.id as string | undefined) ?? undefined;
+    available = personResult.data?.governance_available !== false;
+  } else if (isOptionalSchemaError(personResult.error)) {
+    const fallback = await supabase
+      .from("people")
+      .select("id")
+      .eq("auth_user_id", userData.user.id)
+      .eq("active", true)
+      .maybeSingle();
+    if (fallback.error) throw fallback.error;
+    personId = (fallback.data?.id as string | undefined) ?? undefined;
+  } else {
+    throw personResult.error;
   }
-  if (availabilityResult.data?.governance_available === false) return [];
+
+  if (!personId) return EMPTY_STATE;
 
   const roundsResult = await supabase
     .from("governance_consent_rounds")
-    .select("proposal_id")
-    .eq("status", "open");
+    .select("proposal_id,status");
 
   if (roundsResult.error) {
-    if (isOptionalSchemaError(roundsResult.error)) return [];
+    if (isOptionalSchemaError(roundsResult.error)) return { personId, ...EMPTY_STATE };
     throw roundsResult.error;
   }
 
-  const proposalIds = [...new Set((roundsResult.data ?? []).map((row) => row.proposal_id as string).filter(Boolean))];
-  if (!proposalIds.length) return [];
+  const rounds = roundsResult.data ?? [];
+  const consentProposalIds = [...new Set(rounds.map((row) => row.proposal_id as string).filter(Boolean))];
+  const openProposalIds = [...new Set(
+    rounds
+      .filter((row) => row.status === "open")
+      .map((row) => row.proposal_id as string)
+      .filter(Boolean),
+  )];
+
+  if (!available || !openProposalIds.length) {
+    return { personId, consentProposalIds, pendingProposalIds: [] };
+  }
 
   const responsesResult = await supabase
     .from("governance_consent_responses")
     .select("proposal_id")
     .eq("person_id", personId)
-    .in("proposal_id", proposalIds);
+    .in("proposal_id", openProposalIds);
 
   if (responsesResult.error) {
-    if (isOptionalSchemaError(responsesResult.error)) return [];
+    if (isOptionalSchemaError(responsesResult.error)) {
+      return { personId, consentProposalIds, pendingProposalIds: [] };
+    }
     throw responsesResult.error;
   }
 
   const responded = new Set((responsesResult.data ?? []).map((row) => row.proposal_id as string));
-  return proposalIds
-    .filter((proposalId) => !responded.has(proposalId))
-    .map((proposalId) => ({ proposalId }));
+  return {
+    personId,
+    consentProposalIds,
+    pendingProposalIds: openProposalIds.filter((proposalId) => !responded.has(proposalId)),
+  };
 }
 
 function isOptionalSchemaError(error: { code?: string; message?: string }) {
