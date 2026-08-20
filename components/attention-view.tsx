@@ -49,7 +49,7 @@ export function deriveAttention(
     if (signal.recipientId !== userId) continue;
     if (signal.signalType === "tension_comment" && signal.tensionId) {
       const tension = workspace.tensions.find((candidate) => candidate.id === signal.tensionId);
-      if (tension) items.push({ id: `comm-${signal.id}`, ownerId: userId, kind: "tension_comment", targetId: tension.id, sourceKind: "tension", sourceId: tension.id, signalId: signal.id, title: tension.title, reason: signal.message, primaryAction: "Open comments", status: "needs_action" });
+      if (tension && tension.status !== "resolved") items.push({ id: `comm-${signal.id}`, ownerId: userId, kind: "tension_comment", targetId: tension.id, sourceKind: "tension", sourceId: tension.id, signalId: signal.id, title: tension.title, reason: signal.message, primaryAction: "Open comments", status: "needs_action" });
     }
     if (signal.signalType === "board_feed_mention" && signal.boardPostId) {
       items.push({ id: `comm-${signal.id}`, ownerId: userId, kind: "feed", targetId: signal.boardPostId, signalId: signal.id, title: "Board Feed mention", reason: signal.message, primaryAction: "Open Board Feed", status: "needs_action" });
