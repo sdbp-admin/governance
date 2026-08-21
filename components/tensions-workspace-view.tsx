@@ -5,6 +5,7 @@ import type { Tension } from "@/lib/domain";
 import { ContextualNextSteps, type ContextualNextStepInput } from "@/components/contextual-next-steps";
 import { createTension, type WorkspaceData, type WorkspacePerson } from "@/lib/supabase/workspace";
 import { setTensionProject } from "@/lib/supabase/tension-project";
+import { updateTensionNeedNote } from "@/lib/supabase/tension-need-edit";
 import { TensionAvailabilityPoll } from "@/components/tension-availability-poll";
 import { WorkAttachmentsButton } from "@/components/work-attachments";
 import { TensionCommentsButton } from "@/components/tension-comments";
@@ -92,9 +93,35 @@ function TensionCard(props: Props & { tension: Tension; processing: string | nul
   const mine = tension.raiserId === props.currentUserId;
   const processable = tension.status === "open" || tension.status === "needs_sync";
   const hasNeed = Boolean(tension.latestNote);
+  const editableNeedNote = mine && processable && isNeedNote(tension.latestNote);
   const meetingScheduled = Boolean(tension.status === "needs_sync" && tension.poll?.chosenOptionId);
   const urgent = props.urgentTensionIds.has(tension.id);
   const linkedProject = tension.linkedProjectId ? props.workspace.projects.find((project) => project.id === tension.linkedProjectId) : undefined;
+  const [editingNeedNote, setEditingNeedNote] = useState(false);
+  const [needDetail, setNeedDetail] = useState("");
+  const [savingNeedNote, setSavingNeedNote] = useState(false);
+  const [needEditError, setNeedEditError] = useState("");
+
+  function openNeedEditor() {
+    setNeedDetail(extractNeedDetail(tension.latestNote));
+    setNeedEditError("");
+    setEditingNeedNote(true);
+  }
+
+  async function saveNeedNote() {
+    if (!tension.latestNote || savingNeedNote) return;
+    setSavingNeedNote(true);
+    setNeedEditError("");
+    try {
+      await updateTensionNeedNote(tension.id, composeNeedNote(tension.latestNote, needDetail));
+      setEditingNeedNote(false);
+      window.dispatchEvent(new Event("focus"));
+    } catch (error) {
+      setNeedEditError(readError(error));
+    } finally {
+      setSavingNeedNote(false);
+    }
+  }
 
   return <article id={`tension-card-${tension.id}`} className={`tension-card${urgent ? " urgent-tension-card" : ""}`}>
     <div className="tension-line" />
@@ -105,7 +132,13 @@ function TensionCard(props: Props & { tension: Tension; processing: string | nul
       </div>
       <h3>{tension.title}</h3>
       <TensionProjectLink tension={tension} linkedProject={linkedProject} projects={props.workspace.projects} />
-      {tension.latestNote && <p>{tension.latestNote}</p>}
+      {tension.latestNote && !editingNeedNote && <><p>{tension.latestNote}</p>{editableNeedNote && <button className="quiet small" type="button" onClick={openNeedEditor}>Edit request</button>}</>}
+      {tension.latestNote && editingNeedNote && <div className="outcome-form">
+        <p>{needNoteBase(tension.latestNote)}</p>
+        <label className="field"><span>Edit what you need</span><textarea rows={4} value={needDetail} onChange={(event) => setNeedDetail(event.target.value)} /></label>
+        <div className="process-actions"><button className="quiet small" type="button" disabled={savingNeedNote} onClick={() => setEditingNeedNote(false)}>Cancel</button><button className="primary small" type="button" disabled={savingNeedNote} onClick={() => void saveNeedNote()}>{savingNeedNote ? "Saving…" : "Save"}</button></div>
+        {needEditError && <small className="tension-project-error">{needEditError}</small>}
+      </div>}
       <ContextualNextSteps parentType="tension" parentId={tension.id} parentTitle={tension.title} projectId={tension.linkedProjectId} actions={props.workspace.actions} people={props.workspace.people} currentUserId={props.currentUserId} personName={props.personName} onAdd={props.onAddNextStep} onStatus={props.onActionStatus} />
 
       {tension.status === "needs_sync" && <TensionAvailabilityPoll tension={tension} currentUserId={props.currentUserId} personName={props.personName} onCreate={props.onCreatePoll} onVote={props.onVotePoll} onChoose={props.onChoosePoll} />}
@@ -209,6 +242,30 @@ function Process({ tension, people, currentUserId, onClose, onNeed, onMoveGovern
 
 function Picker({ people, selected, setSelected }: { people: WorkspacePerson[]; selected: string[]; setSelected: (ids: string[]) => void }) {
   return <div className="field"><span>Who do you need?</span><div className="people-picker">{people.map((person) => <label key={person.id}><input type="checkbox" checked={selected.includes(person.id)} onChange={(event) => setSelected(event.target.checked ? [...new Set([...selected, person.id])] : selected.filter((id) => id !== person.id))}/>{person.name}</label>)}</div></div>;
+}
+
+function isNeedNote(note?: string) {
+  return Boolean(note && (note.startsWith("Needs input or help from ") || note.startsWith("Needs a real conversation with ")));
+}
+
+function needNoteBase(note: string) {
+  const marker = " — ";
+  const markerIndex = note.indexOf(marker);
+  if (markerIndex >= 0) return note.slice(0, markerIndex);
+  return note.endsWith(".") ? note.slice(0, -1) : note;
+}
+
+function extractNeedDetail(note?: string) {
+  if (!note) return "";
+  const marker = " — ";
+  const markerIndex = note.indexOf(marker);
+  return markerIndex >= 0 ? note.slice(markerIndex + marker.length) : "";
+}
+
+function composeNeedNote(note: string, detail: string) {
+  const base = needNoteBase(note);
+  const cleanDetail = detail.trim();
+  return cleanDetail ? `${base} — ${cleanDetail}` : `${base}.`;
 }
 
 function label(status: Tension["status"]) {
