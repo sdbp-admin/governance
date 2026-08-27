@@ -6,6 +6,7 @@ import { ContextualNextSteps, type ContextualNextStepInput } from "@/components/
 import { createTension, type WorkspaceData, type WorkspacePerson } from "@/lib/supabase/workspace";
 import { setTensionProject } from "@/lib/supabase/tension-project";
 import { updateTensionNeedNote } from "@/lib/supabase/tension-need-edit";
+import { updateTensionTitle } from "@/lib/supabase/tension-title-edit";
 import { TensionAvailabilityPoll } from "@/components/tension-availability-poll";
 import { WorkAttachmentsButton } from "@/components/work-attachments";
 import { TensionCommentsButton } from "@/components/tension-comments";
@@ -93,14 +94,40 @@ function TensionCard(props: Props & { tension: Tension; processing: string | nul
   const mine = tension.raiserId === props.currentUserId;
   const processable = tension.status === "open" || tension.status === "needs_sync";
   const hasNeed = Boolean(tension.latestNote);
+  const editableTitle = mine && tension.status !== "resolved" && tension.status !== "governance";
   const editableNeedNote = mine && processable && isNeedNote(tension.latestNote);
   const meetingScheduled = Boolean(tension.status === "needs_sync" && tension.poll?.chosenOptionId);
   const urgent = props.urgentTensionIds.has(tension.id);
   const linkedProject = tension.linkedProjectId ? props.workspace.projects.find((project) => project.id === tension.linkedProjectId) : undefined;
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [savingTitle, setSavingTitle] = useState(false);
+  const [titleEditError, setTitleEditError] = useState("");
   const [editingNeedNote, setEditingNeedNote] = useState(false);
   const [needDetail, setNeedDetail] = useState("");
   const [savingNeedNote, setSavingNeedNote] = useState(false);
   const [needEditError, setNeedEditError] = useState("");
+
+  function openTitleEditor() {
+    setTitleDraft(tension.title);
+    setTitleEditError("");
+    setEditingTitle(true);
+  }
+
+  async function saveTitle() {
+    if (!titleDraft.trim() || savingTitle) return;
+    setSavingTitle(true);
+    setTitleEditError("");
+    try {
+      await updateTensionTitle(tension.id, props.currentUserId, titleDraft);
+      setEditingTitle(false);
+      window.dispatchEvent(new Event("focus"));
+    } catch (error) {
+      setTitleEditError(readError(error));
+    } finally {
+      setSavingTitle(false);
+    }
+  }
 
   function openNeedEditor() {
     setNeedDetail(extractNeedDetail(tension.latestNote));
@@ -130,7 +157,12 @@ function TensionCard(props: Props & { tension: Tension; processing: string | nul
         <span>Raised by {props.personName(tension.raiserId)}</span>
         <span className="tension-meta-status">{urgent && <span className="urgency-badge">Urgent</span>}<span>{label(tension.status)}</span></span>
       </div>
-      <h3>{tension.title}</h3>
+      {!editingTitle && <><h3>{tension.title}</h3>{editableTitle && <button className="quiet small" type="button" onClick={openTitleEditor}>Edit tension</button>}</>}
+      {editingTitle && <div className="outcome-form">
+        <label className="field"><span>Edit tension</span><textarea rows={4} value={titleDraft} onChange={(event) => setTitleDraft(event.target.value)} /></label>
+        <div className="process-actions"><button className="quiet small" type="button" disabled={savingTitle} onClick={() => setEditingTitle(false)}>Cancel</button><button className="primary small" type="button" disabled={!titleDraft.trim() || savingTitle} onClick={() => void saveTitle()}>{savingTitle ? "Saving…" : "Save"}</button></div>
+        {titleEditError && <small className="tension-project-error">{titleEditError}</small>}
+      </div>}
       <TensionProjectLink tension={tension} linkedProject={linkedProject} projects={props.workspace.projects} />
       {tension.latestNote && !editingNeedNote && <><p>{tension.latestNote}</p>{editableNeedNote && <button className="quiet small" type="button" onClick={openNeedEditor}>Edit request</button>}</>}
       {tension.latestNote && editingNeedNote && <div className="outcome-form">
