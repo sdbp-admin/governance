@@ -174,7 +174,7 @@ export function RedesignWorkHub(props: Props) {
       <div className={styles.workToolbarActions}>
         <button className="primary small" type="button" onClick={() => setCreateOpen("project")}>+ Project</button>
         <button className="secondary small" type="button" onClick={() => setCreateOpen("tension")}>+ Tension</button>
-        <button className="quiet small" type="button" onClick={() => setCommitmentsOpen(true)}>Commitments <span className={styles.inlineCount}>{openActions.length}</span></button>
+        <button className="quiet small" type="button" onClick={() => setCommitmentsOpen(true)}><span className={styles.toolbarIcon} aria-hidden="true">→</span> Commitments <span className={styles.inlineCount}>{openActions.length}</span></button>
       </div>
       <span className={styles.workToolbarNote}>Open an item when you need its conversation, next steps, files or controls.</span>
     </div>
@@ -193,27 +193,38 @@ export function RedesignWorkHub(props: Props) {
           const latestLinked = [...linked].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
           const tone = projectToneClass(project.id).replace("project-tone-", "");
           return <article className={styles.projectCard} data-tone={tone} key={project.id}>
-            <div className={styles.projectTopline}><span>Project</span><span>{props.personName(project.ownerId)}</span></div>
+            <div className={styles.projectTopline}>
+              <span className={styles.objectTypeBadge}><span className={styles.objectGlyph} aria-hidden="true">▣</span>Project</span>
+              <span className={styles.ownerVisual}><span className={styles.personAvatar}>{props.personInitial(project.ownerId)}</span><strong>{props.personName(project.ownerId)}</strong></span>
+            </div>
             <div className={styles.projectTitleRow}>
               <h3>{project.title}</h3>
               <button className={styles.openProjectInline} type="button" onClick={() => props.onTarget({ kind: "project", id: project.id })}>Open <span>→</span></button>
             </div>
             {project.summary && <p className={styles.summary}>{project.summary}</p>}
             <div className={styles.objectMeta}>
-              <span>{tensionCount} {tensionCount === 1 ? "tension" : "tensions"}</span>
-              <span>{actionCount} {actionCount === 1 ? "next step" : "next steps"}</span>
+              <span className={styles.tensionCountChip}><b aria-hidden="true">!</b>{tensionCount}</span>
+              <span className={styles.stepCountChip}><b aria-hidden="true">→</b>{actionCount}</span>
               <ProjectActivityIndicator projectId={project.id} linkedTensionIds={linked.map((tension) => tension.id)} />
             </div>
             {linked.length > 0 && <div className={styles.cardWorkGroup}>
-              <div className={styles.cardWorkGroupHead}><span>Tensions</span><strong>{linked.length}</strong>{latestLinked && <small>Latest · {formatRecentDate(latestLinked.createdAt)}</small>}</div>
+              <div className={`${styles.cardWorkGroupHead} ${styles.tensionGroupHead}`}><span className={styles.groupGlyph} aria-hidden="true">!</span><span>Tensions</span><strong>{linked.length}</strong>{latestLinked && <small>{formatRecentDate(latestLinked.createdAt)}</small>}</div>
               <div className={styles.linkedTensions}>
                 {linked.slice(0, 2).map((tension) => {
                   const meta = tensionPreviewMeta(tension, props.personName);
                   return <button type="button" key={tension.id} onClick={() => props.onTarget({ kind: "tension", id: tension.id })}>
-                    <span className={styles.tensionDot} aria-hidden="true" />
+                    <span className={styles.tensionVisualMark} aria-hidden="true">!</span>
                     <span>
                       <strong>{tension.title}</strong>
-                      <small className={styles.tensionPeople}>{meta.primary}</small>
+                      <span className={styles.tensionMetaRow}>
+                        <span className={styles.personAvatarSmall}>{props.personInitial(tension.raiserId)}</span>
+                        <span className={styles.statusChip}>{meta.status}</span>
+                        {meta.involvedNames.length > 0 && <span className={styles.peopleCluster} aria-label={meta.involvedNames.join(", ")}>
+                          {meta.involvedNames.slice(0,3).map((name) => <span key={name}>{name.charAt(0).toUpperCase()}</span>)}
+                          {meta.involvedNames.length > 3 && <i>+{meta.involvedNames.length - 3}</i>}
+                        </span>}
+                        {meta.stateLabel && <span className={styles.needChip}>{meta.stateLabel}</span>}
+                      </span>
                       {meta.secondary && <small className={styles.tensionState}>{meta.secondary}</small>}
                     </span>
                   </button>;
@@ -222,11 +233,18 @@ export function RedesignWorkHub(props: Props) {
               </div>
             </div>}
             {projectActions.length > 0 && <div className={styles.cardWorkGroup}>
-              <div className={styles.cardWorkGroupHead}><span>Next steps</span><strong>{projectActions.length}</strong></div>
+              <div className={`${styles.cardWorkGroupHead} ${styles.stepGroupHead}`}><span className={styles.groupGlyph} aria-hidden="true">→</span><span>Commitments</span><strong>{projectActions.length}</strong></div>
               <div className={styles.projectStepList}>
                 {projectActions.slice(0, 2).map((action) => <button type="button" key={action.id} onClick={() => props.onTarget({ kind: "project", id: project.id })}>
                   <span className={styles.stepMarker} aria-hidden="true">→</span>
-                  <span className={styles.projectStepCopy}><strong>{action.title}</strong><small>{action.status === "proposed" ? "Proposed to" : "Owned by"} {props.personName(action.ownerId)}{action.due ? ` · due ${formatActionDate(action.due)}` : ""}</small></span>
+                  <span className={styles.projectStepCopy}>
+                    <strong>{action.title}</strong>
+                    <span className={styles.stepMetaRow}>
+                      <span className={styles.personAvatarSmall}>{props.personInitial(action.ownerId)}</span>
+                      <span className={action.status === "proposed" ? styles.proposedChip : styles.ownedChip}>{action.status === "proposed" ? "Proposed" : "Owned"}</span>
+                      {action.due && <span className={styles.dueChip}>{formatActionDate(action.due)}</span>}
+                    </span>
+                  </span>
                 </button>)}
                 {projectActions.length > 2 && <small className={styles.moreLinked}>+ {projectActions.length - 2} more next steps</small>}
               </div>
@@ -244,10 +262,15 @@ export function RedesignWorkHub(props: Props) {
       </div>
       {unlinkedTensions.length ? <div className={styles.tensionGrid}>{unlinkedTensions.map((tension) => {
         const actionCount = openActions.filter((action) => action.sourceTensionId === tension.id).length;
+        const meta = tensionPreviewMeta(tension, props.personName);
         return <button className={styles.tensionCard} type="button" key={tension.id} onClick={() => props.onTarget({ kind: "tension", id: tension.id })}>
-          <span className={styles.tensionDot} aria-hidden="true" />
-          <span className={styles.tensionCardCopy}><small>{props.personName(tension.raiserId)} · {formatStatus(tension.status)}</small><strong>{tension.title}</strong>{tension.latestNote && <span>{tension.latestNote}</span>}</span>
-          <span className={styles.tensionCardMeta}>{actionCount ? `${actionCount} next ${actionCount === 1 ? "step" : "steps"}` : "Open"} →</span>
+          <span className={styles.tensionVisualMark} aria-hidden="true">!</span>
+          <span className={styles.tensionCardCopy}>
+            <span className={styles.tensionMetaRow}><span className={styles.personAvatarSmall}>{props.personInitial(tension.raiserId)}</span><span className={styles.statusChip}>{meta.status}</span>{meta.stateLabel && <span className={styles.needChip}>{meta.stateLabel}</span>}</span>
+            <strong>{tension.title}</strong>
+            {meta.secondary && <span className={styles.tensionState}>{meta.secondary}</span>}
+          </span>
+          <span className={styles.tensionCardMeta}>{actionCount ? <><b aria-hidden="true">→</b>{actionCount}</> : "Open →"}</span>
         </button>;
       })}</div> : <div className={styles.emptyLine}>No unlinked tensions. Tensions connected to projects are shown with their project.</div>}
     </section>
@@ -304,17 +327,41 @@ function formatRecentDate(value: string) {
 }
 
 function tensionPreviewMeta(tension: Tension, personName: (id: string) => string) {
-  const primary = `Raised by ${personName(tension.raiserId)} · ${formatStatus(tension.status)}`;
+  const status = formatStatus(tension.status);
   const note = tension.latestNote?.trim() ?? "";
 
   const inputMatch = note.match(/^Needs input or help from (.+?)(?:\s+—|$)/i);
-  if (inputMatch?.[1]) return { primary, secondary: `Needs input from ${inputMatch[1].trim()}` };
+  if (inputMatch?.[1]) {
+    const involvedNames = splitPeopleNames(inputMatch[1]);
+    return { status, involvedNames, stateLabel: "Needs input", secondary: "" };
+  }
 
   const syncMatch = note.match(/^Needs a real conversation with (.+?)(?:\s+—|$)/i);
-  if (syncMatch?.[1]) return { primary, secondary: `Conversation with ${syncMatch[1].trim()}` };
+  if (syncMatch?.[1]) {
+    const involvedNames = splitPeopleNames(syncMatch[1]);
+    return { status, involvedNames, stateLabel: "Conversation", secondary: "" };
+  }
 
-  return { primary, secondary: note || "" };
+  if (tension.status === "awaiting_confirmation") {
+    return { status, involvedNames: [] as string[], stateLabel: "Confirm", secondary: compactPreview(note) };
+  }
+  if (tension.status === "governance") {
+    return { status, involvedNames: [] as string[], stateLabel: "Governance", secondary: "" };
+  }
+
+  return { status, involvedNames: [] as string[], stateLabel: "", secondary: compactPreview(note) };
 }
+
+function splitPeopleNames(value: string) {
+  return value.split(/,|\band\b/i).map((name) => name.trim()).filter(Boolean);
+}
+
+function compactPreview(value: string) {
+  const clean = value.replace(/\s+/g, " ").trim();
+  if (!clean) return "";
+  return clean.length > 105 ? `${clean.slice(0, 104).trimEnd()}…` : clean;
+}
+
 
 function formatActionDate(value: string) {
   return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(new Date(`${value}T12:00:00`));
@@ -388,7 +435,7 @@ function CommitmentsPanel({ workspace, currentUserId, personName, onStatus, onOp
           <span className={`${styles.commitmentStatus} ${proposed ? styles.commitmentStatusProposed : styles.commitmentStatusOpen}`}>{proposed ? (mode === "mine" ? "Proposed to you" : "Awaiting acceptance") : mode === "mine" ? "Owned by you" : "Open commitment"}</span>
           {due.label && <span className={`${styles.commitmentDue} ${due.tone === "overdue" ? styles.commitmentDueOverdue : due.tone === "soon" ? styles.commitmentDueSoon : ""}`}>{due.label}</span>}
         </div>
-        {mode === "waiting" && <span className={styles.commitmentPerson}>{personName(action.ownerId)}</span>}
+        {mode === "waiting" && <span className={styles.commitmentPerson}><span>{personName(action.ownerId).charAt(0).toUpperCase()}</span>{personName(action.ownerId)}</span>}
       </div>
 
       <h3>{action.title}</h3>
