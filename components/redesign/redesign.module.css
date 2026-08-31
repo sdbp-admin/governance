@@ -1,0 +1,76 @@
+.workToolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  margin: -8px 0 28px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+.workToolbarActions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.workToolbarNote { color: var(--muted); font-size: 12px; max-width: 420px; text-align: right; line-height: 1.45; }
+.inlineCount { display: inline-grid; min-width: 20px; height: 20px; place-items: center; border-radius: 999px; background: rgba(43,55,70,.07); margin-left: 5px; font-size: 11px; }
+.workSection { margin-top: 34px; }
+.sectionHeader { display: flex; justify-content: space-between; align-items: end; gap: 18px; margin-bottom: 14px; }
+.sectionHeader h2 { margin-top: 4px; font-size: 24px; }
+.sectionCount { display: grid; place-items: center; min-width: 34px; height: 34px; border-radius: 999px; background: #f1f4f5; color: var(--muted); font-size: 12px; font-weight: 700; }
+.projectGrid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
+.projectCard { background: white; border: 1px solid var(--border); border-radius: 18px; padding: 22px; display: flex; flex-direction: column; min-height: 215px; }
+.projectTopline { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
+.projectCard h3 { font-size: 22px; margin-top: 11px; }
+.summary { color: var(--muted); margin: 9px 0 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.objectMeta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+.objectMeta span { font-size: 11px; color: var(--muted); background: #f4f6f7; padding: 5px 8px; border-radius: 999px; }
+.linkedTensions { display: grid; gap: 6px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+.linkedTensions button { border: 0; background: transparent; padding: 7px 0; display: grid; grid-template-columns: 9px minmax(0,1fr); gap: 9px; text-align: left; align-items: start; color: inherit; border-radius: 8px; }
+.linkedTensions button:hover { background: #f8fafb; padding-left: 7px; padding-right: 7px; }
+.linkedTensions strong, .linkedTensions small { display: block; }
+.linkedTensions strong { font-size: 13px; line-height: 1.35; }
+.linkedTensions small { color: var(--muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.moreLinked { color: var(--muted); padding-left: 18px; }
+.tensionDot { width: 8px; height: 8px; border-radius: 50%; background: var(--brand-orange); margin-top: 5px; }
+.openObject { margin-top: auto; padding: 17px 0 0; border: 0; background: transparent; color: var(--accent-dark); display: flex; justify-content: space-between; align-items: center; font-weight: 700; text-align: left; }
+.openObject span { font-size: 18px; font-weight: 400; }
+.completedLink { margin-top: 12px; border: 0; background: transparent; color: var(--muted); padding: 7px 0; font-size: 12px; }
+.completedLink span { display: inline-grid; place-items: center; min-width: 20px; height: 20px; border-radius: 999px; background: #eef2f4; margin-left: 5px; }
+.tensionGrid { display: grid; gap: 8px; }
+.tensionCard { width: 100%; display: grid; grid-template-columns: 9px minmax(0,1fr) auto; align-items: center; gap: 13px; border: 1px solid var(--border); border-radius: 14px; background: white; padding: 16px 18px; text-align: left; color: inherit; }
+.tensionCard:hover { border-color: #cad7dc; box-shadow: 0 8px 24px rgba(43,55,70,.05); }
+.tensionCardCopy small, .tensionCardCopy strong, .tensionCardCopy span { display: block; }
+.tensionCardCopy small { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
+.tensionCardCopy strong { margin-top: 4px; font-size: 15px; }
+.tensionCardCopy span { color: var(--muted); margin-top: 3px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tensionCardMeta { color: var(--accent-dark); font-size: 11px; white-space: nowrap; }
+.emptyLine { border: 1px dashed var(--border); border-radius: 14px; padding: 18px; color: var(--muted); font-size: 13px; background: rgba(255,255,255,.45); }
+.detailShell { animation: redesignFade .18s ease; }
+.detailHeader { display: grid; grid-template-columns: auto minmax(0,1fr); align-items: start; gap: 18px; padding-bottom: 18px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+.detailHeader h2 { margin-top: 4px; font-size: 26px; }
+.backButton { border: 0; background: transparent; color: var(--muted); padding: 5px 0; font-weight: 650; }
+.backButton:hover { color: var(--text); }
+.projectDetail :global(.work-toolbar), .projectDetail :global(.section-head) { display: none; }
+.projectDetail :global(.work-main) { margin-top: 0; }
+.projectDetail :global(.project-grid) { grid-template-columns: 1fr; }
+.projectDetail :global(.project-card) { min-height: 0; }
+.tensionDetail :global(.tension-composer), .tensionDetail :global(.section-head) { display: none; }
+.tensionDetail :global(.section) { margin-top: 0; }
+.tensionDetail :global(.tension-stream) { gap: 0; }
+.commitmentList { display: grid; gap: 8px; max-height: 60vh; overflow: auto; }
+.commitmentRow { border: 1px solid var(--border); border-radius: 13px; padding: 13px 14px; display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 14px; }
+.commitmentContext { border: 0; background: transparent; text-align: left; color: inherit; padding: 0; }
+.commitmentContext:disabled { cursor: default; }
+.commitmentContext small, .commitmentContext strong, .commitmentContext span { display: block; }
+.commitmentContext small { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
+.commitmentContext strong { margin-top: 3px; }
+.commitmentContext span { margin-top: 3px; color: var(--muted); font-size: 11px; }
+.commitmentOwner { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
+@keyframes redesignFade { from { opacity: .45; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 900px) {
+  .projectGrid { grid-template-columns: 1fr; }
+  .workToolbar { align-items: flex-start; flex-direction: column; }
+  .workToolbarNote { text-align: left; }
+}
+@media (max-width: 600px) {
+  .tensionCard { grid-template-columns: 9px minmax(0,1fr); }
+  .tensionCardMeta { grid-column: 2; }
+  .commitmentRow { grid-template-columns: 1fr; }
+}
