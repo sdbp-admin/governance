@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Action, Tension } from "@/lib/domain";
+import { useCallback, useEffect, useState } from "react";
+import type { Action, Project, Tension } from "@/lib/domain";
 import type { ContextualNextStepInput } from "@/components/contextual-next-steps";
 import { WorkspaceWorkView } from "@/components/work-view";
 import { TensionsWorkspaceView } from "@/components/tensions-workspace-view";
@@ -15,6 +15,7 @@ export type RedesignWorkTarget = { kind: "project" | "tension"; id: string } | n
 export type RedesignCreateIntent = "project" | "tension" | null;
 
 type Need = "input" | "sync";
+type ProjectObjectPanel = { kind: "tensions" | "commitments"; projectId: string } | null;
 
 type Props = {
   workspace: WorkspaceData;
@@ -53,6 +54,7 @@ export function RedesignWorkHub(props: Props) {
   const [createOpen, setCreateOpen] = useState<RedesignCreateIntent>(null);
   const [commitmentsOpen, setCommitmentsOpen] = useState(false);
   const [completedOpen, setCompletedOpen] = useState(false);
+  const [projectPanel, setProjectPanel] = useState<ProjectObjectPanel>(null);
 
   useEffect(() => {
     if (!props.createIntent) return;
@@ -74,24 +76,6 @@ export function RedesignWorkHub(props: Props) {
     if (props.target.kind === "project" && !selectedProject) props.onTarget(null);
     if (props.target.kind === "tension" && !selectedTension) props.onTarget(null);
   }, [props.target, selectedProject, selectedTension, props.onTarget]);
-
-  const tensionCountByProject = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const tension of activeTensions) {
-      if (!tension.linkedProjectId) continue;
-      map.set(tension.linkedProjectId, (map.get(tension.linkedProjectId) ?? 0) + 1);
-    }
-    return map;
-  }, [activeTensions]);
-
-  const actionCountByProject = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const action of openActions) {
-      if (!action.projectId) continue;
-      map.set(action.projectId, (map.get(action.projectId) ?? 0) + 1);
-    }
-    return map;
-  }, [openActions]);
 
   if (selectedProject) {
     const focusedWorkspace = { ...props.workspace, projects: [selectedProject] };
@@ -188,10 +172,8 @@ export function RedesignWorkHub(props: Props) {
         {activeProjects.map((project) => {
           const linked = activeTensions.filter((tension) => tension.linkedProjectId === project.id);
           const projectActions = openActions.filter((action) => action.projectId === project.id);
-          const tensionCount = tensionCountByProject.get(project.id) ?? 0;
-          const actionCount = actionCountByProject.get(project.id) ?? 0;
-          const latestLinked = [...linked].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
-          const nextAction = nextCommitment(projectActions);
+          const tensionExceptions = projectTensionExceptions(linked, props.urgentTensionIds);
+          const commitmentExceptions = projectCommitmentExceptions(projectActions);
           const tone = projectToneClass(project.id).replace("project-tone-", "");
           return <article className={styles.projectCard} data-tone={tone} key={project.id}>
             <div className={styles.projectHeading}>
@@ -202,22 +184,21 @@ export function RedesignWorkHub(props: Props) {
               </span>
             </div>
             {project.summary && <p className={styles.summary}>{project.summary}</p>}
-            <div className={styles.projectCounts} aria-label="Project totals">
-              <span>{tensionCount} {tensionCount === 1 ? "tension" : "tensions"}</span>
-              <span>{actionCount} {actionCount === 1 ? "commitment" : "commitments"}</span>
-              <ProjectActivityIndicator projectId={project.id} linkedTensionIds={linked.map((tension) => tension.id)} />
+            <div className={styles.projectObjects}>
+              <ProjectObjectButton
+                kind="tensions"
+                count={linked.length}
+                exceptions={tensionExceptions}
+                onOpen={() => setProjectPanel({ kind: "tensions", projectId: project.id })}
+              />
+              <ProjectObjectButton
+                kind="commitments"
+                count={projectActions.length}
+                exceptions={commitmentExceptions}
+                onOpen={() => setProjectPanel({ kind: "commitments", projectId: project.id })}
+              />
             </div>
-            {(latestLinked || nextAction) && <div className={styles.projectPreviews}>
-              {latestLinked && <ProjectTensionPreview tension={latestLinked} onOpen={() => props.onTarget({ kind: "tension", id: latestLinked.id })} />}
-              {nextAction && <button className={styles.commitmentPreview} type="button" onClick={() => props.onTarget({ kind: "project", id: project.id })}>
-                <span className={styles.previewHeading}>
-                  <span>Next commitment</span>
-                  {nextAction.status === "proposed" && <small>Proposed</small>}
-                </span>
-                <strong>{nextAction.title}</strong>
-                <span className={styles.previewMeta}>{props.personName(nextAction.ownerId)}{nextAction.due ? ` · ${formatActionDate(nextAction.due)}` : ""}</span>
-              </button>}
-            </div>}
+            <ProjectActivityIndicator projectId={project.id} linkedTensionIds={linked.map((tension) => tension.id)} />
             <button className={styles.openProjectInline} type="button" onClick={() => props.onTarget({ kind: "project", id: project.id })}>Open project <span>→</span></button>
           </article>;
         })}
@@ -243,6 +224,17 @@ export function RedesignWorkHub(props: Props) {
     {createOpen === "project" && <ProjectCreateModal people={props.workspace.people} currentUserId={props.currentUserId} onClose={() => setCreateOpen(null)} onSave={async (input) => { if (await props.onAddProject(input)) setCreateOpen(null); }} />}
     {createOpen === "tension" && <TensionCreateModal projects={activeProjects} onClose={() => setCreateOpen(null)} onSave={async (title, projectId) => { if (await props.onRaise(title, projectId)) setCreateOpen(null); }} />}
     {commitmentsOpen && <CommitmentsPanel workspace={props.workspace} currentUserId={props.currentUserId} personName={props.personName} onStatus={props.onActionStatus} onOpen={(target) => { setCommitmentsOpen(false); props.onTarget(target); }} onClose={() => setCommitmentsOpen(false)} />}
+    {projectPanel && <ProjectObjectPanelDialog
+      panel={projectPanel}
+      project={activeProjects.find((project) => project.id === projectPanel.projectId)}
+      tensions={activeTensions.filter((tension) => tension.linkedProjectId === projectPanel.projectId)}
+      commitments={openActions.filter((action) => action.projectId === projectPanel.projectId)}
+      urgentTensionIds={props.urgentTensionIds}
+      personName={props.personName}
+      onOpenTension={(id) => { setProjectPanel(null); props.onTarget({ kind: "tension", id }); }}
+      onOpenProject={(id) => { setProjectPanel(null); props.onTarget({ kind: "project", id }); }}
+      onClose={() => setProjectPanel(null)}
+    />}
   </>;
 }
 
@@ -277,44 +269,137 @@ function ProjectActivityIndicator({ projectId, linkedTensionIds }: { projectId: 
     };
   }, [refresh]);
 
-  return <span>{unread} unread</span>;
+  if (!unread) return null;
+  return <div className={styles.projectException}><span>Unread activity</span><strong>{unread}</strong></div>;
 }
 
-function ProjectTensionPreview({ tension, onOpen }: { tension: Tension; onOpen: () => void }) {
-  const state = meaningfulTensionState(tension);
-  return <button className={styles.tensionPreview} type="button" onClick={onOpen}>
-    <span className={styles.previewHeading}>
-      <span>Latest tension</span>
-      {state && <small>{state}</small>}
-    </span>
-    <strong>{tension.title}</strong>
+function ProjectObjectButton({ kind, count, exceptions, onOpen }: {
+  kind: "tensions" | "commitments";
+  count: number;
+  exceptions: string[];
+  onOpen: () => void;
+}) {
+  const label = kind === "tensions" ? "Tensions" : "Commitments";
+  return <button className={styles.projectObject} data-kind={kind} type="button" onClick={onOpen} aria-label={`Review ${count} project ${label.toLowerCase()}`}>
+    <span>{label}</span>
+    <strong>{count}</strong>
+    {exceptions.length > 0 && <small>{exceptions.join(", ")}</small>}
   </button>;
 }
 
-function meaningfulTensionState(tension: Tension) {
+function projectTensionExceptions(tensions: Tension[], urgentTensionIds: ReadonlySet<string>) {
+  const urgent = tensions.filter((tension) => urgentTensionIds.has(tension.id)).length;
+  const needsInput = tensions.filter((tension) => tensionNeed(tension)?.kind === "input").length;
+  const conversations = tensions.filter((tension) => tensionNeed(tension)?.kind === "conversation").length;
+  const confirmations = tensions.filter((tension) => tension.status === "awaiting_confirmation").length;
+  return [
+    urgent ? `${urgent} urgent` : "",
+    needsInput ? `${needsInput} need input` : "",
+    conversations ? `${conversations} need conversation` : "",
+    confirmations ? `${confirmations} awaiting confirmation` : "",
+  ].filter(Boolean);
+}
+
+function projectCommitmentExceptions(actions: Action[]) {
+  const overdue = actions.filter((action) => isOverdue(action.due)).length;
+  const dueToday = actions.filter((action) => action.due === todayLocalISO()).length;
+  const awaitingAcceptance = actions.filter((action) => action.status === "proposed").length;
+  return [
+    overdue ? `${overdue} overdue` : "",
+    dueToday ? `${dueToday} due today` : "",
+    awaitingAcceptance ? `${awaitingAcceptance} awaiting acceptance` : "",
+  ].filter(Boolean);
+}
+
+function tensionNeed(tension: Tension): { kind: "input" | "conversation"; people: string[] } | null {
   const note = tension.latestNote?.trim() ?? "";
+  const inputMatch = note.match(/^Needs input or help from (.+?)(?:\s+\u2014|[.]?$)/i);
+  if (inputMatch?.[1]) return { kind: "input", people: splitPeopleNames(inputMatch[1]) };
+  const conversationMatch = note.match(/^Needs a real conversation with (.+?)(?:\s+\u2014|[.]?$)/i);
+  if (conversationMatch?.[1]) return { kind: "conversation", people: splitPeopleNames(conversationMatch[1]) };
+  if (tension.status === "needs_sync") return { kind: "conversation", people: [] };
+  return null;
+}
 
-  const inputMatch = note.match(/^Needs input or help from (.+?)(?:\s+—|$)/i);
-  if (inputMatch?.[1]) return "Needs input";
+function splitPeopleNames(value: string) {
+  return value.split(/,|\band\b/i).map((name) => name.trim()).filter(Boolean);
+}
 
-  const syncMatch = note.match(/^Needs a real conversation with (.+?)(?:\s+—|$)/i);
-  if (syncMatch?.[1] || tension.status === "needs_sync") return "Conversation";
+function tensionStateLabel(tension: Tension) {
+  const need = tensionNeed(tension);
   if (tension.status === "awaiting_confirmation") return "Awaiting confirmation";
+  if (need?.kind === "input") return "Needs input";
+  if (need?.kind === "conversation") return "Needs conversation";
   if (tension.status === "governance") return "Governance";
-
-  return "";
+  return "Open";
 }
 
-function nextCommitment(actions: Action[]) {
-  return [...actions].sort((a, b) => {
-    const aDue = a.due ? new Date(`${a.due}T12:00:00`).getTime() : Number.POSITIVE_INFINITY;
-    const bDue = b.due ? new Date(`${b.due}T12:00:00`).getTime() : Number.POSITIVE_INFINITY;
-    if (aDue !== bDue) return aDue - bDue;
-    if (a.status !== b.status) return a.status === "proposed" ? -1 : 1;
-    return a.title.localeCompare(b.title);
-  })[0];
+function tensionAge(createdAt: string) {
+  const created = new Date(createdAt);
+  const today = new Date();
+  created.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  const days = Math.max(0, Math.round((today.getTime() - created.getTime()) / 86_400_000));
+  if (days === 0) return "Raised today";
+  if (days === 1) return "1 day old";
+  return `${days} days old`;
 }
 
+function ProjectObjectPanelDialog({ panel, project, tensions, commitments, urgentTensionIds, personName, onOpenTension, onOpenProject, onClose }: {
+  panel: Exclude<ProjectObjectPanel, null>;
+  project?: Project;
+  tensions: Tension[];
+  commitments: Action[];
+  urgentTensionIds: ReadonlySet<string>;
+  personName: (id: string) => string;
+  onOpenTension: (id: string) => void;
+  onOpenProject: (id: string) => void;
+  onClose: () => void;
+}) {
+  if (!project) return null;
+  const tensionsOpen = panel.kind === "tensions";
+  const count = tensionsOpen ? tensions.length : commitments.length;
+  const title = tensionsOpen ? "Tensions" : "Commitments";
+  return <div className={styles.projectPanelBackdrop} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className={styles.projectPanel} data-kind={panel.kind} role="dialog" aria-modal="true" aria-labelledby="project-object-panel-title">
+      <header className={styles.projectPanelHead}>
+        <div><span className="section-kicker">{project.title}</span><h2 id="project-object-panel-title">{title} <span>{count}</span></h2></div>
+        <button className="quiet" type="button" onClick={onClose}>Close</button>
+      </header>
+      <div className={styles.projectPanelList}>
+        {tensionsOpen ? tensions.map((tension) => {
+          const need = tensionNeed(tension);
+          const urgent = urgentTensionIds.has(tension.id);
+          return <button className={styles.projectPanelItem} type="button" key={tension.id} onClick={() => onOpenTension(tension.id)}>
+            <strong>{tension.title}</strong>
+            <span className={styles.projectPanelFacts}>
+              <span>{tensionAge(tension.createdAt)}</span>
+              <span>{tensionStateLabel(tension)}</span>
+              {urgent && <span data-exception="true">Urgent</span>}
+            </span>
+            <small>Raised by {personName(tension.raiserId)}</small>
+            {need && need.people.length > 0 && <small>{need.kind === "input" ? "Input from" : "Conversation with"} {need.people.join(", ")}</small>}
+          </button>;
+        }) : commitments.map((action) => {
+          const due = commitmentDue(action.due);
+          return <article className={styles.projectPanelItem} key={action.id}>
+            <strong>{action.title}</strong>
+            <span className={styles.projectPanelFacts}>
+              <span>{action.status === "proposed" ? "Awaiting acceptance" : "Accepted"}</span>
+              <span data-exception={due.tone === "overdue" || due.label === "Due today" ? "true" : undefined}>{due.label || "No deadline"}</span>
+            </span>
+            <small>Owner {personName(action.ownerId)}</small>
+          </article>;
+        })}
+        {count === 0 && <div className={styles.projectPanelEmpty}>No active {title.toLowerCase()} in this project.</div>}
+      </div>
+      <footer className={styles.projectPanelFoot}>
+        <span>Recorded state only; no priority order is applied.</span>
+        <button className="text-action" type="button" onClick={() => onOpenProject(project.id)}>Open complete project</button>
+      </footer>
+    </section>
+  </div>;
+}
 
 function formatActionDate(value: string) {
   return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(new Date(`${value}T12:00:00`));
