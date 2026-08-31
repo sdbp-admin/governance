@@ -933,6 +933,15 @@
   font-size: 22px;
   line-height: 1.25;
 }
+.projectRole {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
 .projectOwner {
   display: inline-flex;
   flex: 0 0 auto;
@@ -966,6 +975,43 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.projectContextLine {
+  display: flex;
+  align-items: center;
+  gap: 8px 14px;
+  min-height: 25px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 650;
+  flex-wrap: wrap;
+}
+.projectContextLine > span:not(.compactPeople) { white-space: nowrap; }
+.projectContextLine > span[data-exception="true"] { color: #9a4c1f; }
+.projectContextLine small {
+  font-size: inherit;
+  font-weight: 500;
+}
+.compactPeople {
+  display: inline-flex;
+  align-items: center;
+  padding-right: 3px;
+}
+.compactPeople > span {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-left: -5px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #eef2f4;
+  color: var(--brand-navy);
+  font-size: 8px;
+  font-weight: 850;
+}
+.compactPeople > span:first-child { margin-left: 0; }
+.compactPeople > small { margin-left: 5px; color: var(--muted); font-size: 9px; font-weight: 750; }
 .projectAwaiting {
   margin-top: 17px;
   padding-top: 13px;
@@ -1232,6 +1278,187 @@ button.projectPanelItem:hover {
   background: #fff;
 }
 
+/* Full project context: progressive disclosure without information loss. */
+.projectDetailLayout {
+  --card-tone: var(--brand-blue);
+  position: relative;
+  display: grid;
+  gap: 16px;
+  padding-left: 4px;
+}
+.projectDetailLayout[data-tone="blue"] { --card-tone: var(--brand-blue); }
+.projectDetailLayout[data-tone="green"] { --card-tone: var(--brand-green); }
+.projectDetailLayout[data-tone="orange"] { --card-tone: var(--brand-orange); }
+.projectDetailLayout[data-tone="navy"] { --card-tone: var(--brand-navy); }
+.projectDetailLayout::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--card-tone);
+  opacity: .72;
+}
+.projectDetailHero,
+.projectDetailSection {
+  margin-left: 15px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: #fff;
+}
+.projectDetailHero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 30px;
+  padding: 25px 27px;
+}
+.projectDetailIdentity { min-width: 0; }
+.projectDetailIdentity h1 {
+  margin: 5px 0 0;
+  color: var(--brand-navy);
+  font-size: clamp(26px, 3vw, 36px);
+  line-height: 1.18;
+}
+.projectDetailPeople {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+.projectDetailPeople .projectOwner { font-size: 13px; }
+.projectDetailPeople .projectOwner > span:last-child {
+  display: grid;
+  gap: 1px;
+  place-items: initial;
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: transparent;
+  color: var(--brand-navy);
+  font-size: 13px;
+  box-shadow: none;
+}
+.projectDetailPeople .projectOwner small {
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.projectCadence {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(2,auto);
+  gap: 24px;
+  padding: 7px 0;
+}
+.projectCadence > span { display: grid; gap: 4px; }
+.projectCadence small { color: var(--muted); font-size: 9px; text-transform: lowercase; }
+.projectCadence strong { color: var(--brand-navy); font-size: 13px; white-space: nowrap; }
+.projectCadence > span[data-exception="true"] strong { color: #9a4c1f; }
+.projectDetailSection { padding: 23px 25px; }
+.projectDetailSectionHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 16px;
+}
+.projectDetailSectionHead h2 { margin-top: 4px; color: var(--brand-navy); font-size: 23px; }
+.projectDetailSectionHead h2 > span { margin-left: 5px; color: var(--muted); font-size: 15px; }
+.projectState :global(.project-summary) {
+  max-width: 850px;
+  margin: 0;
+  color: #445461;
+  font-size: 15px;
+  line-height: 1.65;
+}
+.projectDetailEmpty { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.detailObjectIdentity {
+  padding: 5px 8px;
+  border-left: 3px solid var(--brand-orange);
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 750;
+}
+.detailObjectIdentity[data-kind="commitments"] { border-color: var(--brand-green); }
+.commitmentGroups { display: grid; gap: 12px; }
+.commitmentGroup {
+  padding: 16px;
+  border: 1px solid #e5eaec;
+  border-radius: 14px;
+  background: #fafbfb;
+}
+.commitmentGroupHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.commitmentGroupHead h3 { color: var(--brand-navy); font-size: 14px; line-height: 1.35; }
+.commitmentGroupHead small { display: block; margin-bottom: 2px; color: var(--muted); font-size: 9px; font-weight: 700; text-transform: uppercase; }
+.commitmentGroupHead > span { color: var(--brand-green); font-size: 13px; font-weight: 800; }
+.projectCommitments :global(.context-next-steps) {
+  margin-top: 11px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.projectCommitments :global(.context-step-list) { margin-top: 9px; }
+.sourceCommitmentGroup :global(.context-next-steps-head) { display: none; }
+.sourceCommitmentGroup :global(.context-step-list) { margin-top: 11px; }
+.projectTensionList { display: grid; gap: 10px; }
+.projectTensionRow {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  gap: 22px;
+  padding: 17px 18px;
+  border: 1px solid #e5eaec;
+  border-left: 3px solid rgba(239,103,40,.72);
+  border-radius: 13px;
+  background: #fff;
+}
+.projectTensionMain { min-width: 0; }
+.projectTensionMain h3 { margin-top: 8px; color: var(--brand-navy); font-size: 16px; line-height: 1.4; }
+.projectTensionMain p {
+  display: -webkit-box;
+  margin: 6px 0 0;
+  overflow: hidden;
+  color: #53636f;
+  font-size: 12px;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.projectTensionMain > small { display: block; margin-top: 8px; color: var(--muted); font-size: 10px; }
+.projectTensionActions { display: flex; align-items: flex-end; justify-content: center; gap: 7px; flex-direction: column; }
+.projectSecondary { background: rgba(255,255,255,.56); }
+.projectSecondary > p { max-width: 680px; margin: -5px 0 13px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.projectDetailControls :global(.work-toolbar),
+.projectDetailControls :global(.section-head),
+.projectDetailControls :global(.project-accent),
+.projectDetailControls :global(.project-card > .kind),
+.projectDetailControls :global(.project-card > h3),
+.projectDetailControls :global(.project-card > .project-coi-badge),
+.projectDetailControls :global(.project-card > .project-summary),
+.projectDetailControls :global(.project-team-row),
+.projectDetailControls :global(.project-meta),
+.projectDetailControls :global(.context-next-steps),
+.projectDetailControls :global(.completed-projects) { display: none; }
+.projectDetailControls :global(.work-main),
+.projectDetailControls :global(.project-grid) { margin: 0; display: block; }
+.projectDetailControls :global(.project-card) {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.projectDetailControls :global(.project-context-actions) { margin: 0; justify-content: flex-start; }
+
 @media (max-width: 600px) {
   .projectCard { padding: 21px 18px 18px 21px; }
   .projectHeading { gap: 12px; }
@@ -1244,4 +1471,10 @@ button.projectPanelItem:hover {
   .projectPanelHead { padding: 18px 16px 14px; }
   .projectPanelList { padding: 10px; }
   .projectPanelFoot { padding: 12px 16px 15px; }
+  .projectDetailHero { flex-direction: column; gap: 16px; padding: 21px 18px; }
+  .projectCadence { width: 100%; justify-content: space-between; }
+  .projectDetailSection { padding: 19px 17px; }
+  .projectDetailSectionHead { align-items: flex-start; }
+  .projectTensionRow { grid-template-columns: 1fr; gap: 13px; }
+  .projectTensionActions { align-items: flex-start; flex-direction: row; flex-wrap: wrap; }
 }
