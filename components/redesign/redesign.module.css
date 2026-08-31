@@ -235,16 +235,18 @@
 .projectTitleRow h3 { margin: 0; min-width: 0; }
 .openProjectInline {
   flex: 0 0 auto;
-  border: 0;
-  background: transparent;
-  color: var(--accent-dark);
-  padding: 3px 0 3px 7px;
-  font-size: 11px;
-  font-weight: 750;
+  border: 1px solid var(--card-border);
+  border-radius: 999px;
+  background: var(--card-soft);
+  color: var(--brand-navy);
+  padding: 6px 9px 6px 10px;
+  font-size: 13px;
+  line-height: 1;
+  font-weight: 800;
   white-space: nowrap;
 }
-.openProjectInline span { margin-left: 4px; font-size: 14px; font-weight: 400; }
-.openProjectInline:hover { color: var(--brand-navy); }
+.openProjectInline span { margin-left: 5px; font-size: 15px; font-weight: 500; }
+.openProjectInline:hover { border-color: var(--card-tone); background: #fff; }
 .activityBadge {
   background: var(--accent-soft) !important;
   color: var(--accent-dark) !important;
