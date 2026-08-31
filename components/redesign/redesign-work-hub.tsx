@@ -290,7 +290,7 @@ function RedesignProjectDetail({ project, onOpenConversation, ...props }: Props 
             {participants.length > 4 && <small>+{participants.length - 4}</small>}
           </span>}
           <ProjectCoiBadge projectId={project.id} personName={props.personName} />
-          <ConversationUnreadSignal threadType="project" threadId={project.id} onOpen={onOpenConversation} />
+          <ProjectConversationAccess threadId={project.id} onOpen={onOpenConversation} />
         </div>
       </div>
       <div className={styles.projectCadence}>
@@ -399,15 +399,15 @@ function RedesignProjectDetail({ project, onOpenConversation, ...props }: Props 
   </div>;
 }
 
-function useCommentUnread(threadType: "project" | "tension", threadId: string) {
-  const [unread, setUnread] = useState(0);
+function useCommentThreadSummary(threadType: "project" | "tension", threadId: string) {
+  const [summary, setSummary] = useState({ totalCount: 0, unreadCount: 0 });
 
   const refresh = useCallback(async () => {
     try {
-      const summary = await loadCommentThreadSummary(threadType, threadId);
-      setUnread(summary.unreadCount);
+      const nextSummary = await loadCommentThreadSummary(threadType, threadId);
+      setSummary({ totalCount: nextSummary.totalCount, unreadCount: nextSummary.unreadCount });
     } catch {
-      setUnread(0);
+      setSummary({ totalCount: 0, unreadCount: 0 });
     }
   }, [threadId, threadType]);
 
@@ -430,7 +430,25 @@ function useCommentUnread(threadType: "project" | "tension", threadId: string) {
     };
   }, [refresh]);
 
-  return unread;
+  return summary;
+}
+
+function useCommentUnread(threadType: "project" | "tension", threadId: string) {
+  return useCommentThreadSummary(threadType, threadId).unreadCount;
+}
+
+function ProjectConversationAccess({ threadId, onOpen }: { threadId: string; onOpen: () => void }) {
+  const summary = useCommentThreadSummary("project", threadId);
+  const commentLabel = `${summary.totalCount} ${summary.totalCount === 1 ? "comment" : "comments"}`;
+  return <button
+    className={styles.projectConversationAccess}
+    data-unread={summary.unreadCount > 0 ? "true" : undefined}
+    type="button"
+    onClick={onOpen}
+  >
+    <span>Conversation</span>
+    <small>{summary.unreadCount > 0 ? `${summary.unreadCount} new · ${commentLabel}` : commentLabel}</small>
+  </button>;
 }
 
 function ConversationUnreadSignal({ threadType, threadId, onOpen }: { threadType: "project" | "tension"; threadId: string; onOpen?: () => void }) {
