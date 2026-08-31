@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Tension } from "@/lib/domain";
+import type { Action, Tension } from "@/lib/domain";
 import type { ContextualNextStepInput } from "@/components/contextual-next-steps";
 import { WorkspaceWorkView } from "@/components/work-view";
 import { TensionsWorkspaceView } from "@/components/tensions-workspace-view";
 import type { WorkspaceData, WorkspacePerson } from "@/lib/supabase/workspace";
 import { loadCommentThreadSummary } from "@/lib/supabase/comment-thread-state";
 import { projectToneClass } from "@/lib/project-tone";
+import { removeAction, updateActionDetails } from "@/lib/supabase/action-management";
 import styles from "@/components/redesign/redesign.module.css";
 
 export type RedesignWorkTarget = { kind: "project" | "tension"; id: string } | null;
@@ -173,7 +174,7 @@ export function RedesignWorkHub(props: Props) {
       <div className={styles.workToolbarActions}>
         <button className="primary small" type="button" onClick={() => setCreateOpen("project")}>+ Project</button>
         <button className="secondary small" type="button" onClick={() => setCreateOpen("tension")}>+ Tension</button>
-        <button className="quiet small" type="button" onClick={() => setCommitmentsOpen(true)}>All commitments <span className={styles.inlineCount}>{openActions.length}</span></button>
+        <button className="quiet small" type="button" onClick={() => setCommitmentsOpen(true)}>Commitments <span className={styles.inlineCount}>{openActions.length}</span></button>
       </div>
       <span className={styles.workToolbarNote}>Open an item when you need its conversation, next steps, files or controls.</span>
     </div>
@@ -314,27 +315,242 @@ function CommitmentsPanel({ workspace, currentUserId, personName, onStatus, onOp
   onOpen: (target: Exclude<RedesignWorkTarget, null>) => void;
   onClose: () => void;
 }) {
+  const [editingAction, setEditingAction] = useState<Action | null>(null);
+  const [busyActionId, setBusyActionId] = useState<string | null>(null);
   const actions = workspace.actions.filter((action) => action.status === "open" || action.status === "proposed");
   const projects = new Map(workspace.projects.map((project) => [project.id, project]));
   const tensions = new Map(workspace.tensions.map((tension) => [tension.id, tension]));
+  const mine = actions.filter((action) => action.ownerId === currentUserId);
+  const proposedMine = mine.filter((action) => action.status === "proposed");
+  const openMine = mine.filter((action) => action.status === "open");
+  const others = actions.filter((action) => action.ownerId !== currentUserId);
+  const waitingByOwner = workspace.people
+    .map((person) => ({ person, actions: others.filter((action) => action.ownerId === person.id) }))
+    .filter((group) => group.actions.length > 0)
+    .sort((a, b) => b.actions.length - a.actions.length || a.person.name.localeCompare(b.person.name));
+  const overdueMine = openMine.filter((action) => isOverdue(action.due)).length;
+
+  function targetFor(action: Action): Exclude<RedesignWorkTarget, null> | null {
+    if (action.sourceTensionId && tensions.has(action.sourceTensionId)) return { kind: "tension", id: action.sourceTensionId };
+    if (action.projectId && projects.has(action.projectId)) return { kind: "project", id: action.projectId };
+    return null;
+  }
+
+  function contextFor(action: Action) {
+    const tension = action.sourceTensionId ? tensions.get(action.sourceTensionId) : undefined;
+    const project = action.projectId ? projects.get(action.projectId) : undefined;
+    if (tension) return { kind: "Tension", title: tension.title };
+    if (project) return { kind: "Project", title: project.title };
+    return { kind: "Commitment", title: action.source ?? "No linked work object" };
+  }
+
+  async function changeStatus(action: Action, status: "open" | "done") {
+    if (busyActionId) return;
+    setBusyActionId(action.id);
+    try {
+      await onStatus(action.id, status);
+    } finally {
+      setBusyActionId(null);
+    }
+  }
+
+  const renderCard = (action: Action, mode: "mine" | "waiting") => {
+    const context = contextFor(action);
+    const target = targetFor(action);
+    const due = commitmentDue(action.due);
+    const proposed = action.status === "proposed";
+    return <article
+      className={`${styles.commitmentCard} ${mode === "mine" ? styles.commitmentCardMine : styles.commitmentCardWaiting} ${proposed ? styles.commitmentCardProposed : ""} ${due.tone === "overdue" ? styles.commitmentCardOverdue : ""}`}
+      key={action.id}
+    >
+      <div className={styles.commitmentCardHead}>
+        <div className={styles.commitmentIdentity}>
+          <span className={`${styles.commitmentStatus} ${proposed ? styles.commitmentStatusProposed : styles.commitmentStatusOpen}`}>{proposed ? (mode === "mine" ? "Proposed to you" : "Awaiting acceptance") : mode === "mine" ? "Owned by you" : "Open commitment"}</span>
+          {due.label && <span className={`${styles.commitmentDue} ${due.tone === "overdue" ? styles.commitmentDueOverdue : due.tone === "soon" ? styles.commitmentDueSoon : ""}`}>{due.label}</span>}
+        </div>
+        {mode === "waiting" && <span className={styles.commitmentPerson}>{personName(action.ownerId)}</span>}
+      </div>
+
+      <h3>{action.title}</h3>
+
+      <button
+        className={styles.commitmentSource}
+        type="button"
+        disabled={!target}
+        onClick={() => target && onOpen(target)}
+      >
+        <span>{context.kind}</span>
+        <strong>{context.title}</strong>
+        {target && <i aria-hidden="true">→</i>}
+      </button>
+
+      <div className={styles.commitmentActions}>
+        {mode === "mine" && proposed && <button className="primary small" type="button" disabled={busyActionId === action.id} onClick={() => void changeStatus(action, "open")}>{busyActionId === action.id ? "Accepting…" : "Accept"}</button>}
+        {mode === "mine" && !proposed && <button className="primary small" type="button" disabled={busyActionId === action.id} onClick={() => void changeStatus(action, "done")}>{busyActionId === action.id ? "Saving…" : "Done"}</button>}
+        <button className="secondary small" type="button" onClick={() => setEditingAction(action)}>Edit</button>
+        {target && <button className="quiet small" type="button" onClick={() => onOpen(target)}>Open context</button>}
+      </div>
+    </article>;
+  };
+
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className="workflow-editor compact-modal" role="dialog" aria-modal="true">
-      <div className="editor-head"><div><span className="section-kicker">Work</span><h2>All commitments</h2><p className="editor-note">Concrete next steps across projects and tensions.</p></div><button className="quiet editor-close" type="button" onClick={onClose}>×</button></div>
-      <div className={styles.commitmentList}>{actions.map((action) => {
-        const project = action.projectId ? projects.get(action.projectId) : undefined;
-        const tension = action.sourceTensionId ? tensions.get(action.sourceTensionId) : undefined;
-        return <article className={styles.commitmentRow} key={action.id}>
-          <button className={styles.commitmentContext} type="button" disabled={!project && !tension} onClick={() => tension ? onOpen({ kind: "tension", id: tension.id }) : project ? onOpen({ kind: "project", id: project.id }) : undefined}>
-            <small>{tension ? "Tension" : project ? "Project" : "Commitment"}</small>
-            <strong>{action.title}</strong>
-            <span>{tension?.title ?? project?.title ?? action.source ?? "No linked work object"}</span>
-          </button>
-          <div className={styles.commitmentOwner}><span>{personName(action.ownerId)}</span>{action.ownerId === currentUserId && action.status === "proposed" && <button className="secondary small" type="button" onClick={() => void onStatus(action.id, "open")}>Accept</button>}{action.ownerId === currentUserId && action.status === "open" && <button className="quiet small" type="button" onClick={() => void onStatus(action.id, "done")}>Done</button>}</div>
-        </article>;
-      })}</div>
-      {!actions.length && <div className="calm-empty compact-empty"><span>✓</span><h3>No open commitments</h3></div>}
+    <section className={styles.commitmentCockpit} role="dialog" aria-modal="true">
+      <div className={styles.commitmentCockpitHead}>
+        <div>
+          <span className="section-kicker">Work</span>
+          <h2>Commitments</h2>
+          <p>Who has agreed to do what — and what needs movement now.</p>
+        </div>
+        <button className="quiet editor-close" type="button" onClick={onClose}>×</button>
+      </div>
+
+      <div className={styles.commitmentSummary}>
+        <div className={styles.commitmentSummaryPrimary}>
+          <span>Yours</span>
+          <strong>{mine.length}</strong>
+          <small>{proposedMine.length ? `${proposedMine.length} waiting for your acceptance` : "Accepted or ready to complete"}</small>
+        </div>
+        <div><span>Overdue</span><strong>{overdueMine}</strong><small>Your accepted commitments</small></div>
+        <div><span>Waiting on others</span><strong>{others.length}</strong><small>Across {waitingByOwner.length} {waitingByOwner.length === 1 ? "person" : "people"}</small></div>
+      </div>
+
+      <div className={styles.commitmentCockpitScroll}>
+        <section className={styles.commitmentSection}>
+          <div className={styles.commitmentSectionHead}>
+            <div><span className="section-kicker">Your work</span><h3>My commitments</h3></div>
+            <span className={styles.commitmentSectionCount}>{mine.length}</span>
+          </div>
+
+          {proposedMine.length > 0 && <div className={styles.commitmentSubsection}>
+            <div className={styles.commitmentSubhead}><strong>Proposed to you</strong><span>{proposedMine.length}</span></div>
+            <div className={styles.commitmentCardGrid}>{proposedMine.map((action) => renderCard(action, "mine"))}</div>
+          </div>}
+
+          {openMine.length > 0 && <div className={styles.commitmentSubsection}>
+            <div className={styles.commitmentSubhead}><strong>Accepted</strong><span>{openMine.length}</span></div>
+            <div className={styles.commitmentCardGrid}>{openMine.map((action) => renderCard(action, "mine"))}</div>
+          </div>}
+
+          {!mine.length && <div className={styles.commitmentEmpty}><span>✓</span><div><strong>No active commitments assigned to you.</strong><small>Anything explicitly needing you will still appear in My Attention.</small></div></div>}
+        </section>
+
+        <section className={styles.commitmentSection}>
+          <div className={styles.commitmentSectionHead}>
+            <div><span className="section-kicker">Dependencies</span><h3>Waiting on others</h3></div>
+            <span className={styles.commitmentSectionCount}>{others.length}</span>
+          </div>
+
+          {waitingByOwner.length > 0 ? <div className={styles.waitingGroups}>
+            {waitingByOwner.map((group, index) => {
+              const overdue = group.actions.filter((action) => isOverdue(action.due)).length;
+              const proposed = group.actions.filter((action) => action.status === "proposed").length;
+              return <details className={styles.waitingGroup} key={group.person.id} open={index === 0}>
+                <summary>
+                  <span className={styles.waitingAvatar}>{group.person.name.charAt(0)}</span>
+                  <span className={styles.waitingName}><strong>{group.person.name}</strong><small>{proposed ? `${proposed} awaiting acceptance` : "Accepted commitments"}{overdue ? ` · ${overdue} overdue` : ""}</small></span>
+                  <span className={styles.waitingCount}>{group.actions.length}</span>
+                  <span className={styles.waitingChevron}>⌄</span>
+                </summary>
+                <div className={styles.commitmentCardGrid}>{group.actions.map((action) => renderCard(action, "waiting"))}</div>
+              </details>;
+            })}
+          </div> : <div className={styles.commitmentEmpty}><span>○</span><div><strong>Nothing is currently waiting on somebody else.</strong><small>Shared commitments will appear here by owner.</small></div></div>}
+        </section>
+      </div>
+
+      {editingAction && <CommitmentEditModal
+        action={editingAction}
+        people={workspace.people}
+        currentUserId={currentUserId}
+        onClose={() => setEditingAction(null)}
+        onChanged={() => {
+          setEditingAction(null);
+          window.dispatchEvent(new Event("focus"));
+        }}
+      />}
     </section>
   </div>;
+}
+
+function CommitmentEditModal({ action, people, currentUserId, onClose, onChanged }: {
+  action: Action;
+  people: WorkspacePerson[];
+  currentUserId: string;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const [title, setTitle] = useState(action.title);
+  const [ownerId, setOwnerId] = useState(action.ownerId);
+  const [due, setDue] = useState(action.due ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function save() {
+    if (!title.trim() || !ownerId || saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      await updateActionDetails(action.id, {
+        title,
+        ownerId,
+        due: due || undefined,
+        currentUserId,
+        currentOwnerId: action.ownerId,
+        currentStatus: action.status,
+      });
+      onChanged();
+    } catch (err) {
+      setError(readError(err));
+      setSaving(false);
+    }
+  }
+
+  async function remove() {
+    if (saving || !window.confirm("Remove this next step from active work?")) return;
+    setSaving(true);
+    setError("");
+    try {
+      await removeAction(action.id);
+      onChanged();
+    } catch (err) {
+      setError(readError(err));
+      setSaving(false);
+    }
+  }
+
+  return <div className={styles.commitmentEditBackdrop} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="workflow-editor compact-modal context-step-modal" role="dialog" aria-modal="true">
+      <div className="editor-head"><div><span className="section-kicker">Edit commitment</span><h2>Correct the next step</h2></div><button className="quiet editor-close" type="button" onClick={onClose}>×</button></div>
+      <label className="field"><span>What needs to happen?</span><input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} /></label>
+      <label className="field"><span>Owner</span><select value={ownerId} onChange={(event) => setOwnerId(event.target.value)}>{people.map((person) => <option value={person.id} key={person.id}>{person.name}</option>)}</select></label>
+      <label className="field"><span>Due date <em>optional</em></span><input type="date" value={due} onChange={(event) => setDue(event.target.value)} /></label>
+      {ownerId !== action.ownerId && ownerId !== currentUserId && <p className="context-step-note">Changing the owner will propose this commitment to {people.find((person) => person.id === ownerId)?.name ?? "this person"}. They must accept it first.</p>}
+      {error && <div className="auth-message error">{error}</div>}
+      <div className="editor-actions"><button className="quiet" type="button" disabled={saving} onClick={() => void remove()}>Remove</button><div className="editor-actions-right"><button className="secondary" type="button" disabled={saving} onClick={onClose}>Cancel</button><button className="primary" type="button" disabled={!title.trim() || !ownerId || saving} onClick={() => void save()}>{saving ? "Saving…" : "Save changes"}</button></div></div>
+    </section>
+  </div>;
+}
+
+function isOverdue(due?: string) {
+  return Boolean(due && due < todayLocalISO());
+}
+
+function commitmentDue(due?: string): { label: string; tone: "normal" | "soon" | "overdue" } {
+  if (!due) return { label: "", tone: "normal" };
+  const today = todayLocalISO();
+  if (due < today) return { label: `Overdue · ${formatActionDate(due)}`, tone: "overdue" };
+  if (due === today) return { label: "Due today", tone: "soon" };
+  const dueDate = new Date(`${due}T12:00:00`).getTime();
+  const todayDate = new Date(`${today}T12:00:00`).getTime();
+  const days = Math.round((dueDate - todayDate) / 86_400_000);
+  if (days <= 7) return { label: `Due ${formatActionDate(due)}`, tone: "soon" };
+  return { label: `Due ${formatActionDate(due)}`, tone: "normal" };
+}
+
+function todayLocalISO() {
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 10);
 }
 
 function ProjectCreateModal({ people, currentUserId, onClose, onSave }: {
