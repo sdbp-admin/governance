@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Tension } from "@/lib/domain";
 import type { ContextualNextStepInput } from "@/components/contextual-next-steps";
 import { WorkspaceWorkView } from "@/components/work-view";
 import { TensionsWorkspaceView } from "@/components/tensions-workspace-view";
 import type { WorkspaceData, WorkspacePerson } from "@/lib/supabase/workspace";
+import { loadCommentThreadSummary } from "@/lib/supabase/comment-thread-state";
+import { projectToneClass } from "@/lib/project-tone";
 import styles from "@/components/redesign/redesign.module.css";
 
 export type RedesignWorkTarget = { kind: "project" | "tension"; id: string } | null;
@@ -186,14 +188,21 @@ export function RedesignWorkHub(props: Props) {
           const linked = activeTensions.filter((tension) => tension.linkedProjectId === project.id);
           const tensionCount = tensionCountByProject.get(project.id) ?? 0;
           const actionCount = actionCountByProject.get(project.id) ?? 0;
-          return <article className={styles.projectCard} key={project.id}>
+          const latestLinked = [...linked].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+          const tone = projectToneClass(project.id).replace("project-tone-", "");
+          return <article className={styles.projectCard} data-tone={tone} key={project.id}>
             <div className={styles.projectTopline}><span>Project</span><span>{props.personName(project.ownerId)}</span></div>
-            <h3>{project.title}</h3>
+            <div className={styles.projectTitleRow}>
+              <h3>{project.title}</h3>
+              <button className={styles.openProjectInline} type="button" onClick={() => props.onTarget({ kind: "project", id: project.id })}>Open <span>→</span></button>
+            </div>
             {project.summary && <p className={styles.summary}>{project.summary}</p>}
             <div className={styles.objectMeta}>
               <span>{tensionCount} {tensionCount === 1 ? "tension" : "tensions"}</span>
               <span>{actionCount} {actionCount === 1 ? "next step" : "next steps"}</span>
+              <ProjectActivityIndicator projectId={project.id} linkedTensionIds={linked.map((tension) => tension.id)} />
             </div>
+            {latestLinked && <div className={styles.latestActivity}>Latest tension · {formatRecentDate(latestLinked.createdAt)}</div>}
             {linked.length > 0 && <div className={styles.linkedTensions}>
               {linked.slice(0, 3).map((tension) => <button type="button" key={tension.id} onClick={() => props.onTarget({ kind: "tension", id: tension.id })}>
                 <span className={styles.tensionDot} aria-hidden="true" />
@@ -201,7 +210,6 @@ export function RedesignWorkHub(props: Props) {
               </button>)}
               {linked.length > 3 && <small className={styles.moreLinked}>+ {linked.length - 3} more tensions</small>}
             </div>}
-            <button className={styles.openObject} type="button" onClick={() => props.onTarget({ kind: "project", id: project.id })}>Open project <span>→</span></button>
           </article>;
         })}
       </div> : <div className="calm-empty compact-empty"><span>○</span><h3>No active projects</h3><p>Create one when an outcome becomes real work.</p></div>}
@@ -227,6 +235,51 @@ export function RedesignWorkHub(props: Props) {
     {createOpen === "tension" && <TensionCreateModal projects={activeProjects} onClose={() => setCreateOpen(null)} onSave={async (title, projectId) => { if (await props.onRaise(title, projectId)) setCreateOpen(null); }} />}
     {commitmentsOpen && <CommitmentsPanel workspace={props.workspace} currentUserId={props.currentUserId} personName={props.personName} onStatus={props.onActionStatus} onOpen={(target) => { setCommitmentsOpen(false); props.onTarget(target); }} onClose={() => setCommitmentsOpen(false)} />}
   </>;
+}
+
+function ProjectActivityIndicator({ projectId, linkedTensionIds }: { projectId: string; linkedTensionIds: string[] }) {
+  const [unread, setUnread] = useState(0);
+  const linkedKey = linkedTensionIds.join("|");
+
+  const refresh = useCallback(async () => {
+    try {
+      const tensionIds = linkedKey ? linkedKey.split("|") : [];
+      const summaries = await Promise.all([
+        loadCommentThreadSummary("project", projectId),
+        ...tensionIds.map((id) => loadCommentThreadSummary("tension", id)),
+      ]);
+      setUnread(summaries.reduce((sum, summary) => sum + summary.unreadCount, 0));
+    } catch {
+      setUnread(0);
+    }
+  }, [projectId, linkedKey]);
+
+  useEffect(() => {
+    void refresh();
+    const onFocus = () => void refresh();
+    const onThreadEvent = () => void refresh();
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("comment-thread-seen", onThreadEvent);
+    window.addEventListener("comment-thread-changed", onThreadEvent);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("comment-thread-seen", onThreadEvent);
+      window.removeEventListener("comment-thread-changed", onThreadEvent);
+    };
+  }, [refresh]);
+
+  if (!unread) return null;
+  return <span className={styles.activityBadge}>{unread} new {unread === 1 ? "comment" : "comments"}</span>;
+}
+
+function formatRecentDate(value: string) {
+  const date = new Date(value);
+  const now = new Date();
+  if (date.toDateString() === now.toDateString()) return "today";
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return "yesterday";
+  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(date);
 }
 
 function DetailHeader({ kind, title, onBack }: { kind: string; title: string; onBack: () => void }) {
