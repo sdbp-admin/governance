@@ -186,6 +186,7 @@ export function RedesignWorkHub(props: Props) {
       {activeProjects.length ? <div className={styles.projectGrid}>
         {activeProjects.map((project) => {
           const linked = activeTensions.filter((tension) => tension.linkedProjectId === project.id);
+          const projectActions = openActions.filter((action) => action.projectId === project.id);
           const tensionCount = tensionCountByProject.get(project.id) ?? 0;
           const actionCount = actionCountByProject.get(project.id) ?? 0;
           const latestLinked = [...linked].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
@@ -202,13 +203,25 @@ export function RedesignWorkHub(props: Props) {
               <span>{actionCount} {actionCount === 1 ? "next step" : "next steps"}</span>
               <ProjectActivityIndicator projectId={project.id} linkedTensionIds={linked.map((tension) => tension.id)} />
             </div>
-            {latestLinked && <div className={styles.latestActivity}>Latest tension · {formatRecentDate(latestLinked.createdAt)}</div>}
-            {linked.length > 0 && <div className={styles.linkedTensions}>
-              {linked.slice(0, 3).map((tension) => <button type="button" key={tension.id} onClick={() => props.onTarget({ kind: "tension", id: tension.id })}>
-                <span className={styles.tensionDot} aria-hidden="true" />
-                <span><strong>{tension.title}</strong>{tension.latestNote && <small>{tension.latestNote}</small>}</span>
-              </button>)}
-              {linked.length > 3 && <small className={styles.moreLinked}>+ {linked.length - 3} more tensions</small>}
+            {linked.length > 0 && <div className={styles.cardWorkGroup}>
+              <div className={styles.cardWorkGroupHead}><span>Tensions</span><strong>{linked.length}</strong>{latestLinked && <small>Latest · {formatRecentDate(latestLinked.createdAt)}</small>}</div>
+              <div className={styles.linkedTensions}>
+                {linked.slice(0, 2).map((tension) => <button type="button" key={tension.id} onClick={() => props.onTarget({ kind: "tension", id: tension.id })}>
+                  <span className={styles.tensionDot} aria-hidden="true" />
+                  <span><strong>{tension.title}</strong>{tension.latestNote && <small>{tension.latestNote}</small>}</span>
+                </button>)}
+                {linked.length > 2 && <small className={styles.moreLinked}>+ {linked.length - 2} more tensions</small>}
+              </div>
+            </div>}
+            {projectActions.length > 0 && <div className={styles.cardWorkGroup}>
+              <div className={styles.cardWorkGroupHead}><span>Next steps</span><strong>{projectActions.length}</strong></div>
+              <div className={styles.projectStepList}>
+                {projectActions.slice(0, 2).map((action) => <button type="button" key={action.id} onClick={() => props.onTarget({ kind: "project", id: project.id })}>
+                  <span className={styles.stepMarker} aria-hidden="true">→</span>
+                  <span className={styles.projectStepCopy}><strong>{action.title}</strong><small>{action.status === "proposed" ? "Proposed to" : "Owned by"} {props.personName(action.ownerId)}{action.due ? ` · due ${formatActionDate(action.due)}` : ""}</small></span>
+                </button>)}
+                {projectActions.length > 2 && <small className={styles.moreLinked}>+ {projectActions.length - 2} more next steps</small>}
+              </div>
             </div>}
           </article>;
         })}
@@ -282,10 +295,14 @@ function formatRecentDate(value: string) {
   return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(date);
 }
 
-function DetailHeader({ kind, title, onBack }: { kind: string; title: string; onBack: () => void }) {
+function formatActionDate(value: string) {
+  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(new Date(`${value}T12:00:00`));
+}
+
+function DetailHeader({ kind, title: _title, onBack }: { kind: string; title: string; onBack: () => void }) {
   return <div className={styles.detailHeader}>
     <button className={styles.backButton} type="button" onClick={onBack}>← Work</button>
-    <div><span className="section-kicker">{kind}</span><h2>{title}</h2></div>
+    <span className="section-kicker">{kind}</span>
   </div>;
 }
 
