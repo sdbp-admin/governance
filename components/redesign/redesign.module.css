@@ -983,7 +983,7 @@
   min-height: 25px;
   margin-top: 10px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 650;
   flex-wrap: wrap;
 }
@@ -1001,18 +1001,18 @@
 .compactPeople > span {
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
-  margin-left: -5px;
+  width: 28px;
+  height: 28px;
+  margin-left: -4px;
   border: 2px solid #fff;
   border-radius: 50%;
-  background: #eef2f4;
-  color: var(--brand-navy);
-  font-size: 8px;
+  background: color-mix(in srgb, var(--card-tone) 9%, #f3f6f7);
+  color: color-mix(in srgb, var(--card-tone) 72%, var(--brand-navy));
+  font-size: 9.5px;
   font-weight: 850;
 }
 .compactPeople > span:first-child { margin-left: 0; }
-.compactPeople > small { margin-left: 5px; color: var(--muted); font-size: 9px; font-weight: 750; }
+.compactPeople > small { margin-left: 6px; color: var(--muted); font-size: 10.5px; font-weight: 750; }
 .projectAwaiting {
   margin-top: 17px;
   padding-top: 13px;
@@ -1244,7 +1244,7 @@ button.projectPanelItem:hover {
 .projectPanelItem > small {
   grid-column: 1;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 11.5px;
   line-height: 1.45;
 }
 .projectPanelFacts {
@@ -1274,6 +1274,50 @@ button.projectPanelItem:hover {
   display: grid;
   text-align: right;
 }
+.projectPanelAction {
+  grid-column: 1;
+  width: fit-content;
+  margin-top: 3px;
+  color: var(--accent-dark);
+  font-size: 11.5px;
+  font-weight: 750;
+}
+.projectPanelSource {
+  grid-column: 1;
+  width: fit-content;
+  max-width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0,auto) auto;
+  align-items: baseline;
+  gap: 7px;
+  margin-top: 3px;
+  padding: 5px 0 0;
+  border: 0;
+  border-top: 1px solid #edf0ef;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+.projectPanelSource:hover { border-color: #dce5dc; background: transparent; }
+.projectPanelSource > span {
+  color: #718019;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .035em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.projectPanelSource > strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--brand-navy);
+  font-size: 11.5px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.projectPanelSource > small { color: var(--accent-dark); font-size: 10.5px; font-weight: 750; white-space: nowrap; }
 .projectPanelEmpty {
   padding: 28px 20px;
   border: 1px dashed var(--border);
@@ -1363,7 +1407,7 @@ button.projectPanelItem:hover {
 }
 .projectDetailPeople .projectOwner small {
   color: var(--muted);
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: .06em;
   text-transform: uppercase;
@@ -1376,7 +1420,7 @@ button.projectPanelItem:hover {
   padding: 7px 0;
 }
 .projectCadence > span { display: grid; gap: 4px; }
-.projectCadence small { color: var(--muted); font-size: 9px; text-transform: lowercase; }
+.projectCadence small { color: var(--muted); font-size: 10.5px; text-transform: lowercase; }
 .projectCadence strong { color: var(--brand-navy); font-size: 13px; white-space: nowrap; }
 .projectCadence > span[data-exception="true"] strong { color: #9a4c1f; }
 .projectDetailSection { padding: 30px 3px 34px; }
@@ -1385,8 +1429,16 @@ button.projectPanelItem:hover {
 .projectState { border-bottom: 1px solid #dce3e6; }
 .projectCommitments { padding-right: 34px; }
 .projectTensions {
+  position: relative;
   padding-left: 34px;
-  border-left: 1px solid #dce3e6;
+  border-left: 0;
+}
+.projectTensions::before {
+  content: "";
+  position: absolute;
+  inset: 38px auto 38px 0;
+  width: 1px;
+  background: linear-gradient(to bottom, transparent, rgba(43,55,70,.10) 14%, rgba(43,55,70,.10) 86%, transparent);
 }
 .projectSecondary { border-top: 1px solid #dce3e6; }
 .projectDetailSectionHead {
@@ -1478,7 +1530,15 @@ button.projectPanelItem:hover {
 }
 .projectTensionMain > small { display: block; margin-top: 9px; color: #66737c; font-size: 11px; line-height: 1.45; }
 .projectTensionActions { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-direction: row; padding-top: 11px; border-top: 1px solid #edf0f1; }
-.projectSecondary > p { max-width: 760px; margin: -6px 0 15px; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.projectSecondary {
+  display: grid;
+  grid-template-columns: minmax(280px,.72fr) minmax(460px,1.28fr);
+  column-gap: 38px;
+  align-items: center;
+}
+.projectSecondary > .projectDetailSectionHead { grid-column: 1; margin-bottom: 8px; }
+.projectSecondary > p { grid-column: 1; max-width: 620px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.projectDetailControls { grid-column: 2; grid-row: 1 / span 2; }
 .projectDetailControls :global(.work-toolbar),
 .projectDetailControls :global(.section-head),
 .projectDetailControls :global(.project-accent),
@@ -1500,7 +1560,26 @@ button.projectPanelItem:hover {
   background: transparent;
   box-shadow: none;
 }
-.projectDetailControls :global(.project-context-actions) { margin: 0; justify-content: flex-start; }
+.projectDetailControls :global(.project-context-actions) {
+  margin: 0;
+  padding: 11px 0;
+  justify-content: flex-start;
+  gap: 6px 18px;
+  border-top: 1px solid #e1e7e9;
+  border-bottom: 1px solid #e1e7e9;
+}
+.projectDetailControls :global(.project-context-actions > button) {
+  min-height: 32px;
+  padding: 5px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #52616d;
+  font-size: 11.5px;
+  font-weight: 700;
+  box-shadow: none;
+}
+.projectDetailControls :global(.project-context-actions > button:hover) { color: var(--brand-navy); background: transparent; }
 
 @media (max-width: 1180px) {
   .projectDetailLayout { grid-template-columns: 1fr; }
@@ -1509,7 +1588,13 @@ button.projectPanelItem:hover {
   .projectTensions,
   .projectSecondary { grid-column: 1; }
   .projectCommitments { padding-right: 3px; border-bottom: 1px solid #dce3e6; }
-  .projectTensions { padding-left: 3px; border-left: 0; }
+  .projectTensions { padding-left: 3px; }
+  .projectTensions::before { display: none; }
+  .projectSecondary { grid-template-columns: 1fr; }
+  .projectSecondary > .projectDetailSectionHead,
+  .projectSecondary > p,
+  .projectDetailControls { grid-column: 1; grid-row: auto; }
+  .projectDetailControls { margin-top: 18px; }
 }
 
 @media (max-width: 600px) {
@@ -1525,6 +1610,8 @@ button.projectPanelItem:hover {
   .projectPanelList { padding: 4px 12px 8px; }
   .projectPanelItem { grid-template-columns: 1fr; gap: 6px; padding: 15px 10px 15px 13px; }
   .projectPanel .projectPanelFacts { grid-column: 1; grid-row: auto; display: flex; justify-content: flex-start; text-align: left; }
+  .projectPanelSource { grid-template-columns: auto minmax(0,1fr); }
+  .projectPanelSource > small { grid-column: 1 / -1; }
   .projectPanelFoot { padding: 12px 16px 15px; }
   .projectDetailHero { flex-direction: column; gap: 16px; padding: 4px 0 23px; }
   .projectCadence { width: 100%; justify-content: space-between; }

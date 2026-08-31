@@ -232,6 +232,7 @@ export function RedesignWorkHub(props: Props) {
       panel={projectPanel}
       project={activeProjects.find((project) => project.id === projectPanel.projectId)}
       tensions={activeTensions.filter((tension) => tension.linkedProjectId === projectPanel.projectId)}
+      sourceTensions={props.workspace.tensions}
       commitments={openActions.filter((action) => action.projectId === projectPanel.projectId)}
       urgentTensionIds={props.urgentTensionIds}
       personName={props.personName}
@@ -572,10 +573,11 @@ function tensionAge(createdAt: string) {
   return `${days} days old`;
 }
 
-function ProjectObjectPanelDialog({ panel, project, tensions, commitments, urgentTensionIds, personName, onOpenTension, onOpenProject, onClose }: {
+function ProjectObjectPanelDialog({ panel, project, tensions, sourceTensions, commitments, urgentTensionIds, personName, onOpenTension, onOpenProject, onClose }: {
   panel: Exclude<ProjectObjectPanel, null>;
   project?: Project;
   tensions: Tension[];
+  sourceTensions: Tension[];
   commitments: Action[];
   urgentTensionIds: ReadonlySet<string>;
   personName: (id: string) => string;
@@ -607,10 +609,11 @@ function ProjectObjectPanelDialog({ panel, project, tensions, commitments, urgen
             </span>
             <small>Raised by {personName(tension.raiserId)}</small>
             {need && need.people.length > 0 && <small>{need.kind === "input" ? "Input from" : "Conversation with"} {need.people.join(", ")}</small>}
+            <span className={styles.projectPanelAction}>Open tension →</span>
           </button>;
         }) : commitments.map((action) => {
           const due = commitmentDue(action.due);
-          const sourceTension = action.sourceTensionId ? tensions.find((tension) => tension.id === action.sourceTensionId) : undefined;
+          const sourceTension = action.sourceTensionId ? sourceTensions.find((tension) => tension.id === action.sourceTensionId) : undefined;
           return <article className={styles.projectPanelItem} key={action.id}>
             <strong>{action.title}</strong>
             <span className={styles.projectPanelFacts}>
@@ -618,13 +621,13 @@ function ProjectObjectPanelDialog({ panel, project, tensions, commitments, urgen
               <span data-exception={due.tone === "overdue" || due.label === "Due today" ? "true" : undefined}>{due.label || "No deadline"}</span>
             </span>
             <small>Owner {personName(action.ownerId)}</small>
-            <small>{action.sourceTensionId ? `From tension: ${sourceTension?.title ?? "recorded tension source"}` : "Direct project commitment"}</small>
+            {sourceTension ? <button className={styles.projectPanelSource} type="button" onClick={() => onOpenTension(sourceTension.id)}><span>From tension</span><strong>{sourceTension.title}</strong><small>Open tension →</small></button> : !action.sourceTensionId && <small>Direct project commitment</small>}
           </article>;
         })}
         {count === 0 && <div className={styles.projectPanelEmpty}>No active {title.toLowerCase()} in this project.</div>}
       </div>
       <footer className={styles.projectPanelFoot}>
-        <button className="text-action" type="button" onClick={() => onOpenProject(project.id)}>Open complete project</button>
+        <button className="text-action" type="button" onClick={() => onOpenProject(project.id)}>Open project →</button>
       </footer>
     </section>
   </div>;
