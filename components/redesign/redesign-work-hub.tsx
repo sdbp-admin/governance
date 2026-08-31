@@ -597,3 +597,7 @@ function formatStatus(status: Tension["status"]) {
   if (status === "awaiting_confirmation") return "awaiting confirmation";
   return status;
 }
+
+function readError(error: unknown) {
+  return error instanceof Error ? error.message : "The commitment could not be updated.";
+}
