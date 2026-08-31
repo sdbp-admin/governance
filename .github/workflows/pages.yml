@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - feat/v1-foundation
+      - design/workspace-simplification
   workflow_dispatch:
 
 permissions:
