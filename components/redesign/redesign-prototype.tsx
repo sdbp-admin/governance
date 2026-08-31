@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { RedesignLaunchApp } from "@/components/redesign/redesign-launch-app";
+import { RedesignLaunchApp, type RedesignAccountControls } from "@/components/redesign/redesign-launch-app";
 import { ProjectSettings } from "@/components/project-settings";
 import { TacticalMeeting } from "@/components/tactical-meeting";
 import { TemporaryWorkFileCleanup } from "@/components/temporary-work-file-cleanup";
@@ -16,7 +16,7 @@ type ProposalMatch = {
   stage: string;
 };
 
-export function RedesignPrototype({ liveProfile }: { liveProfile?: LiveProfile }) {
+export function RedesignPrototype({ liveProfile, accountControls }: { liveProfile?: LiveProfile; accountControls?: RedesignAccountControls }) {
   const [tacticalMode, setTacticalMode] = useState(false);
   const [governanceMeetingMode, setGovernanceMeetingMode] = useState(false);
 
@@ -108,7 +108,7 @@ export function RedesignPrototype({ liveProfile }: { liveProfile?: LiveProfile }
 
   return <>
     {liveProfile && <TemporaryWorkFileCleanup />}
-    <RedesignLaunchApp liveProfile={liveProfile} />
+    <RedesignLaunchApp liveProfile={liveProfile} accountControls={accountControls} />
     {liveProfile && <GovernanceAvailabilityPrompt liveProfile={liveProfile} />}
     {liveProfile && !governanceMeetingMode && <ProjectSettings />}
     {liveProfile && !governanceMeetingMode && <button className={styles.launcher} type="button" onClick={launchTacticalMeeting} title="Open a live facilitation view in a separate tab">
