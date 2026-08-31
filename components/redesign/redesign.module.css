@@ -328,3 +328,182 @@
   .projectTitleRow { gap: 9px; }
   .moreChoice { min-height: 74px; }
 }
+
+
+/* Commitment hierarchy --------------------------------------------------- */
+.detailHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+}
+.detailHeader h2 { display: none; }
+.detailHeader .section-kicker { margin-top: 1px; }
+
+.cardWorkGroup {
+  margin-top: 15px;
+  padding-top: 13px;
+  border-top: 1px solid rgba(43,55,70,.09);
+}
+.cardWorkGroupHead {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 20px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+}
+.cardWorkGroupHead strong {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #eef2f4;
+  color: var(--brand-navy);
+  font-size: 10px;
+}
+.cardWorkGroupHead small {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: .04em;
+}
+.cardWorkGroup .linkedTensions { margin-top: 7px; padding-top: 0; border-top: 0; }
+
+.projectStepList { display: grid; gap: 5px; margin-top: 7px; }
+.projectStepList > button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 8px 0;
+  display: grid;
+  grid-template-columns: 20px minmax(0,1fr);
+  gap: 8px;
+  text-align: left;
+  border-radius: 9px;
+}
+.projectStepList > button:hover { background: rgba(154,180,22,.055); padding-left: 7px; padding-right: 7px; }
+.stepMarker {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--green-soft);
+  color: #758b18;
+  font-size: 12px;
+  font-weight: 800;
+}
+.projectStepCopy { min-width: 0; }
+.projectStepCopy strong,
+.projectStepCopy small { display: block; }
+.projectStepCopy strong {
+  color: var(--brand-navy);
+  font-size: 12px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.projectStepCopy small {
+  margin-top: 4px;
+  color: #596875;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* In object detail, next steps are commitments, not decorative footnotes. */
+.tensionDetail :global(.tension-card) {
+  grid-template-columns: 5px minmax(0,1fr);
+  align-items: start;
+}
+.tensionDetail :global(.tension-content) { min-width: 0; }
+.tensionDetail :global(.tension-object-actions) {
+  grid-column: 2;
+  margin-top: 6px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  justify-content: flex-start;
+}
+.tensionDetail :global(.tension-line) { min-height: 100%; }
+
+.tensionDetail :global(.context-next-steps),
+.projectDetail :global(.context-next-steps) {
+  margin-top: 22px;
+  padding: 16px 17px;
+  border: 1px solid rgba(154,180,22,.28);
+  border-left: 4px solid var(--brand-green);
+  border-radius: 15px;
+  background: linear-gradient(135deg, rgba(154,180,22,.055), rgba(255,255,255,.98) 48%);
+}
+.tensionDetail :global(.context-next-steps-head),
+.projectDetail :global(.context-next-steps-head) {
+  min-height: 30px;
+  padding-bottom: 11px;
+  border-bottom: 1px solid rgba(43,55,70,.08);
+}
+.tensionDetail :global(.context-next-steps-head .kind),
+.projectDetail :global(.context-next-steps-head .kind) {
+  color: var(--brand-navy);
+  font-size: 11px;
+  letter-spacing: .075em;
+}
+.tensionDetail :global(.context-step-count),
+.projectDetail :global(.context-step-count) {
+  background: var(--green-soft);
+  color: #728718;
+}
+.tensionDetail :global(.context-step-list),
+.projectDetail :global(.context-step-list) {
+  gap: 9px;
+  margin-top: 12px;
+}
+.tensionDetail :global(.context-step-row),
+.projectDetail :global(.context-step-row) {
+  align-items: flex-start;
+  padding: 13px 14px;
+  border-radius: 12px;
+  border-color: rgba(43,55,70,.11);
+  box-shadow: 0 4px 12px rgba(43,55,70,.025);
+}
+.tensionDetail :global(.context-step-copy),
+.projectDetail :global(.context-step-copy) {
+  gap: 5px;
+}
+.tensionDetail :global(.context-step-copy strong),
+.projectDetail :global(.context-step-copy strong) {
+  color: var(--brand-navy);
+  font-size: 15px;
+  line-height: 1.4;
+  font-weight: 750;
+}
+.tensionDetail :global(.context-step-copy small),
+.projectDetail :global(.context-step-copy small) {
+  color: #52616d;
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 700;
+}
+.tensionDetail :global(.context-step-row > .actions),
+.projectDetail :global(.context-step-row > .actions) {
+  margin-top: 0;
+}
+
+/* Reduce duplicate object-title dominance in detail cards. */
+.tensionDetail :global(.tension-content h3) { font-size: 22px; line-height: 1.35; }
+.projectDetail :global(.project-card h3) { font-size: 24px; }
+
+@media (max-width: 700px) {
+  .tensionDetail :global(.tension-card) { grid-template-columns: 4px minmax(0,1fr); }
+  .tensionDetail :global(.tension-object-actions) { grid-column: 2; }
+  .tensionDetail :global(.context-step-row),
+  .projectDetail :global(.context-step-row) { padding: 12px; }
+}
