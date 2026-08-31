@@ -887,3 +887,24 @@
   .waitingGroup summary { grid-template-columns: 34px minmax(0,1fr) auto 18px; padding-left: 10px; padding-right: 10px; }
   .waitingAvatar { width: 32px; height: 32px; }
 }
+
+
+/* Tension preview ownership --------------------------------------------- */
+.tensionPeople {
+  margin-top: 5px !important;
+  color: #52616d !important;
+  font-size: 10px !important;
+  font-weight: 750;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+.tensionState {
+  margin-top: 3px !important;
+  color: var(--muted) !important;
+  font-size: 10px !important;
+  line-height: 1.35;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
