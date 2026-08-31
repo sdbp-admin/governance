@@ -174,7 +174,6 @@ export function RedesignLaunchApp({ liveProfile, accountControls }: { liveProfil
     <aside className={`sidebar ${styles.redesignSidebar}`}>
       <div className="brand-lockup"><div className="brand-mark" aria-hidden="true"><span/><span/></div><div className="brand">SDBP Workspace<small>Structure · rhythm · memory</small></div></div>
       <nav className={`nav ${styles.primaryNav}`}>{(["attention","work","governance"] as View[]).map(key=><button key={key} className={view===key?"active":""} onClick={()=>{setView(key);if(key==="work")setWorkTarget(null);}}><strong>{LABELS[key]}</strong><small>{NAV_META[key]}</small></button>)}</nav>
-      <div className={styles.navSpacer}/>
       <nav className={`nav ${styles.secondaryNav}`}><button className={view==="more"?"active":""} onClick={()=>setView("more")}><strong>More</strong><small>{NAV_META.more}</small></button></nav>
       <div className={styles.sidebarAccount}>
         <details className={styles.accountMenu}>
@@ -185,17 +184,22 @@ export function RedesignLaunchApp({ liveProfile, accountControls }: { liveProfil
             <button type="button" onClick={accountControls?.onSignOut}>Sign out</button>
           </div>
         </details>
-        <button className={styles.compassButton} type="button" onClick={()=>setCompassOpen(true)}>Compass</button>
       </div>
     </aside>
     <main className={`main ${styles.redesignMain}`}>
       <div className={styles.topline}>
         <RedesignPageHeader view={view} attentionCount={attention.length} currentName={liveProfile.name}/>
-        <button className={styles.feedButton} type="button" onClick={()=>setFeedOpen(true)} aria-label={feedMentionCount? `Open Board Feed, ${feedMentionCount} mention${feedMentionCount===1?"":"s"} waiting`:"Open Board Feed"}>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.75h14v9.5H9.4L5 18.75v-13Z"/></svg>
-          <span>Feed</span>
-          {feedMentionCount>0&&<strong>{feedMentionCount}</strong>}
-        </button>
+        <div className={styles.topActions}>
+          <button className={styles.utilityButton} type="button" onClick={()=>setCompassOpen(true)} aria-label="Open Compass">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="m9.4 14.6 1.7-3.5 3.5-1.7-1.7 3.5-3.5 1.7Z"/></svg>
+            <span>Compass</span>
+          </button>
+          <button className={styles.feedButton} type="button" onClick={()=>setFeedOpen(true)} aria-label={feedMentionCount? `Open Board Feed, ${feedMentionCount} mention${feedMentionCount===1?"":"s"} waiting`:"Open Board Feed"}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.75h14v9.5H9.4L5 18.75v-13Z"/></svg>
+            <span>Feed</span>
+            {feedMentionCount>0&&<strong>{feedMentionCount}</strong>}
+          </button>
+        </div>
       </div>
       {error&&<div className="records-status error launch-error">{error}</div>}
       {view==="attention"&&<AttentionView items={attention} urgentTensionIds={urgentTensionIds} onPrimary={handleAttention} onOpenSource={handleOpenAttentionSource} onRaiseTension={()=>{setWorkCreateIntent("tension");setWorkTarget(null);setView("work");}}/>}
@@ -233,10 +237,10 @@ export function RedesignLaunchApp({ liveProfile, accountControls }: { liveProfil
       />}
       {view==="governance"&&<GovernanceWorkspaceView workspace={workspace} currentUserId={currentUserId} personName={personName} onCreateProposal={addProposal} onStartMeeting={startMeeting} onGoTensions={()=>{setWorkTarget(null);setView("work");}} onGoRecords={()=>{setMoreSection("records");setView("more");}}/>}
       {view==="more"&&<div className={styles.moreSurface}>
-        <div className={styles.moreTabs}>
-          <button className={moreSection==="organisation"?styles.moreTabActive:""} type="button" onClick={()=>setMoreSection("organisation")}>Organisation</button>
-          <button className={moreSection==="records"?styles.moreTabActive:""} type="button" onClick={()=>setMoreSection("records")}>Records</button>
-          <button className={moreSection==="pulse"?styles.moreTabActive:""} type="button" onClick={()=>setMoreSection("pulse")}>Pulse</button>
+        <div className={styles.moreChoices}>
+          <button className={`${styles.moreChoice} ${moreSection==="organisation"?styles.moreChoiceActive:""}`} data-tone="blue" type="button" onClick={()=>setMoreSection("organisation")}><strong>Organisation</strong><small>People, roles & groups</small></button>
+          <button className={`${styles.moreChoice} ${moreSection==="records"?styles.moreChoiceActive:""}`} data-tone="green" type="button" onClick={()=>setMoreSection("records")}><strong>Records</strong><small>Organisational memory</small></button>
+          <button className={`${styles.moreChoice} ${moreSection==="pulse"?styles.moreChoiceActive:""}`} data-tone="orange" type="button" onClick={()=>setMoreSection("pulse")}><strong>Pulse</strong><small>Signals & stuck work</small></button>
         </div>
         {moreSection==="organisation"&&<OrganisationWorkspaceView workspace={workspace} currentUserId={currentUserId} canInvite={inviteAllowed} personName={personName} presence={presence} onInvite={async(name,email)=>{const ok=await run(()=>invitePerson(name,email),`Invitation sent to ${email}.`);return ok;}} onSaveRole={role=>run(()=>saveRole(role),"Role saved.")} onDeleteRole={id=>run(()=>deleteRole(id),"Role removed.")} onOpenProject={()=>{setWorkTarget(null);setView("work");}}/>}
         {moreSection==="records"&&<RecordsView governanceProposals={workspace.governanceProposals} tensions={workspace.tensions} profileId={liveProfile.id} onNotice={setNotice}/>}
