@@ -161,3 +161,20 @@
   .feedDrawer { width: 100%; padding-left: 16px; padding-right: 16px; }
   .drawerHead { margin-left: -16px; margin-right: -16px; padding-left: 16px; padding-right: 16px; }
 }
+
+.sidebarAccount { margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.1); display: grid; gap: 8px; }
+.accountMenu { position: relative; }
+.accountMenu summary { list-style: none; display: grid; grid-template-columns: 34px minmax(0,1fr) auto; align-items: center; gap: 9px; padding: 7px 5px; border-radius: 11px; cursor: pointer; color: white; }
+.accountMenu summary::-webkit-details-marker { display: none; }
+.accountMenu summary:hover { background: rgba(255,255,255,.06); }
+.accountMenu summary strong, .accountMenu summary small { display: block; }
+.accountMenu summary strong { font-size: 12px; }
+.accountMenu summary small { margin-top: 2px; color: #aebbc5; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.accountChevron { color: #aebbc5; font-size: 14px; }
+.accountActions { display: grid; gap: 3px; padding: 5px; margin-top: 4px; border-radius: 11px; background: rgba(255,255,255,.05); }
+.accountActions button, .compassButton { border: 0; background: transparent; color: #dbe3e8; text-align: left; padding: 8px 9px; border-radius: 8px; font-size: 11px; }
+.accountActions button:hover, .compassButton:hover { background: rgba(255,255,255,.08); color: white; }
+.compassButton { color: #aebbc5; }
+@media (max-width: 820px) {
+  .sidebarAccount { display: none; }
+}
