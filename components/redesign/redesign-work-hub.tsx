@@ -290,14 +290,13 @@ function RedesignProjectDetail({ project, ...props }: Props & { project: Project
     </header>
 
     <section className={`${styles.projectDetailSection} ${styles.projectState}`}>
-      <div className={styles.projectDetailSectionHead}><div><span className="section-kicker">Current state</span><h2>What is happening now</h2></div>{project.ownerId === props.currentUserId && <button className="secondary small" type="button" onClick={() => props.onUpdateProject(project.id)}>Update</button>}</div>
+      <div className={styles.projectDetailSectionHead}><h2>Current state</h2>{project.ownerId === props.currentUserId && <button className="secondary small" type="button" onClick={() => props.onUpdateProject(project.id)}>Update</button>}</div>
       {project.summary ? <ProjectSummaryPreview title={project.title} text={project.summary} /> : <p className={styles.projectDetailEmpty}>No current state has been recorded yet.</p>}
     </section>
 
     <section className={`${styles.projectDetailSection} ${styles.projectCommitments}`}>
       <div className={styles.projectDetailSectionHead}>
-        <div><span className="section-kicker">Authoritative inventory</span><h2>Commitments <span>{activeActions.length}</span></h2></div>
-        <span className={styles.detailObjectIdentity} data-kind="commitments">Project work</span>
+        <h2>Commitments <span>{activeActions.length}</span></h2>
       </div>
       <div className={styles.commitmentGroups}>
         <section className={styles.commitmentGroup}>
@@ -340,7 +339,7 @@ function RedesignProjectDetail({ project, ...props }: Props & { project: Project
 
     <section className={`${styles.projectDetailSection} ${styles.projectTensions}`}>
       <div className={styles.projectDetailSectionHead}>
-        <div><span className="section-kicker">Unresolved context</span><h2>Tensions <span>{linkedTensions.length}</span></h2></div>
+        <h2>Tensions <span>{linkedTensions.length}</span></h2>
         <span className={styles.detailObjectIdentity} data-kind="tensions">Oldest unresolved first</span>
       </div>
       {linkedTensions.length > 0 ? <div className={styles.projectTensionList}>{linkedTensions.map((tension) => {
@@ -366,7 +365,7 @@ function RedesignProjectDetail({ project, ...props }: Props & { project: Project
     </section>
 
     <section className={`${styles.projectDetailSection} ${styles.projectSecondary}`}>
-      <div className={styles.projectDetailSectionHead}><div><span className="section-kicker">Supporting context</span><h2>Conversation, files & project controls</h2></div></div>
+      <div className={styles.projectDetailSectionHead}><h2>Conversation, files & project controls</h2></div>
       <p>Review the project conversation and files, inspect history, or change the project settings without losing the operational context above.</p>
       <div className={styles.projectDetailControls}>
         <WorkspaceWorkView

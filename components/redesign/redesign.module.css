@@ -80,6 +80,7 @@
 .navSpacer { flex: 1; min-height: 28px; }
 .secondaryNav { margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.1); }
 .redesignMain { position: relative; }
+.redesignMain:has(.projectDetailLayout) { max-width: none; }
 .topline { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; }
 .redesignPageHead { margin-bottom: 34px; max-width: 760px; }
 .redesignPageHead p { margin: 10px 0 0; color: var(--muted); font-size: 15px; max-width: 640px; line-height: 1.5; }
@@ -1178,7 +1179,7 @@
 }
 .projectPanel {
   --panel-tone: var(--brand-orange);
-  width: min(660px, 100%);
+  width: min(820px, 100%);
   max-height: min(82vh, 760px);
   overflow: hidden;
   display: flex;
@@ -1186,7 +1187,7 @@
   border: 1px solid #dce4e7;
   border-top: 3px solid var(--panel-tone);
   border-radius: 19px;
-  background: #f7f9fa;
+  background: #fff;
   box-shadow: 0 24px 70px rgba(30,42,52,.18);
 }
 .projectPanel[data-kind="commitments"] { --panel-tone: var(--brand-green); }
@@ -1212,52 +1213,66 @@
 .projectPanelList {
   overflow-y: auto;
   display: grid;
-  gap: 8px;
-  padding: 14px;
+  gap: 0;
+  padding: 5px 22px 10px;
 }
 .projectPanelItem {
   width: 100%;
   display: grid;
-  gap: 7px;
-  padding: 15px 16px;
-  border: 1px solid #e1e7e9;
-  border-radius: 13px;
-  background: #fff;
+  grid-template-columns: minmax(0,1fr) minmax(130px,auto);
+  gap: 5px 22px;
+  padding: 17px 10px 17px 14px;
+  border: 0;
+  border-bottom: 1px solid #e3e8ea;
+  border-left: 3px solid color-mix(in srgb, var(--panel-tone) 72%, transparent);
+  border-radius: 0;
+  background: transparent;
   color: inherit;
   text-align: left;
 }
+.projectPanelItem:last-child { border-bottom-color: transparent; }
 button.projectPanelItem:hover {
-  border-color: color-mix(in srgb, var(--panel-tone) 35%, #dce3e6);
-  background: color-mix(in srgb, var(--panel-tone) 3%, #fff);
+  border-left-color: var(--panel-tone);
+  background: color-mix(in srgb, var(--panel-tone) 4%, #fff);
 }
 .projectPanelItem > strong {
+  grid-column: 1;
   color: var(--brand-navy);
-  font-size: 14px;
-  line-height: 1.35;
+  font-size: 15px;
+  line-height: 1.4;
 }
 .projectPanelItem > small {
+  grid-column: 1;
   color: var(--muted);
-  font-size: 10px;
-  line-height: 1.35;
+  font-size: 11px;
+  line-height: 1.45;
 }
 .projectPanelFacts {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px 10px;
   flex-wrap: wrap;
 }
 .projectPanelFacts > span {
-  padding: 4px 7px;
-  border-radius: 999px;
-  background: #eef2f4;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
   color: #596875;
-  font-size: 9px;
-  font-weight: 750;
-  line-height: 1;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
 }
 .projectPanelFacts > span[data-exception="true"] {
-  background: var(--warm-soft);
   color: #9a4c1f;
+}
+.projectPanel .projectPanelFacts {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  align-content: start;
+  align-items: end;
+  justify-items: end;
+  display: grid;
+  text-align: right;
 }
 .projectPanelEmpty {
   padding: 28px 20px;
@@ -1283,7 +1298,11 @@ button.projectPanelItem:hover {
   --card-tone: var(--brand-blue);
   position: relative;
   display: grid;
-  gap: 16px;
+  grid-template-columns: minmax(0,1.08fr) minmax(420px,.92fr);
+  column-gap: 38px;
+  row-gap: 0;
+  width: 100%;
+  max-width: 1760px;
   padding-left: 4px;
 }
 .projectDetailLayout[data-tone="blue"] { --card-tone: var(--brand-blue); }
@@ -1301,17 +1320,19 @@ button.projectPanelItem:hover {
 }
 .projectDetailHero,
 .projectDetailSection {
-  margin-left: 15px;
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  background: #fff;
+  margin-left: 19px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 .projectDetailHero {
+  grid-column: 1 / -1;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 30px;
-  padding: 25px 27px;
+  padding: 7px 4px 30px;
+  border-bottom: 1px solid #dce3e6;
 }
 .projectDetailIdentity { min-width: 0; }
 .projectDetailIdentity h1 {
@@ -1358,15 +1379,24 @@ button.projectPanelItem:hover {
 .projectCadence small { color: var(--muted); font-size: 9px; text-transform: lowercase; }
 .projectCadence strong { color: var(--brand-navy); font-size: 13px; white-space: nowrap; }
 .projectCadence > span[data-exception="true"] strong { color: #9a4c1f; }
-.projectDetailSection { padding: 23px 25px; }
+.projectDetailSection { padding: 30px 3px 34px; }
+.projectState,
+.projectSecondary { grid-column: 1 / -1; }
+.projectState { border-bottom: 1px solid #dce3e6; }
+.projectCommitments { padding-right: 34px; }
+.projectTensions {
+  padding-left: 34px;
+  border-left: 1px solid #dce3e6;
+}
+.projectSecondary { border-top: 1px solid #dce3e6; }
 .projectDetailSectionHead {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
-  margin-bottom: 16px;
+  margin-bottom: 19px;
 }
-.projectDetailSectionHead h2 { margin-top: 4px; color: var(--brand-navy); font-size: 23px; }
+.projectDetailSectionHead h2 { margin: 0; color: var(--brand-navy); font-size: 24px; line-height: 1.25; }
 .projectDetailSectionHead h2 > span { margin-left: 5px; color: var(--muted); font-size: 15px; }
 .projectState :global(.project-summary) {
   max-width: 850px;
@@ -1377,51 +1407,65 @@ button.projectPanelItem:hover {
 }
 .projectDetailEmpty { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .detailObjectIdentity {
-  padding: 5px 8px;
-  border-left: 3px solid var(--brand-orange);
+  padding: 4px 0;
+  border: 0;
   color: var(--muted);
-  font-size: 9px;
-  font-weight: 750;
+  font-size: 11px;
+  font-weight: 650;
 }
-.detailObjectIdentity[data-kind="commitments"] { border-color: var(--brand-green); }
-.commitmentGroups { display: grid; gap: 12px; }
+.commitmentGroups { display: grid; gap: 22px; }
 .commitmentGroup {
-  padding: 16px;
-  border: 1px solid #e5eaec;
-  border-radius: 14px;
-  background: #fafbfb;
+  padding: 0 0 22px;
+  border: 0;
+  border-bottom: 1px solid #e0e6e8;
+  border-radius: 0;
+  background: transparent;
 }
+.commitmentGroup:last-child { padding-bottom: 0; border-bottom: 0; }
 .commitmentGroupHead {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
 }
-.commitmentGroupHead h3 { color: var(--brand-navy); font-size: 14px; line-height: 1.35; }
-.commitmentGroupHead small { display: block; margin-bottom: 2px; color: var(--muted); font-size: 9px; font-weight: 700; text-transform: uppercase; }
+.commitmentGroupHead h3 { color: var(--brand-navy); font-size: 15px; line-height: 1.4; }
+.commitmentGroupHead small { display: block; margin-bottom: 3px; color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; }
 .commitmentGroupHead > span { color: var(--brand-green); font-size: 13px; font-weight: 800; }
 .projectCommitments :global(.context-next-steps) {
-  margin-top: 11px;
+  margin-top: 12px;
   padding: 0;
   border: 0;
   background: transparent;
 }
-.projectCommitments :global(.context-step-list) { margin-top: 9px; }
+.projectCommitments :global(.context-next-steps-head) { min-height: 28px; }
+.projectCommitments :global(.context-next-steps-head > div) { display: none; }
+.projectCommitments :global(.context-step-list) { gap: 8px; margin-top: 10px; }
+.projectCommitments :global(.context-step-row) {
+  align-items: flex-start;
+  padding: 13px 14px;
+  border-color: #dfe6df;
+  border-left: 3px solid rgba(154,180,22,.76);
+  border-radius: 10px;
+  box-shadow: none;
+}
+.projectCommitments :global(.context-step-copy) { gap: 5px; }
+.projectCommitments :global(.context-step-copy strong) { color: var(--brand-navy); font-size: 14px; line-height: 1.4; }
+.projectCommitments :global(.context-step-copy small) { color: #5c6972; font-size: 11px; line-height: 1.45; }
 .sourceCommitmentGroup :global(.context-next-steps-head) { display: none; }
 .sourceCommitmentGroup :global(.context-step-list) { margin-top: 11px; }
-.projectTensionList { display: grid; gap: 10px; }
+.projectTensionList { display: grid; gap: 8px; }
 .projectTensionRow {
   display: grid;
-  grid-template-columns: minmax(0,1fr) auto;
-  gap: 22px;
-  padding: 17px 18px;
-  border: 1px solid #e5eaec;
+  grid-template-columns: minmax(0,1fr);
+  gap: 13px;
+  padding: 15px 16px;
+  border: 1px solid #e6e2df;
   border-left: 3px solid rgba(239,103,40,.72);
-  border-radius: 13px;
+  border-radius: 10px;
   background: #fff;
 }
 .projectTensionMain { min-width: 0; }
-.projectTensionMain h3 { margin-top: 8px; color: var(--brand-navy); font-size: 16px; line-height: 1.4; }
+.projectTensionMain h3 { margin-top: 9px; color: var(--brand-navy); font-size: 15px; line-height: 1.4; }
 .projectTensionMain p {
   display: -webkit-box;
   margin: 6px 0 0;
@@ -1432,10 +1476,9 @@ button.projectPanelItem:hover {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
-.projectTensionMain > small { display: block; margin-top: 8px; color: var(--muted); font-size: 10px; }
-.projectTensionActions { display: flex; align-items: flex-end; justify-content: center; gap: 7px; flex-direction: column; }
-.projectSecondary { background: rgba(255,255,255,.56); }
-.projectSecondary > p { max-width: 680px; margin: -5px 0 13px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.projectTensionMain > small { display: block; margin-top: 9px; color: #66737c; font-size: 11px; line-height: 1.45; }
+.projectTensionActions { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-direction: row; padding-top: 11px; border-top: 1px solid #edf0f1; }
+.projectSecondary > p { max-width: 760px; margin: -6px 0 15px; color: var(--muted); font-size: 12px; line-height: 1.55; }
 .projectDetailControls :global(.work-toolbar),
 .projectDetailControls :global(.section-head),
 .projectDetailControls :global(.project-accent),
@@ -1459,6 +1502,16 @@ button.projectPanelItem:hover {
 }
 .projectDetailControls :global(.project-context-actions) { margin: 0; justify-content: flex-start; }
 
+@media (max-width: 1180px) {
+  .projectDetailLayout { grid-template-columns: 1fr; }
+  .projectState,
+  .projectCommitments,
+  .projectTensions,
+  .projectSecondary { grid-column: 1; }
+  .projectCommitments { padding-right: 3px; border-bottom: 1px solid #dce3e6; }
+  .projectTensions { padding-left: 3px; border-left: 0; }
+}
+
 @media (max-width: 600px) {
   .projectCard { padding: 21px 18px 18px 21px; }
   .projectHeading { gap: 12px; }
@@ -1469,11 +1522,15 @@ button.projectPanelItem:hover {
   .projectPanelBackdrop { padding: 10px; }
   .projectPanel { max-height: 92vh; }
   .projectPanelHead { padding: 18px 16px 14px; }
-  .projectPanelList { padding: 10px; }
+  .projectPanelList { padding: 4px 12px 8px; }
+  .projectPanelItem { grid-template-columns: 1fr; gap: 6px; padding: 15px 10px 15px 13px; }
+  .projectPanel .projectPanelFacts { grid-column: 1; grid-row: auto; display: flex; justify-content: flex-start; text-align: left; }
   .projectPanelFoot { padding: 12px 16px 15px; }
-  .projectDetailHero { flex-direction: column; gap: 16px; padding: 21px 18px; }
+  .projectDetailHero { flex-direction: column; gap: 16px; padding: 4px 0 23px; }
   .projectCadence { width: 100%; justify-content: space-between; }
-  .projectDetailSection { padding: 19px 17px; }
+  .projectDetailHero,
+  .projectDetailSection { margin-left: 13px; }
+  .projectDetailSection { padding: 24px 0 27px; }
   .projectDetailSectionHead { align-items: flex-start; }
   .projectTensionRow { grid-template-columns: 1fr; gap: 13px; }
   .projectTensionActions { align-items: flex-start; flex-direction: row; flex-wrap: wrap; }
