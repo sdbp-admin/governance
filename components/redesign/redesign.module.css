@@ -181,3 +181,150 @@
   .accountActions { position: absolute; left: 0; top: calc(100% + 4px); z-index: 50; width: 190px; background: var(--brand-navy); box-shadow: 0 10px 30px rgba(0,0,0,.2); }
   .compassButton { flex: 0 0 auto; }
 }
+
+
+/* Second-pass hierarchy and activity ------------------------------------ */
+.secondaryNav { margin-top: 6px; padding-top: 6px; }
+.topActions { display: flex; align-items: center; gap: 8px; position: sticky; top: 18px; z-index: 10; }
+.feedButton { position: static; }
+.utilityButton {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid rgba(154,180,22,.34);
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(154,180,22,.12), rgba(255,255,255,.96));
+  color: var(--brand-navy);
+  padding: 9px 11px;
+  box-shadow: 0 8px 24px rgba(43,55,70,.07);
+}
+.utilityButton svg { width: 17px; height: 17px; fill: none; stroke: var(--brand-green); stroke-width: 1.7; stroke-linejoin: round; }
+.utilityButton > span { font-size: 12px; font-weight: 700; }
+.utilityButton:hover { border-color: rgba(154,180,22,.55); background: linear-gradient(135deg, rgba(154,180,22,.17), #fff); }
+
+/* Independent project heights, with the established project palette. */
+.projectGrid { display: block; columns: 2; column-gap: 16px; }
+.projectCard {
+  --card-tone: var(--brand-blue);
+  --card-soft: rgba(37,150,190,.06);
+  --card-border: rgba(37,150,190,.24);
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  width: 100%;
+  min-height: 0;
+  margin: 0 0 16px;
+  break-inside: avoid;
+  vertical-align: top;
+  background: linear-gradient(180deg, var(--card-soft) 0, rgba(255,255,255,.99) 92px);
+  border-color: var(--card-border);
+}
+.projectCard::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: var(--card-tone);
+}
+.projectCard[data-tone="blue"] { --card-tone: var(--brand-blue); --card-soft: rgba(37,150,190,.07); --card-border: rgba(37,150,190,.27); }
+.projectCard[data-tone="green"] { --card-tone: var(--brand-green); --card-soft: rgba(154,180,22,.08); --card-border: rgba(154,180,22,.30); }
+.projectCard[data-tone="orange"] { --card-tone: var(--brand-orange); --card-soft: rgba(239,103,40,.07); --card-border: rgba(239,103,40,.27); }
+.projectCard[data-tone="navy"] { --card-tone: var(--brand-navy); --card-soft: rgba(43,55,70,.055); --card-border: rgba(43,55,70,.22); }
+.projectTitleRow { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-top: 10px; }
+.projectTitleRow h3 { margin: 0; min-width: 0; }
+.openProjectInline {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--accent-dark);
+  padding: 3px 0 3px 7px;
+  font-size: 11px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.openProjectInline span { margin-left: 4px; font-size: 14px; font-weight: 400; }
+.openProjectInline:hover { color: var(--brand-navy); }
+.activityBadge {
+  background: var(--accent-soft) !important;
+  color: var(--accent-dark) !important;
+  font-weight: 800;
+  box-shadow: inset 0 0 0 1px rgba(37,150,190,.13);
+}
+.latestActivity { margin-top: 10px; color: var(--muted); font-size: 10px; font-weight: 650; text-transform: uppercase; letter-spacing: .055em; }
+.linkedTensions strong { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.linkedTensions small { -webkit-line-clamp: 1; }
+.openObject { display: none; }
+
+/* Unlinked tensions retain a warmer identity. */
+.tensionCard {
+  border-color: rgba(239,103,40,.20);
+  background: linear-gradient(90deg, rgba(239,103,40,.035), #fff 22%);
+}
+.tensionCard:hover { border-color: rgba(239,103,40,.36); }
+
+/* Secondary destinations should be visible, not tiny. */
+.moreChoices {
+  display: grid;
+  grid-template-columns: repeat(3,minmax(0,1fr));
+  gap: 12px;
+  margin: -4px 0 30px;
+}
+.moreChoice {
+  --more-tone: var(--brand-blue);
+  --more-soft: rgba(37,150,190,.07);
+  position: relative;
+  overflow: hidden;
+  min-height: 92px;
+  padding: 17px 18px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: linear-gradient(135deg, var(--more-soft), #fff 62%);
+  color: var(--brand-navy);
+  text-align: left;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+.moreChoice::before { content: ""; position: absolute; inset: 0 0 auto; height: 4px; background: var(--more-tone); }
+.moreChoice[data-tone="green"] { --more-tone: var(--brand-green); --more-soft: rgba(154,180,22,.08); }
+.moreChoice[data-tone="orange"] { --more-tone: var(--brand-orange); --more-soft: rgba(239,103,40,.07); }
+.moreChoice strong { font-size: 15px; }
+.moreChoice small { color: var(--muted); font-size: 11px; }
+.moreChoice:hover { transform: translateY(-1px); box-shadow: 0 10px 26px rgba(43,55,70,.06); }
+.moreChoiceActive { border-color: var(--more-tone); box-shadow: inset 0 0 0 1px var(--more-tone), 0 10px 26px rgba(43,55,70,.055); }
+
+/* Board Feed was designed for a full page; force it to fit the drawer. */
+.feedDrawer { width: min(760px, 96vw); }
+.feedDrawer :global(.feed-composer) {
+  grid-template-columns: 1fr;
+  gap: 18px;
+  max-width: none;
+  padding: 22px;
+}
+.feedDrawer :global(.feed-compose-fields) { min-width: 0; width: 100%; }
+.feedDrawer :global(.feed-compose-fields textarea) { width: 100%; max-width: 100%; min-width: 0; }
+.feedDrawer :global(.feed-compose-actions) { align-items: stretch; flex-direction: column; }
+.feedDrawer :global(.feed-compose-actions .primary) { width: 100%; }
+.feedDrawer :global(.feed-toolbar) { max-width: none; align-items: stretch; flex-direction: column; }
+.feedDrawer :global(.feed-toolbar input) { width: 100%; max-width: none; }
+.feedDrawer :global(.feed-list) { max-width: none; }
+.feedDrawer :global(.feed-post),
+.feedDrawer :global(.feed-post p),
+.feedDrawer :global(.feed-comment),
+.feedDrawer :global(.feed-comment p) { max-width: 100%; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
+.feedDrawer :global(.feed-post a),
+.feedDrawer :global(.feed-comment a) { overflow-wrap: anywhere; word-break: break-all; }
+
+@media (max-width: 900px) {
+  .projectGrid { columns: 1; }
+  .moreChoices { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  .topActions { top: 10px; gap: 5px; }
+  .utilityButton, .feedButton { padding: 9px; }
+  .utilityButton > span, .feedButton > span { display: none; }
+  .projectTitleRow { gap: 9px; }
+  .moreChoice { min-height: 74px; }
+}
