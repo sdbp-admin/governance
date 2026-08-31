@@ -5,10 +5,10 @@ import type { AttentionItem, GovernanceEffect, GovernanceProposal, GovernanceSta
 import type { ContextualNextStepInput } from "@/components/contextual-next-steps";
 import { RecordsView } from "@/components/records-view";
 import { CompassModal } from "@/components/guidance";
-import { WorkspaceWorkView } from "@/components/work-view";
 import { AttentionView, deriveAttention, type NavigableAttentionItem } from "@/components/attention-view";
-import { TensionsWorkspaceView } from "@/components/tensions-workspace-view";
 import { BoardFeedView } from "@/components/board-feed-view";
+import { RedesignWorkHub, type RedesignCreateIntent, type RedesignWorkTarget } from "@/components/redesign/redesign-work-hub";
+import styles from "@/components/redesign/redesign.module.css";
 import { OrganisationWorkspaceView } from "@/components/organisation-workspace-view";
 import { GovernanceWorkspaceView } from "@/components/governance-workspace-view";
 import { WorkspaceGovernanceMeeting } from "@/components/governance-workspace-meeting";
@@ -24,13 +24,14 @@ import {
   voteTensionPoll, type WorkspaceData,
 } from "@/lib/supabase/workspace";
 
-type View = "attention" | "feed" | "work" | "tensions" | "organisation" | "governance" | "records" | "pulse";
+type View = "attention" | "work" | "governance" | "more";
+type MoreSection = "organisation" | "records" | "pulse";
 type LiveProfile = { id: string; name: string; email: string };
 type TensionNeed = "input" | "sync";
 
 const EMPTY_WORKSPACE: WorkspaceData = { people: [], roles: [], projects: [], actions: [], tensions: [], governanceProposals: [], standingAgreements: [], attentionSignals: [] };
-const LABELS: Record<View,string> = { attention:"My Attention", feed:"Board Feed", work:"Work", tensions:"Tensions", organisation:"Organisation", governance:"Governance", records:"Records", pulse:"SDBP Pulse" };
-const NAV_META: Record<View,string> = { attention:"What needs you", feed:"Shared board communication", work:"Projects & next steps", tensions:"What could be better", organisation:"People, roles & groups", governance:"Change how we work", records:"Organisational memory", pulse:"Where things are stuck" };
+const LABELS: Record<View,string> = { attention:"My Attention", work:"Work", governance:"Governance", more:"More" };
+const NAV_META: Record<View,string> = { attention:"What needs you", work:"Projects · tensions · commitments", governance:"Change how we work", more:"Organisation · records · pulse" };
 
 export function RedesignLaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
   const [workspace,setWorkspace]=useState<WorkspaceData>(EMPTY_WORKSPACE);
@@ -45,6 +46,10 @@ export function RedesignLaunchApp({ liveProfile }: { liveProfile?: LiveProfile }
   const [projectCommentsId,setProjectCommentsId]=useState<string|null>(null);
   const [tensionCommentsId,setTensionCommentsId]=useState<string|null>(null);
   const [feedPostId,setFeedPostId]=useState<string|null>(null);
+  const [feedOpen,setFeedOpen]=useState(false);
+  const [workTarget,setWorkTarget]=useState<RedesignWorkTarget>(null);
+  const [workCreateIntent,setWorkCreateIntent]=useState<RedesignCreateIntent>(null);
+  const [moreSection,setMoreSection]=useState<MoreSection>("organisation");
   const [activeMeetingId,setActiveMeetingId]=useState<string|null>(null);
   const [compassOpen,setCompassOpen]=useState(false);
   const [sourceFocusId,setSourceFocusId]=useState<string|null>(null);
@@ -104,25 +109,26 @@ export function RedesignLaunchApp({ liveProfile }: { liveProfile?: LiveProfile }
     catch(e){setError(readError(e));return false;}
   }
   async function handleAttention(item:AttentionItem){
-    if(item.kind==="project_update"&&item.targetId){setProjectEditorId(item.targetId);setView("work");return;}
-    if(item.kind==="comment"&&item.targetId){if(item.signalId&&!await run(()=>acknowledgeAttentionSignal(item.signalId)))return;setProjectCommentsId(item.targetId);setView("work");return;}
-    if(item.kind==="tension_comment"&&item.targetId){if(item.signalId&&!await run(()=>acknowledgeAttentionSignal(item.signalId)))return;setTensionCommentsId(item.targetId);setView("tensions");return;}
-    if(item.kind==="feed"){if(item.signalId&&!await run(()=>acknowledgeAttentionSignal(item.signalId)))return;setFeedPostId(item.targetId??null);setView("feed");return;}
+    if(item.kind==="project_update"&&item.targetId){setWorkTarget({kind:"project",id:item.targetId});setProjectEditorId(item.targetId);setView("work");return;}
+    if(item.kind==="comment"&&item.targetId){if(item.signalId&&!await run(()=>acknowledgeAttentionSignal(item.signalId)))return;setWorkTarget({kind:"project",id:item.targetId});setProjectCommentsId(item.targetId);setView("work");return;}
+    if(item.kind==="tension_comment"&&item.targetId){if(item.signalId&&!await run(()=>acknowledgeAttentionSignal(item.signalId)))return;setWorkTarget({kind:"tension",id:item.targetId});setTensionCommentsId(item.targetId);setView("work");return;}
+    if(item.kind==="feed"){if(item.signalId&&!await run(()=>acknowledgeAttentionSignal(item.signalId)))return;setFeedPostId(item.targetId??null);setFeedOpen(true);return;}
     if(item.kind==="action"&&item.targetId){const action=workspace.actions.find(a=>a.id===item.targetId);if(!action)return;const next=action.status==="proposed"?"open":"done";await changeActionStatus(action.id,next);return;}
-    if(item.kind==="tension"){setView("tensions");return;}
+    if(item.kind==="tension"&&item.targetId){setWorkTarget({kind:"tension",id:item.targetId});setView("work");return;}
+    if(item.kind==="tension"){setWorkTarget(null);setView("work");return;}
     if(item.kind==="governance")setView("governance");
   }
   async function handleOpenAttentionSource(item:NavigableAttentionItem){
     if(item.kind==="action"&&item.targetId){
-      if(item.sourceKind==="tension"){setView("tensions");setSourceFocusId(`action-row-${item.targetId}`);return;}
-      if(item.sourceKind==="project"){setView("work");setSourceFocusId(`action-row-${item.targetId}`);return;}
-      setView("work");setNotice("This action has no linked project or tension.");return;
+      if(item.sourceKind==="tension"&&item.sourceId){setWorkTarget({kind:"tension",id:item.sourceId});setView("work");setSourceFocusId(`action-row-${item.targetId}`);return;}
+      if(item.sourceKind==="project"&&item.sourceId){setWorkTarget({kind:"project",id:item.sourceId});setView("work");setSourceFocusId(`action-row-${item.targetId}`);return;}
+      setWorkTarget(null);setView("work");setNotice("This action has no linked project or tension.");return;
     }
-    if(item.kind==="project_update"&&item.targetId){setView("work");setSourceFocusId(`project-card-${item.targetId}`);return;}
-    if(item.kind==="comment"&&item.targetId){if(item.signalId&&!await run(()=>acknowledgeAttentionSignal(item.signalId)))return;setProjectCommentsId(item.targetId);setView("work");return;}
-    if(item.kind==="tension_comment"&&item.targetId){if(item.signalId&&!await run(()=>acknowledgeAttentionSignal(item.signalId)))return;setTensionCommentsId(item.targetId);setView("tensions");return;}
-    if(item.kind==="feed"){if(item.signalId&&!await run(()=>acknowledgeAttentionSignal(item.signalId)))return;setFeedPostId(item.targetId??null);setView("feed");return;}
-    if(item.kind==="tension"&&item.targetId){setView("tensions");setSourceFocusId(`tension-card-${item.targetId}`);return;}
+    if(item.kind==="project_update"&&item.targetId){setWorkTarget({kind:"project",id:item.targetId});setView("work");setSourceFocusId(`project-card-${item.targetId}`);return;}
+    if(item.kind==="comment"&&item.targetId){if(item.signalId&&!await run(()=>acknowledgeAttentionSignal(item.signalId)))return;setWorkTarget({kind:"project",id:item.targetId});setProjectCommentsId(item.targetId);setView("work");return;}
+    if(item.kind==="tension_comment"&&item.targetId){if(item.signalId&&!await run(()=>acknowledgeAttentionSignal(item.signalId)))return;setWorkTarget({kind:"tension",id:item.targetId});setTensionCommentsId(item.targetId);setView("work");return;}
+    if(item.kind==="feed"){if(item.signalId&&!await run(()=>acknowledgeAttentionSignal(item.signalId)))return;setFeedPostId(item.targetId??null);setFeedOpen(true);return;}
+    if(item.kind==="tension"&&item.targetId){setWorkTarget({kind:"tension",id:item.targetId});setView("work");setSourceFocusId(`tension-card-${item.targetId}`);return;}
     if(item.kind==="governance"&&item.targetId){setView("governance");setSourceFocusId(`governance-tension-${item.targetId}`);return;}
   }
 
@@ -161,18 +167,77 @@ export function RedesignLaunchApp({ liveProfile }: { liveProfile?: LiveProfile }
   }
   const projectEditor=projectEditorId?workspace.projects.find(p=>p.id===projectEditorId):undefined;
 
-  return <div className="shell launch-shell">
-    <aside className="sidebar"><div className="brand-lockup"><div className="brand-mark" aria-hidden="true"><span/><span/></div><div className="brand">SDBP Workspace<small>Structure · rhythm · memory</small></div></div><nav className="nav">{(Object.keys(LABELS) as View[]).map(key=><button key={key} className={view===key?"active":""} onClick={()=>setView(key)}><strong>{LABELS[key]}</strong><small>{NAV_META[key]}</small></button>)}</nav><div className="sidebar-foot launch-sidebar-foot"><div className="avatar">{liveProfile.name.charAt(0)}</div><div><strong>{liveProfile.name}</strong><small>Signed in</small></div><button className="sidebar-compass" type="button" onClick={()=>setCompassOpen(true)}>Compass</button></div></aside>
-    <main className="main"><PageHeader view={view} attentionCount={attention.length} currentName={liveProfile.name}/>{error&&<div className="records-status error launch-error">{error}</div>}
-      {view==="attention"&&<AttentionView items={attention} urgentTensionIds={urgentTensionIds} onPrimary={handleAttention} onOpenSource={handleOpenAttentionSource} onRaiseTension={()=>setView("tensions")}/>}
-      {view==="feed"&&<BoardFeedView people={workspace.people} currentUserId={currentUserId} personName={personName} openPostId={feedPostId} onOpenedPost={()=>setFeedPostId(null)}/>}
-      {view==="work"&&<WorkspaceWorkView workspace={workspace} currentUserId={currentUserId} personName={personName} personInitial={personInitial} onAddNextStep={addNextStep} onAddProject={addProject} onActionStatus={changeActionStatus} onCompleteProject={markProjectComplete} onReopenProject={reopenCompletedProject} onSaveProjectSettings={changeProjectSettings} onUpdateProject={setProjectEditorId} openCommentsProjectId={projectCommentsId} onCommentsOpened={()=>setProjectCommentsId(null)}/>}
-      {view==="tensions"&&<TensionsWorkspaceView workspace={workspace} currentUserId={currentUserId} personName={personName} urgentTensionIds={urgentTensionIds} openCommentsTensionId={tensionCommentsId} onCommentsOpened={()=>setTensionCommentsId(null)} onRaise={async title=>raiseTension(title)} onAddNextStep={addNextStep} onActionStatus={changeActionStatus} onMarkResolved={markTensionResolved} onKeepOpen={keepTensionOpen} onNeed={recordTensionNeed} onMoveGovernance={moveTensionToGovernance} onResolve={resolveWithNote} onCreatePoll={addTensionPoll} onVotePoll={saveTensionPollVote} onChoosePoll={choosePollTime} onUrgency={changeTensionUrgency}/>}
-      {view==="organisation"&&<OrganisationWorkspaceView workspace={workspace} currentUserId={currentUserId} canInvite={inviteAllowed} personName={personName} presence={presence} onInvite={async(name,email)=>{const ok=await run(()=>invitePerson(name,email),`Invitation sent to ${email}.`);return ok;}} onSaveRole={role=>run(()=>saveRole(role),"Role saved.")} onDeleteRole={id=>run(()=>deleteRole(id),"Role removed.")} onOpenProject={()=>setView("work")}/>}
-      {view==="governance"&&<GovernanceWorkspaceView workspace={workspace} currentUserId={currentUserId} personName={personName} onCreateProposal={addProposal} onStartMeeting={startMeeting} onGoTensions={()=>setView("tensions")} onGoRecords={()=>setView("records")}/>}
-      {view==="records"&&<RecordsView governanceProposals={workspace.governanceProposals} tensions={workspace.tensions} profileId={liveProfile.id} onNotice={setNotice}/>}
-      {view==="pulse"&&<PulseView workspace={workspace} urgentTensionIds={urgentTensionIds}/>}
+  const feedMentionCount=communicationSignals.filter(signal=>signal.signalType==="board_feed_mention"&&signal.recipientId===currentUserId).length;
+
+  return <div className={`shell launch-shell ${styles.redesignShell}`}>
+    <aside className={`sidebar ${styles.redesignSidebar}`}>
+      <div className="brand-lockup"><div className="brand-mark" aria-hidden="true"><span/><span/></div><div className="brand">SDBP Workspace<small>Structure · rhythm · memory</small></div></div>
+      <nav className={`nav ${styles.primaryNav}`}>{(["attention","work","governance"] as View[]).map(key=><button key={key} className={view===key?"active":""} onClick={()=>{setView(key);if(key==="work")setWorkTarget(null);}}><strong>{LABELS[key]}</strong><small>{NAV_META[key]}</small></button>)}</nav>
+      <div className={styles.navSpacer}/>
+      <nav className={`nav ${styles.secondaryNav}`}><button className={view==="more"?"active":""} onClick={()=>setView("more")}><strong>More</strong><small>{NAV_META.more}</small></button></nav>
+      <div className="sidebar-foot launch-sidebar-foot"><div className="avatar">{liveProfile.name.charAt(0)}</div><div><strong>{liveProfile.name}</strong><small>Signed in</small></div><button className="sidebar-compass" type="button" onClick={()=>setCompassOpen(true)}>Compass</button></div>
+    </aside>
+    <main className={`main ${styles.redesignMain}`}>
+      <div className={styles.topline}>
+        <RedesignPageHeader view={view} attentionCount={attention.length} currentName={liveProfile.name}/>
+        <button className={styles.feedButton} type="button" onClick={()=>setFeedOpen(true)} aria-label={feedMentionCount? `Open Board Feed, ${feedMentionCount} mention${feedMentionCount===1?"":"s"} waiting`:"Open Board Feed"}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.75h14v9.5H9.4L5 18.75v-13Z"/></svg>
+          <span>Feed</span>
+          {feedMentionCount>0&&<strong>{feedMentionCount}</strong>}
+        </button>
+      </div>
+      {error&&<div className="records-status error launch-error">{error}</div>}
+      {view==="attention"&&<AttentionView items={attention} urgentTensionIds={urgentTensionIds} onPrimary={handleAttention} onOpenSource={handleOpenAttentionSource} onRaiseTension={()=>{setWorkCreateIntent("tension");setWorkTarget(null);setView("work");}}/>}
+      {view==="work"&&<RedesignWorkHub
+        workspace={workspace}
+        currentUserId={currentUserId}
+        personName={personName}
+        personInitial={personInitial}
+        urgentTensionIds={urgentTensionIds}
+        target={workTarget}
+        onTarget={setWorkTarget}
+        createIntent={workCreateIntent}
+        onCreateIntentHandled={()=>setWorkCreateIntent(null)}
+        openCommentsProjectId={projectCommentsId}
+        onProjectCommentsOpened={()=>setProjectCommentsId(null)}
+        openCommentsTensionId={tensionCommentsId}
+        onTensionCommentsOpened={()=>setTensionCommentsId(null)}
+        onAddNextStep={addNextStep}
+        onAddProject={addProject}
+        onActionStatus={changeActionStatus}
+        onCompleteProject={markProjectComplete}
+        onReopenProject={reopenCompletedProject}
+        onSaveProjectSettings={changeProjectSettings}
+        onUpdateProject={setProjectEditorId}
+        onRaise={raiseTension}
+        onMarkResolved={markTensionResolved}
+        onKeepOpen={keepTensionOpen}
+        onNeed={recordTensionNeed}
+        onMoveGovernance={moveTensionToGovernance}
+        onResolve={resolveWithNote}
+        onCreatePoll={addTensionPoll}
+        onVotePoll={saveTensionPollVote}
+        onChoosePoll={choosePollTime}
+        onUrgency={changeTensionUrgency}
+      />}
+      {view==="governance"&&<GovernanceWorkspaceView workspace={workspace} currentUserId={currentUserId} personName={personName} onCreateProposal={addProposal} onStartMeeting={startMeeting} onGoTensions={()=>{setWorkTarget(null);setView("work");}} onGoRecords={()=>{setMoreSection("records");setView("more");}}/>}
+      {view==="more"&&<div className={styles.moreSurface}>
+        <div className={styles.moreTabs}>
+          <button className={moreSection==="organisation"?styles.moreTabActive:""} type="button" onClick={()=>setMoreSection("organisation")}>Organisation</button>
+          <button className={moreSection==="records"?styles.moreTabActive:""} type="button" onClick={()=>setMoreSection("records")}>Records</button>
+          <button className={moreSection==="pulse"?styles.moreTabActive:""} type="button" onClick={()=>setMoreSection("pulse")}>Pulse</button>
+        </div>
+        {moreSection==="organisation"&&<OrganisationWorkspaceView workspace={workspace} currentUserId={currentUserId} canInvite={inviteAllowed} personName={personName} presence={presence} onInvite={async(name,email)=>{const ok=await run(()=>invitePerson(name,email),`Invitation sent to ${email}.`);return ok;}} onSaveRole={role=>run(()=>saveRole(role),"Role saved.")} onDeleteRole={id=>run(()=>deleteRole(id),"Role removed.")} onOpenProject={()=>{setWorkTarget(null);setView("work");}}/>}
+        {moreSection==="records"&&<RecordsView governanceProposals={workspace.governanceProposals} tensions={workspace.tensions} profileId={liveProfile.id} onNotice={setNotice}/>}
+        {moreSection==="pulse"&&<PulseView workspace={workspace} urgentTensionIds={urgentTensionIds} onOpenWork={target=>{setWorkTarget(target);setView("work");}} onOpenGovernance={()=>setView("governance")}/>}
+      </div>}
     </main>
+    {feedOpen&&<div className={styles.drawerBackdrop} onMouseDown={event=>{if(event.target===event.currentTarget)setFeedOpen(false);}}>
+      <aside className={styles.feedDrawer} aria-label="Board Feed">
+        <div className={styles.drawerHead}><div><span className="section-kicker">Shared board communication</span><h2>Board Feed</h2></div><button className="quiet editor-close" type="button" onClick={()=>setFeedOpen(false)}>×</button></div>
+        <BoardFeedView people={workspace.people} currentUserId={currentUserId} personName={personName} openPostId={feedPostId} onOpenedPost={()=>setFeedPostId(null)}/>
+      </aside>
+    </div>}
     {notice&&<Toast message={notice}/>}
     {compassOpen&&<CompassModal onClose={()=>setCompassOpen(false)}/>}
     {projectEditor&&<ProjectUpdateModal project={projectEditor} onSave={saveProjectUpdate} onNoChange={noProjectChange} onClose={()=>setProjectEditorId(null)}/>}
@@ -183,47 +248,31 @@ function userIsEditing(){
  const active=document.activeElement;
  return active instanceof HTMLTextAreaElement||active instanceof HTMLInputElement||active instanceof HTMLSelectElement||(active instanceof HTMLElement&&active.isContentEditable);
 }
-function PageHeader({view,attentionCount,currentName}:{view:View;attentionCount:number;currentName:string}){
+function RedesignPageHeader({view,attentionCount,currentName}:{view:View;attentionCount:number;currentName:string}){
  const description:Record<View,React.ReactNode>={
-  attention:attentionCount===0?`Nothing needs ${currentName}'s attention right now.`:`${attentionCount} ${attentionCount===1?"thing needs":"things need"} ${currentName}'s attention. The Workspace does not rank them by importance; use your judgement.`,
-  feed:"A persistent shared board space for general notices, requests and context. Use projects and tensions when the communication belongs to specific work.",
-  work:"Projects hold outcomes; concrete next steps live with the project or tension they move forward. All commitments are collected here automatically.",
-  tensions:"A tension is a gap between current reality and a potential future you sense. Raise one whenever something could be better.",
-  organisation:"Board roles and operating roles are both roles. Board-role authority comes from the statutes and applicable law; operating-role authority comes from SDBP governance.",
-  governance:"See what is structurally true now, and change it through the governance process when a real tension requires it.",
-  records:"The legal and organisational memory you can return to when context matters.",
-  pulse:"A quiet overview of where SDBP may be losing momentum or clarity.",
+  attention:attentionCount===0?`Nothing needs ${currentName}'s attention right now.`:`${attentionCount} ${attentionCount===1?"thing needs":"things need"} ${currentName}'s attention.`,
+  work:"Projects, tensions and commitments in one place.",
+  governance:"Change roles, authority and standing ways of working when a real tension requires it.",
+  more:"Organisation, records and organisation-wide signals.",
  };
- return <header className="page-head"><div><div className="eyebrow">SDBP · working space</div><h1>{LABELS[view]}</h1><p>{description[view]}</p></div><div className="brand-signal" aria-hidden="true"><span/><span/><span/></div></header>;
+ return <header className={styles.redesignPageHead}><div><div className="eyebrow">SDBP · working space</div><h1>{LABELS[view]}</h1><p>{description[view]}</p></div></header>;
 }
 function ProjectUpdateModal({project,onSave,onNoChange,onClose}:{project:Project;onSave:(id:string,s:string)=>Promise<void>;onNoChange:(id:string)=>Promise<void>;onClose:()=>void}){
  const[summary,setSummary]=useState(project.summary);
  return <div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}><section className="workflow-editor compact-modal"><div className="editor-head"><div><span className="section-kicker">Project update</span><h2>{project.title}</h2></div><button className="quiet editor-close" onClick={onClose}>×</button></div><p className="editor-note">Has anything meaningfully changed? Keep this short. The app needs current reality, not a report.</p><label className="field"><span>Current state</span><textarea rows={5} value={summary} onChange={e=>setSummary(e.target.value)}/></label><div className="workflow-choice-row"><button className="secondary" onClick={()=>void onNoChange(project.id)}>No change</button><button className="primary" onClick={()=>void onSave(project.id,summary)}>Save update</button></div></section></div>;
 }
-function PulseView({workspace,urgentTensionIds}:{workspace:WorkspaceData;urgentTensionIds:ReadonlySet<string>}){
+function PulseView({workspace,urgentTensionIds,onOpenWork,onOpenGovernance}:{workspace:WorkspaceData;urgentTensionIds:ReadonlySet<string>;onOpenWork:(target:Exclude<RedesignWorkTarget,null>)=>void;onOpenGovernance:()=>void}){
  const today=todayISO();
  const overdueActions=workspace.actions.filter(a=>(a.status==="open"||a.status==="proposed")&&a.due&&a.due<today);
  const dueProjects=workspace.projects.filter(p=>p.status==="active"&&p.nextPrompt<=today);
  const openTensions=workspace.tensions.filter(t=>t.status!=="resolved");
  const urgentTensions=openTensions.filter(t=>urgentTensionIds.has(t.id));
  const governance=workspace.governanceProposals.filter(p=>p.stage!=="accepted").length+workspace.tensions.filter(t=>t.status==="governance"&&!workspace.governanceProposals.some(p=>p.tensionId===t.id)).length;
- function nav(label:string,after?:()=>void){const button=Array.from(document.querySelectorAll<HTMLButtonElement>(".nav button")).find(item=>item.querySelector("strong")?.textContent?.trim()===label);button?.click();if(after)window.setTimeout(after,180);}
- function focus(element:HTMLElement|null){if(!element)return;element.scrollIntoView({behavior:"smooth",block:"center"});element.classList.add("context-focus-flash");window.setTimeout(()=>element.classList.remove("context-focus-flash"),1800);}
- function openUpdates(){nav("Work",()=>focus(dueProjects[0]?document.getElementById(`project-card-${dueProjects[0].id}`):null));}
- function openOverdue(){
-  const action=overdueActions[0];
-  if(!action)return;
-  const target=action.sourceTensionId?"Tensions":"Work";
-  nav(target,()=>{
-   const rows=Array.from(document.querySelectorAll<HTMLElement>(".context-step-row"));
-   const row=rows.find(item=>item.querySelector("strong")?.textContent?.trim()===action.title)??null;
-   focus(row);
-  });
- }
- function openTensionList(){nav("Tensions",()=>document.querySelector<HTMLElement>(".tension-stream")?.scrollIntoView({behavior:"smooth",block:"start"}));}
- function openUrgent(){nav("Tensions",()=>focus(document.querySelector<HTMLElement>(".urgent-tension-card")));}
- function openGovernance(){nav("Governance",()=>focus(document.querySelector<HTMLElement>(".governance-starter, .governance-proposal-card")));}
- return <><div className="pulse-reminder"><strong>Look for stuck work, not scores.</strong><p>Pulse is only a signal for where a conversation or update may be needed. Urgent means a tension-holder explicitly flagged that tension for fast attention.</p></div><div className="pulse-grid launch-pulse-grid"><PulseCard label="Project updates due" value={dueProjects.length} onOpen={openUpdates}/><PulseCard label="Overdue next steps" value={overdueActions.length} onOpen={openOverdue}/><PulseCard label="Open tensions" value={openTensions.length} onOpen={openTensionList}/><PulseCard label="Urgent tensions" value={urgentTensions.length} onOpen={openUrgent}/><PulseCard label="Governance waiting" value={governance} onOpen={openGovernance}/></div></>;
+ const openUpdates=()=>{if(dueProjects[0])onOpenWork({kind:"project",id:dueProjects[0].id});};
+ const openOverdue=()=>{const action=overdueActions[0];if(!action)return;if(action.sourceTensionId)onOpenWork({kind:"tension",id:action.sourceTensionId});else if(action.projectId)onOpenWork({kind:"project",id:action.projectId});};
+ const openTensionList=()=>{if(openTensions[0])onOpenWork({kind:"tension",id:openTensions[0].id});};
+ const openUrgent=()=>{if(urgentTensions[0])onOpenWork({kind:"tension",id:urgentTensions[0].id});};
+ return <><div className="pulse-reminder"><strong>Look for stuck work, not scores.</strong><p>Pulse is only a signal for where a conversation or update may be needed. Urgent means a tension-holder explicitly flagged that tension for fast attention.</p></div><div className="pulse-grid launch-pulse-grid"><PulseCard label="Project updates due" value={dueProjects.length} onOpen={openUpdates}/><PulseCard label="Overdue next steps" value={overdueActions.length} onOpen={openOverdue}/><PulseCard label="Open tensions" value={openTensions.length} onOpen={openTensionList}/><PulseCard label="Urgent tensions" value={urgentTensions.length} onOpen={openUrgent}/><PulseCard label="Governance waiting" value={governance} onOpen={onOpenGovernance}/></div></>;
 }
 function PulseCard({label,value,onOpen}:{label:string;value:number;onOpen:()=>void}){return <button className="pulse-card pulse-link-card" type="button" disabled={value===0} onClick={onOpen}><span className="kind">{label}</span><strong>{value}</strong><small>{value===0?"Nothing waiting":"Open →"}</small></button>}
 function Toast({message}:{message:string}){return <div className="save-toast" role="status"><span>✓</span>{message}</div>}
