@@ -509,3 +509,381 @@
   .tensionDetail :global(.context-step-row),
   .projectDetail :global(.context-step-row) { padding: 12px; }
 }
+
+
+/* Commitment cockpit ----------------------------------------------------- */
+.commitmentCockpit {
+  width: min(1120px, calc(100vw - 44px));
+  max-height: 92vh;
+  overflow: hidden;
+  border: 1px solid rgba(43,55,70,.12);
+  border-radius: 24px;
+  background: #f7f9fa;
+  box-shadow: 0 28px 80px rgba(30,42,52,.22);
+  display: flex;
+  flex-direction: column;
+}
+.commitmentCockpitHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 28px 30px 20px;
+  border-bottom: 1px solid var(--border);
+  background:
+    radial-gradient(circle at 92% 14%, rgba(154,180,22,.10), transparent 150px),
+    linear-gradient(135deg, rgba(37,150,190,.045), #fff 48%);
+}
+.commitmentCockpitHead h2 { margin-top: 4px; font-size: 32px; }
+.commitmentCockpitHead p { margin: 7px 0 0; color: var(--muted); font-size: 14px; }
+
+.commitmentSummary {
+  display: grid;
+  grid-template-columns: 1.25fr .8fr 1fr;
+  gap: 10px;
+  padding: 16px 30px;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+}
+.commitmentSummary > div {
+  min-height: 82px;
+  padding: 13px 15px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fafcfc;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 2px 12px;
+}
+.commitmentSummary > div > span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+}
+.commitmentSummary > div > strong {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  align-self: center;
+  color: var(--brand-navy);
+  font-size: 34px;
+  line-height: 1;
+  letter-spacing: -.04em;
+}
+.commitmentSummary > div > small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+.commitmentSummaryPrimary {
+  border-color: rgba(37,150,190,.28) !important;
+  background: linear-gradient(135deg, rgba(37,150,190,.075), #fff 72%) !important;
+}
+.commitmentSummaryPrimary > strong { color: var(--accent-dark) !important; }
+
+.commitmentCockpitScroll {
+  padding: 24px 30px 34px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.commitmentSection + .commitmentSection {
+  margin-top: 34px;
+  padding-top: 30px;
+  border-top: 1px solid var(--border);
+}
+.commitmentSectionHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 18px;
+  margin-bottom: 15px;
+}
+.commitmentSectionHead h3 { margin-top: 3px; font-size: 23px; }
+.commitmentSectionCount {
+  display: grid;
+  place-items: center;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: #edf2f4;
+  color: var(--brand-navy);
+  font-size: 12px;
+  font-weight: 800;
+}
+.commitmentSubsection + .commitmentSubsection { margin-top: 22px; }
+.commitmentSubhead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+.commitmentSubhead strong {
+  color: var(--brand-navy);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .055em;
+}
+.commitmentSubhead span {
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #eef2f4;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.commitmentCardGrid {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 12px;
+}
+.commitmentCard {
+  --commitment-tone: var(--brand-blue);
+  --commitment-soft: rgba(37,150,190,.055);
+  min-width: 0;
+  padding: 18px 19px 16px;
+  border: 1px solid rgba(43,55,70,.13);
+  border-radius: 16px;
+  background: linear-gradient(180deg, var(--commitment-soft), #fff 76px);
+  box-shadow: 0 7px 20px rgba(43,55,70,.035);
+  display: flex;
+  flex-direction: column;
+}
+.commitmentCardMine {
+  --commitment-tone: var(--brand-blue);
+  --commitment-soft: rgba(37,150,190,.07);
+  border-color: rgba(37,150,190,.26);
+}
+.commitmentCardWaiting {
+  --commitment-tone: var(--brand-green);
+  --commitment-soft: rgba(154,180,22,.045);
+}
+.commitmentCardProposed {
+  --commitment-tone: var(--brand-orange);
+  --commitment-soft: rgba(239,103,40,.065);
+  border-color: rgba(239,103,40,.28);
+}
+.commitmentCardOverdue {
+  border-color: rgba(181,78,33,.32);
+  box-shadow: inset 4px 0 0 rgba(239,103,40,.72), 0 7px 20px rgba(43,55,70,.035);
+}
+.commitmentCardHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.commitmentIdentity { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.commitmentStatus,
+.commitmentDue,
+.commitmentPerson {
+  display: inline-flex;
+  align-items: center;
+  min-height: 23px;
+  padding: 4px 7px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .035em;
+}
+.commitmentStatusOpen {
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+.commitmentStatusProposed {
+  background: var(--warm-soft);
+  color: #b54e21;
+}
+.commitmentDue {
+  background: #f0f3f5;
+  color: var(--muted);
+}
+.commitmentDueSoon {
+  background: #fff4df;
+  color: #936016;
+}
+.commitmentDueOverdue {
+  background: #fff0ea;
+  color: #aa4924;
+}
+.commitmentPerson {
+  background: var(--green-soft);
+  color: #6d811b;
+  white-space: nowrap;
+}
+.commitmentCard h3 {
+  margin-top: 13px;
+  color: var(--brand-navy);
+  font-size: 18px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.commitmentSource {
+  margin-top: 13px;
+  padding: 9px 10px;
+  border: 1px solid rgba(43,55,70,.08);
+  border-radius: 11px;
+  background: rgba(255,255,255,.72);
+  color: inherit;
+  text-align: left;
+  display: grid;
+  grid-template-columns: auto minmax(0,1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+.commitmentSource:disabled { opacity: 1; cursor: default; }
+.commitmentSource span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.commitmentSource strong {
+  min-width: 0;
+  color: #53616d;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.commitmentSource i {
+  color: var(--accent-dark);
+  font-size: 14px;
+  font-style: normal;
+}
+.commitmentSource:not(:disabled):hover {
+  border-color: rgba(37,150,190,.26);
+  background: #fff;
+}
+.commitmentActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 15px;
+}
+.commitmentActions .primary { box-shadow: none; }
+
+.waitingGroups { display: grid; gap: 9px; }
+.waitingGroup {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: white;
+}
+.waitingGroup summary {
+  list-style: none;
+  display: grid;
+  grid-template-columns: 38px minmax(0,1fr) auto 20px;
+  align-items: center;
+  gap: 11px;
+  min-height: 64px;
+  padding: 11px 14px;
+  cursor: pointer;
+}
+.waitingGroup summary::-webkit-details-marker { display: none; }
+.waitingGroup summary:hover { background: #fafcfc; }
+.waitingAvatar {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--green-soft);
+  color: #6e831a;
+  font-size: 12px;
+  font-weight: 800;
+}
+.waitingName { min-width: 0; }
+.waitingName strong,
+.waitingName small { display: block; }
+.waitingName strong { color: var(--brand-navy); font-size: 14px; }
+.waitingName small { margin-top: 3px; color: var(--muted); font-size: 10px; }
+.waitingCount {
+  display: grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: #eef2f3;
+  color: var(--brand-navy);
+  font-size: 10px;
+  font-weight: 800;
+}
+.waitingChevron {
+  color: var(--muted);
+  font-size: 15px;
+  transition: transform .15s ease;
+}
+.waitingGroup[open] .waitingChevron { transform: rotate(180deg); }
+.waitingGroup > .commitmentCardGrid {
+  padding: 0 14px 14px;
+  border-top: 1px solid rgba(43,55,70,.07);
+  padding-top: 14px;
+}
+
+.commitmentEmpty {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px;
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  background: rgba(255,255,255,.55);
+}
+.commitmentEmpty > span {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--green-soft);
+  color: #728718;
+  font-weight: 800;
+}
+.commitmentEmpty strong,
+.commitmentEmpty small { display: block; }
+.commitmentEmpty strong { color: var(--brand-navy); font-size: 13px; }
+.commitmentEmpty small { margin-top: 3px; color: var(--muted); font-size: 10px; }
+
+.commitmentEditBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(26,38,49,.34);
+  backdrop-filter: blur(2px);
+}
+
+@media (max-width: 820px) {
+  .commitmentCockpit { width: min(100% - 22px, 1120px); max-height: 94vh; }
+  .commitmentSummary { grid-template-columns: 1fr; }
+  .commitmentCardGrid { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .commitmentCockpitHead { padding: 22px 18px 16px; }
+  .commitmentCockpitHead h2 { font-size: 28px; }
+  .commitmentSummary { padding: 12px 18px; }
+  .commitmentCockpitScroll { padding: 20px 18px 28px; }
+  .commitmentCard { padding: 16px; }
+  .commitmentCardHead { flex-direction: column; }
+  .commitmentPerson { align-self: flex-start; }
+  .commitmentSource { grid-template-columns: 1fr auto; }
+  .commitmentSource span { grid-column: 1 / -1; }
+  .waitingGroup summary { grid-template-columns: 34px minmax(0,1fr) auto 18px; padding-left: 10px; padding-right: 10px; }
+  .waitingAvatar { width: 32px; height: 32px; }
+}
