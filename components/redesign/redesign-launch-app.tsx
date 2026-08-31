@@ -27,13 +27,14 @@ import {
 type View = "attention" | "work" | "governance" | "more";
 type MoreSection = "organisation" | "records" | "pulse";
 type LiveProfile = { id: string; name: string; email: string };
+export type RedesignAccountControls = { message?: string; canManageAccess: boolean; onPeopleAccess: () => void; onPassword: () => void; onSignOut: () => void };
 type TensionNeed = "input" | "sync";
 
 const EMPTY_WORKSPACE: WorkspaceData = { people: [], roles: [], projects: [], actions: [], tensions: [], governanceProposals: [], standingAgreements: [], attentionSignals: [] };
 const LABELS: Record<View,string> = { attention:"My Attention", work:"Work", governance:"Governance", more:"More" };
 const NAV_META: Record<View,string> = { attention:"What needs you", work:"Projects · tensions · commitments", governance:"Change how we work", more:"Organisation · records · pulse" };
 
-export function RedesignLaunchApp({ liveProfile }: { liveProfile?: LiveProfile }) {
+export function RedesignLaunchApp({ liveProfile, accountControls }: { liveProfile?: LiveProfile; accountControls?: RedesignAccountControls }) {
   const [workspace,setWorkspace]=useState<WorkspaceData>(EMPTY_WORKSPACE);
   const [urgentTensionIds,setUrgentTensionIds]=useState<Set<string>>(new Set());
   const [communicationSignals,setCommunicationSignals]=useState<CommunicationAttentionSignal[]>([]);
@@ -175,7 +176,17 @@ export function RedesignLaunchApp({ liveProfile }: { liveProfile?: LiveProfile }
       <nav className={`nav ${styles.primaryNav}`}>{(["attention","work","governance"] as View[]).map(key=><button key={key} className={view===key?"active":""} onClick={()=>{setView(key);if(key==="work")setWorkTarget(null);}}><strong>{LABELS[key]}</strong><small>{NAV_META[key]}</small></button>)}</nav>
       <div className={styles.navSpacer}/>
       <nav className={`nav ${styles.secondaryNav}`}><button className={view==="more"?"active":""} onClick={()=>setView("more")}><strong>More</strong><small>{NAV_META.more}</small></button></nav>
-      <div className="sidebar-foot launch-sidebar-foot"><div className="avatar">{liveProfile.name.charAt(0)}</div><div><strong>{liveProfile.name}</strong><small>Signed in</small></div><button className="sidebar-compass" type="button" onClick={()=>setCompassOpen(true)}>Compass</button></div>
+      <div className={styles.sidebarAccount}>
+        <details className={styles.accountMenu}>
+          <summary><span className="avatar">{liveProfile.name.charAt(0)}</span><span><strong>{liveProfile.name}</strong><small>{accountControls?.message||"Account"}</small></span><span className={styles.accountChevron}>⌄</span></summary>
+          <div className={styles.accountActions}>
+            {accountControls?.canManageAccess&&<button type="button" onClick={accountControls.onPeopleAccess}>People access</button>}
+            <button type="button" onClick={accountControls?.onPassword}>Password</button>
+            <button type="button" onClick={accountControls?.onSignOut}>Sign out</button>
+          </div>
+        </details>
+        <button className={styles.compassButton} type="button" onClick={()=>setCompassOpen(true)}>Compass</button>
+      </div>
     </aside>
     <main className={`main ${styles.redesignMain}`}>
       <div className={styles.topline}>
