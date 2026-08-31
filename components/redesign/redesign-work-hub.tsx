@@ -6,6 +6,7 @@ import { ContextualNextSteps, type ContextualNextStepInput } from "@/components/
 import { WorkspaceWorkView } from "@/components/work-view";
 import { TensionsWorkspaceView } from "@/components/tensions-workspace-view";
 import { ProjectCoiBadge } from "@/components/project-coi-badge";
+import { ProjectCommentsModal } from "@/components/project-comments-modal";
 import { ProjectSummaryPreview } from "@/components/project-summary-preview";
 import type { WorkspaceData, WorkspacePerson } from "@/lib/supabase/workspace";
 import { loadCommentThreadSummary } from "@/lib/supabase/comment-thread-state";
@@ -57,6 +58,7 @@ export function RedesignWorkHub(props: Props) {
   const [commitmentsOpen, setCommitmentsOpen] = useState(false);
   const [completedOpen, setCompletedOpen] = useState(false);
   const [projectPanel, setProjectPanel] = useState<ProjectObjectPanel>(null);
+  const [conversationProject, setConversationProject] = useState<Project | null>(null);
 
   useEffect(() => {
     if (!props.createIntent) return;
@@ -72,6 +74,7 @@ export function RedesignWorkHub(props: Props) {
 
   const selectedProject = props.target?.kind === "project" ? props.workspace.projects.find((project) => project.id === props.target?.id) : undefined;
   const selectedTension = props.target?.kind === "tension" ? props.workspace.tensions.find((tension) => tension.id === props.target?.id) : undefined;
+  const conversationModal = conversationProject && <ProjectCommentsModal project={conversationProject} currentUserId={props.currentUserId} personName={props.personName} people={props.workspace.people} onClose={() => setConversationProject(null)} />;
 
   useEffect(() => {
     if (!props.target) return;
@@ -80,10 +83,13 @@ export function RedesignWorkHub(props: Props) {
   }, [props.target, selectedProject, selectedTension, props.onTarget]);
 
   if (selectedProject) {
-    return <div className={styles.detailShell}>
-      <DetailHeader kind="Project" title={selectedProject.title} onBack={() => props.onTarget(null)} />
-      <RedesignProjectDetail project={selectedProject} {...props} />
-    </div>;
+    return <>
+      <div className={styles.detailShell}>
+        <DetailHeader kind="Project" title={selectedProject.title} onBack={() => props.onTarget(null)} />
+        <RedesignProjectDetail project={selectedProject} onOpenConversation={() => setConversationProject(selectedProject)} {...props} />
+      </div>
+      {conversationModal}
+    </>;
   }
 
   if (selectedTension) {
@@ -177,6 +183,7 @@ export function RedesignWorkHub(props: Props) {
               </span>}
               <span><small>last checked</small> {projectDate(project.lastUpdate)}</span>
               <span data-exception={project.nextPrompt <= todayLocalISO() ? "true" : undefined}><small>next prompt</small> {projectDate(project.nextPrompt)}</span>
+              <ConversationUnreadSignal threadType="project" threadId={project.id} onOpen={() => setConversationProject(project)} />
             </div>
             <ProjectWorkAwaiting
               tensions={linked}
@@ -193,6 +200,7 @@ export function RedesignWorkHub(props: Props) {
                 kind="tensions"
                 count={linked.length}
                 exceptions={tensionExceptions}
+                linkedTensionIds={linked.map((tension) => tension.id)}
                 onOpen={() => setProjectPanel({ kind: "tensions", projectId: project.id })}
               />
               <ProjectObjectButton
@@ -202,7 +210,6 @@ export function RedesignWorkHub(props: Props) {
                 onOpen={() => setProjectPanel({ kind: "commitments", projectId: project.id })}
               />
             </div>
-            <ProjectActivityIndicator projectId={project.id} linkedTensionIds={linked.map((tension) => tension.id)} />
             <button className={styles.openProjectInline} type="button" onClick={() => props.onTarget({ kind: "project", id: project.id })}>Open project <span>→</span></button>
           </article>;
         })}
@@ -240,10 +247,11 @@ export function RedesignWorkHub(props: Props) {
       onOpenProject={(id) => { setProjectPanel(null); props.onTarget({ kind: "project", id }); }}
       onClose={() => setProjectPanel(null)}
     />}
+    {conversationModal}
   </>;
 }
 
-function RedesignProjectDetail({ project, ...props }: Props & { project: Project }) {
+function RedesignProjectDetail({ project, onOpenConversation, ...props }: Props & { project: Project; onOpenConversation: () => void }) {
   const focusedWorkspace = { ...props.workspace, projects: [project] };
   const activeActions = props.workspace.actions.filter((action) =>
     action.projectId === project.id && (action.status === "open" || action.status === "proposed")
@@ -282,6 +290,7 @@ function RedesignProjectDetail({ project, ...props }: Props & { project: Project
             {participants.length > 4 && <small>+{participants.length - 4}</small>}
           </span>}
           <ProjectCoiBadge projectId={project.id} personName={props.personName} />
+          <ConversationUnreadSignal threadType="project" threadId={project.id} onOpen={onOpenConversation} />
         </div>
       </div>
       <div className={styles.projectCadence}>
@@ -352,6 +361,7 @@ function RedesignProjectDetail({ project, ...props }: Props & { project: Project
               <span>{tensionAge(tension.createdAt)}</span>
               <span>{tensionStateLabel(tension)}</span>
               {props.urgentTensionIds.has(tension.id) && <span data-exception="true">Urgent</span>}
+              <ConversationUnreadSignal threadType="tension" threadId={tension.id} />
             </div>
             <h3>{tension.title}</h3>
             {tension.latestNote && <p>{tension.latestNote}</p>}
@@ -389,52 +399,94 @@ function RedesignProjectDetail({ project, ...props }: Props & { project: Project
   </div>;
 }
 
-function ProjectActivityIndicator({ projectId, linkedTensionIds }: { projectId: string; linkedTensionIds: string[] }) {
+function useCommentUnread(threadType: "project" | "tension", threadId: string) {
   const [unread, setUnread] = useState(0);
-  const linkedKey = linkedTensionIds.join("|");
 
   const refresh = useCallback(async () => {
     try {
-      const tensionIds = linkedKey ? linkedKey.split("|") : [];
-      const summaries = await Promise.all([
-        loadCommentThreadSummary("project", projectId),
-        ...tensionIds.map((id) => loadCommentThreadSummary("tension", id)),
-      ]);
-      setUnread(summaries.reduce((sum, summary) => sum + summary.unreadCount, 0));
+      const summary = await loadCommentThreadSummary(threadType, threadId);
+      setUnread(summary.unreadCount);
     } catch {
       setUnread(0);
     }
-  }, [projectId, linkedKey]);
+  }, [threadId, threadType]);
 
   useEffect(() => {
     void refresh();
     const onFocus = () => void refresh();
-    const onThreadEvent = () => void refresh();
+    const onThreadEvent = (event: Event) => {
+      const detail = (event as CustomEvent<{ threadType?: string; threadId?: string }>).detail;
+      if (!detail || (detail.threadType === threadType && detail.threadId === threadId)) void refresh();
+    };
+    const timer = window.setInterval(() => void refresh(), 30_000);
     window.addEventListener("focus", onFocus);
     window.addEventListener("comment-thread-seen", onThreadEvent);
     window.addEventListener("comment-thread-changed", onThreadEvent);
     return () => {
+      window.clearInterval(timer);
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("comment-thread-seen", onThreadEvent);
       window.removeEventListener("comment-thread-changed", onThreadEvent);
     };
   }, [refresh]);
 
-  if (!unread) return null;
-  return <div className={styles.projectException}><span>Unread activity</span><strong>{unread}</strong></div>;
+  return unread;
 }
 
-function ProjectObjectButton({ kind, count, exceptions, onOpen }: {
+function ConversationUnreadSignal({ threadType, threadId, onOpen }: { threadType: "project" | "tension"; threadId: string; onOpen?: () => void }) {
+  const unread = useCommentUnread(threadType, threadId);
+  if (!unread) return null;
+  const label = `Conversation · ${unread} new`;
+  if (onOpen) return <button className={styles.conversationUnreadSignal} type="button" onClick={onOpen}>{label}</button>;
+  return <span className={styles.tensionConversationUnread}>{label}</span>;
+}
+
+function useTensionConversationUnread(linkedTensionIds: string[]) {
+  const [unread, setUnread] = useState(0);
+  const linkedKey = linkedTensionIds.join("|");
+
+  const refresh = useCallback(async () => {
+    try {
+      const tensionIds = linkedKey ? linkedKey.split("|") : [];
+      const summaries = await Promise.all(tensionIds.map((id) => loadCommentThreadSummary("tension", id)));
+      setUnread(summaries.reduce((sum, summary) => sum + summary.unreadCount, 0));
+    } catch {
+      setUnread(0);
+    }
+  }, [linkedKey]);
+
+  useEffect(() => {
+    void refresh();
+    const onRefresh = () => void refresh();
+    const timer = window.setInterval(onRefresh, 30_000);
+    window.addEventListener("focus", onRefresh);
+    window.addEventListener("comment-thread-seen", onRefresh);
+    window.addEventListener("comment-thread-changed", onRefresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onRefresh);
+      window.removeEventListener("comment-thread-seen", onRefresh);
+      window.removeEventListener("comment-thread-changed", onRefresh);
+    };
+  }, [refresh]);
+
+  return unread;
+}
+
+function ProjectObjectButton({ kind, count, exceptions, linkedTensionIds = [], onOpen }: {
   kind: "tensions" | "commitments";
   count: number;
   exceptions: string[];
+  linkedTensionIds?: string[];
   onOpen: () => void;
 }) {
   const label = kind === "tensions" ? "Tensions" : "Commitments";
+  const tensionUnread = useTensionConversationUnread(linkedTensionIds);
+  const visibleExceptions = [kind === "tensions" && tensionUnread ? `${tensionUnread} new in tension ${tensionUnread === 1 ? "conversation" : "conversations"}` : "", ...exceptions].filter(Boolean);
   return <button className={styles.projectObject} data-kind={kind} type="button" onClick={onOpen} aria-label={`Review ${count} project ${label.toLowerCase()}`}>
     <span>{label}</span>
     <strong>{count}</strong>
-    {exceptions.length > 0 && <small>{exceptions.join(", ")}</small>}
+    {visibleExceptions.length > 0 && <small>{visibleExceptions.join(", ")}</small>}
   </button>;
 }
 
@@ -606,6 +658,7 @@ function ProjectObjectPanelDialog({ panel, project, tensions, sourceTensions, co
               <span>{tensionAge(tension.createdAt)}</span>
               <span>{tensionStateLabel(tension)}</span>
               {urgent && <span data-exception="true">Urgent</span>}
+              <ConversationUnreadSignal threadType="tension" threadId={tension.id} />
             </span>
             <small>Raised by {personName(tension.raiserId)}</small>
             {need && need.people.length > 0 && <small>{need.kind === "input" ? "Input from" : "Conversation with"} {need.people.join(", ")}</small>}
