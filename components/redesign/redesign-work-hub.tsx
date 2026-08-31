@@ -207,10 +207,17 @@ export function RedesignWorkHub(props: Props) {
             {linked.length > 0 && <div className={styles.cardWorkGroup}>
               <div className={styles.cardWorkGroupHead}><span>Tensions</span><strong>{linked.length}</strong>{latestLinked && <small>Latest · {formatRecentDate(latestLinked.createdAt)}</small>}</div>
               <div className={styles.linkedTensions}>
-                {linked.slice(0, 2).map((tension) => <button type="button" key={tension.id} onClick={() => props.onTarget({ kind: "tension", id: tension.id })}>
-                  <span className={styles.tensionDot} aria-hidden="true" />
-                  <span><strong>{tension.title}</strong>{tension.latestNote && <small>{tension.latestNote}</small>}</span>
-                </button>)}
+                {linked.slice(0, 2).map((tension) => {
+                  const meta = tensionPreviewMeta(tension, props.personName);
+                  return <button type="button" key={tension.id} onClick={() => props.onTarget({ kind: "tension", id: tension.id })}>
+                    <span className={styles.tensionDot} aria-hidden="true" />
+                    <span>
+                      <strong>{tension.title}</strong>
+                      <small className={styles.tensionPeople}>{meta.primary}</small>
+                      {meta.secondary && <small className={styles.tensionState}>{meta.secondary}</small>}
+                    </span>
+                  </button>;
+                })}
                 {linked.length > 2 && <small className={styles.moreLinked}>+ {linked.length - 2} more tensions</small>}
               </div>
             </div>}
@@ -294,6 +301,19 @@ function formatRecentDate(value: string) {
   yesterday.setDate(now.getDate() - 1);
   if (date.toDateString() === yesterday.toDateString()) return "yesterday";
   return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(date);
+}
+
+function tensionPreviewMeta(tension: Tension, personName: (id: string) => string) {
+  const primary = `Raised by ${personName(tension.raiserId)} · ${formatStatus(tension.status)}`;
+  const note = tension.latestNote?.trim() ?? "";
+
+  const inputMatch = note.match(/^Needs input or help from (.+?)(?:\s+—|$)/i);
+  if (inputMatch?.[1]) return { primary, secondary: `Needs input from ${inputMatch[1].trim()}` };
+
+  const syncMatch = note.match(/^Needs a real conversation with (.+?)(?:\s+—|$)/i);
+  if (syncMatch?.[1]) return { primary, secondary: `Conversation with ${syncMatch[1].trim()}` };
+
+  return { primary, secondary: note || "" };
 }
 
 function formatActionDate(value: string) {
