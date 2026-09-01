@@ -1180,16 +1180,43 @@
   font-size: 16px;
 }
 .projectConversationDetail {
-  width: auto;
-  min-width: 148px;
-  min-height: 44px;
-  margin-left: 3px;
-  padding: 8px 11px 7px 13px;
-  border-radius: 9px;
+  width: 100%;
+  min-width: 0;
+  min-height: 58px;
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 10px;
 }
-.projectConversationDetail > span { font-size: 12.5px; }
+.projectConversationDetail > span { font-size: 13px; }
 .projectConversationDetail > small { font-size: 11px; }
 .projectConversationDetail[data-unread="true"] > strong { font-size: 14px; }
+.projectAccessObjects > button,
+.projectAccessObjects > :global(button.quiet.small) {
+  width: 100%;
+  min-width: 0;
+  min-height: 58px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 10px 14px;
+  border: 1px solid #dde5e8;
+  border-radius: 10px;
+  background: #fff;
+  color: var(--brand-navy);
+  font-size: 13px;
+  font-weight: 800;
+  text-align: left;
+}
+.projectAccessObjects > button:hover,
+.projectAccessObjects > :global(button.quiet.small:hover) {
+  border-color: #c5d6dc;
+  background: #f8fafb;
+}
+.projectAccessObjects > .projectConversationDetail {
+  display: grid;
+  align-content: center;
+  justify-content: initial;
+}
 .projectException {
   display: flex;
   align-items: center;
@@ -1415,7 +1442,8 @@ button.projectPanelItem:hover {
   opacity: .72;
 }
 .projectDetailHero,
-.projectDetailSection {
+.projectDetailSection,
+.projectAccessLayer {
   margin-left: 19px;
   border: 0;
   border-radius: 0;
@@ -1475,9 +1503,47 @@ button.projectPanelItem:hover {
 .projectCadence small { color: var(--muted); font-size: 10.5px; text-transform: lowercase; }
 .projectCadence strong { color: var(--brand-navy); font-size: 13px; white-space: nowrap; }
 .projectCadence > span[data-exception="true"] strong { color: #9a4c1f; }
+.projectAccessLayer {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+  padding: 16px 3px 17px;
+  border-bottom: 1px solid #dce3e6;
+}
+.projectAccessObjects {
+  width: min(100%, 720px);
+  display: grid;
+  grid-template-columns: repeat(3,minmax(0,1fr));
+  gap: 9px;
+}
+.projectControlsMenu {
+  flex: 0 0 auto;
+  display: grid;
+  justify-items: end;
+  gap: 3px;
+  text-align: right;
+}
+.projectControlsMenu > span {
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.projectControlsMenu > button {
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: #52616d;
+  font-size: 12.5px;
+  font-weight: 750;
+}
+.projectControlsMenu > button:hover { color: var(--brand-navy); }
+.projectControlsMenu > small { color: #71808a; font-size: 10.5px; }
 .projectDetailSection { padding: 30px 3px 34px; }
-.projectState,
-.projectSecondary { grid-column: 1 / -1; }
+.projectState { grid-column: 1 / -1; }
 .projectState { border-bottom: 1px solid #dce3e6; }
 .projectCommitments { padding-right: 34px; }
 .projectTensions {
@@ -1492,7 +1558,6 @@ button.projectPanelItem:hover {
   width: 1px;
   background: linear-gradient(to bottom, transparent, rgba(43,55,70,.10) 14%, rgba(43,55,70,.10) 86%, transparent);
 }
-.projectSecondary { border-top: 1px solid #dce3e6; }
 .projectDetailSectionHead {
   display: flex;
   align-items: flex-start;
@@ -1582,85 +1647,16 @@ button.projectPanelItem:hover {
 }
 .projectTensionMain > small { display: block; margin-top: 9px; color: #66737c; font-size: 11px; line-height: 1.45; }
 .projectTensionActions { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-direction: row; padding-top: 11px; border-top: 1px solid #edf0f1; }
-.projectSecondary {
-  display: grid;
-  grid-template-columns: minmax(280px,.72fr) minmax(460px,1.28fr);
-  column-gap: 38px;
-  align-items: center;
-}
-.projectSecondary > .projectDetailSectionHead { grid-column: 1; margin-bottom: 8px; }
-.projectSecondary > p { grid-column: 1; max-width: 620px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
-.projectDetailControls { grid-column: 2; grid-row: 1 / span 2; }
-.projectDetailControls :global(.work-toolbar),
-.projectDetailControls :global(.section-head),
-.projectDetailControls :global(.project-accent),
-.projectDetailControls :global(.project-card > .kind),
-.projectDetailControls :global(.project-card > h3),
-.projectDetailControls :global(.project-card > .project-coi-badge),
-.projectDetailControls :global(.project-card > .project-summary),
-.projectDetailControls :global(.project-team-row),
-.projectDetailControls :global(.project-meta),
-.projectDetailControls :global(.context-next-steps),
-.projectDetailControls :global(.completed-projects) { display: none; }
-.projectDetailControls :global(.work-main),
-.projectDetailControls :global(.project-grid) { margin: 0; display: block; }
-.projectDetailControls :global(.project-card) {
-  min-height: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-}
-.projectDetailControls :global(.project-context-actions) {
-  margin: 0;
-  padding: 11px 0;
-  justify-content: flex-start;
-  gap: 6px 18px;
-  border-top: 1px solid #e1e7e9;
-  border-bottom: 1px solid #e1e7e9;
-}
-.projectDetailControls :global(.project-context-actions > button) {
-  min-height: 32px;
-  padding: 5px 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: #52616d;
-  font-size: 11.5px;
-  font-weight: 700;
-  box-shadow: none;
-}
-.projectDetailControls :global(.project-context-actions > button:hover) { color: var(--brand-navy); background: transparent; }
-.projectDetailControls :global(.project-context-actions > .comment-thread-button) {
-  min-height: 38px;
-  padding: 7px 10px;
-  border: 1px solid #d7e2e6;
-  border-radius: 8px;
-  background: #f8fafb;
-  color: var(--brand-navy);
-  font-size: 12.5px;
-}
-.projectDetailControls :global(.project-context-actions > .comment-thread-button:hover) {
-  border-color: rgba(37,150,190,.34);
-  background: rgba(37,150,190,.065);
-}
-.projectDetailControls :global(.comment-thread-button .comment-unread-badge) { font-size: 11.5px; }
-
 @media (max-width: 1180px) {
   .projectDetailLayout { grid-template-columns: 1fr; }
   .projectState,
   .projectCommitments,
-  .projectTensions,
-  .projectSecondary { grid-column: 1; }
+  .projectTensions { grid-column: 1; }
   .projectCommitments { padding-right: 3px; border-bottom: 1px solid #dce3e6; }
   .projectTensions { padding-left: 3px; }
   .projectTensions::before { display: none; }
-  .projectSecondary { grid-template-columns: 1fr; }
-  .projectSecondary > .projectDetailSectionHead,
-  .projectSecondary > p,
-  .projectDetailControls { grid-column: 1; grid-row: auto; }
-  .projectDetailControls { margin-top: 18px; }
+  .projectAccessLayer { align-items: flex-start; flex-direction: column; gap: 14px; }
+  .projectControlsMenu { justify-items: start; text-align: left; }
 }
 
 @media (max-width: 600px) {
@@ -1682,7 +1678,14 @@ button.projectPanelItem:hover {
   .projectDetailHero { flex-direction: column; gap: 16px; padding: 4px 0 23px; }
   .projectCadence { width: 100%; justify-content: space-between; }
   .projectDetailHero,
-  .projectDetailSection { margin-left: 13px; }
+  .projectDetailSection,
+  .projectAccessLayer { margin-left: 13px; }
+  .projectAccessLayer { padding-top: 13px; padding-bottom: 14px; }
+  .projectAccessObjects { gap: 6px; }
+  .projectAccessObjects > button,
+  .projectAccessObjects > :global(button.quiet.small) { min-height: 54px; padding: 9px 10px; font-size: 11.5px; }
+  .projectConversationDetail > span { font-size: 11.5px; }
+  .projectConversationDetail > small { font-size: 10px; }
   .projectDetailSection { padding: 24px 0 27px; }
   .projectDetailSectionHead { align-items: flex-start; }
   .projectTensionRow { grid-template-columns: 1fr; gap: 13px; }

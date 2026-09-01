@@ -7,8 +7,10 @@ import { WorkspaceWorkView } from "@/components/work-view";
 import { TensionsWorkspaceView } from "@/components/tensions-workspace-view";
 import { ProjectCoiBadge } from "@/components/project-coi-badge";
 import { ProjectCommentsModal } from "@/components/project-comments-modal";
+import { ProjectSettingsModal } from "@/components/project-settings-modal";
 import { ProjectSummaryPreview } from "@/components/project-summary-preview";
-import type { WorkspaceData, WorkspacePerson } from "@/lib/supabase/workspace";
+import { WorkAttachmentsButton } from "@/components/work-attachments";
+import { loadProjectUpdates, type ProjectUpdateEntry, type WorkspaceData, type WorkspacePerson } from "@/lib/supabase/workspace";
 import { loadCommentThreadSummary } from "@/lib/supabase/comment-thread-state";
 import { projectToneClass } from "@/lib/project-tone";
 import { removeAction, updateActionDetails } from "@/lib/supabase/action-management";
@@ -81,6 +83,12 @@ export function RedesignWorkHub(props: Props) {
     if (props.target.kind === "project" && !selectedProject) props.onTarget(null);
     if (props.target.kind === "tension" && !selectedTension) props.onTarget(null);
   }, [props.target, selectedProject, selectedTension, props.onTarget]);
+
+  useEffect(() => {
+    if (!selectedProject || props.openCommentsProjectId !== selectedProject.id) return;
+    setConversationProject(selectedProject);
+    props.onProjectCommentsOpened?.();
+  }, [selectedProject, props.openCommentsProjectId, props.onProjectCommentsOpened]);
 
   if (selectedProject) {
     return <>
@@ -252,7 +260,8 @@ export function RedesignWorkHub(props: Props) {
 }
 
 function RedesignProjectDetail({ project, onOpenConversation, ...props }: Props & { project: Project; onOpenConversation: () => void }) {
-  const focusedWorkspace = { ...props.workspace, projects: [project] };
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const activeActions = props.workspace.actions.filter((action) =>
     action.projectId === project.id && (action.status === "open" || action.status === "proposed")
   );
@@ -275,7 +284,8 @@ function RedesignProjectDetail({ project, onOpenConversation, ...props }: Props 
     document.getElementById(`project-commitments-${tensionId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
-  return <div className={styles.projectDetailLayout} data-tone={tone}>
+  return <>
+  <div className={styles.projectDetailLayout} data-tone={tone}>
     <header className={styles.projectDetailHero}>
       <div className={styles.projectDetailIdentity}>
         {project.role && <span className={styles.projectRole}>{project.role}</span>}
@@ -290,7 +300,6 @@ function RedesignProjectDetail({ project, onOpenConversation, ...props }: Props 
             {participants.length > 4 && <small>+{participants.length - 4}</small>}
           </span>}
           <ProjectCoiBadge projectId={project.id} personName={props.personName} />
-          <ProjectConversationInteraction threadId={project.id} onOpen={onOpenConversation} detail />
         </div>
       </div>
       <div className={styles.projectCadence}>
@@ -298,6 +307,19 @@ function RedesignProjectDetail({ project, onOpenConversation, ...props }: Props 
         <span data-exception={project.nextPrompt <= todayLocalISO() ? "true" : undefined}><small>next prompt</small><strong>{projectDate(project.nextPrompt)}</strong></span>
       </div>
     </header>
+
+    <section className={styles.projectAccessLayer} aria-label="Project information and controls">
+      <nav className={styles.projectAccessObjects} aria-label="Project information">
+        <ProjectConversationInteraction threadId={project.id} onOpen={onOpenConversation} detail />
+        <WorkAttachmentsButton parentType="project" parentId={project.id} parentTitle={project.title} personName={props.personName} />
+        <button type="button" onClick={() => setHistoryOpen(true)}>History</button>
+      </nav>
+      <div className={styles.projectControlsMenu}>
+        <span>Project controls</span>
+        <button type="button" onClick={() => setSettingsOpen(true)}>Project settings</button>
+        <small>Edit project · COI · completion</small>
+      </div>
+    </section>
 
     <section className={`${styles.projectDetailSection} ${styles.projectState}`}>
       <div className={styles.projectDetailSectionHead}><h2>Current state</h2>{project.ownerId === props.currentUserId && <button className="secondary small" type="button" onClick={() => props.onUpdateProject(project.id)}>Update</button>}</div>
@@ -375,26 +397,38 @@ function RedesignProjectDetail({ project, onOpenConversation, ...props }: Props 
       })}</div> : <p className={styles.projectDetailEmpty}>No unresolved tensions are linked to this project.</p>}
     </section>
 
-    <section className={`${styles.projectDetailSection} ${styles.projectSecondary}`}>
-      <div className={styles.projectDetailSectionHead}><h2>Conversation, files & project controls</h2></div>
-      <p>Review the project conversation and files, inspect history, or change the project settings without losing the operational context above.</p>
-      <div className={styles.projectDetailControls}>
-        <WorkspaceWorkView
-          workspace={focusedWorkspace}
-          currentUserId={props.currentUserId}
-          personName={props.personName}
-          personInitial={props.personInitial}
-          onAddNextStep={props.onAddNextStep}
-          onAddProject={props.onAddProject}
-          onActionStatus={props.onActionStatus}
-          onCompleteProject={props.onCompleteProject}
-          onReopenProject={props.onReopenProject}
-          onSaveProjectSettings={props.onSaveProjectSettings}
-          onUpdateProject={props.onUpdateProject}
-          openCommentsProjectId={props.openCommentsProjectId}
-          onCommentsOpened={props.onProjectCommentsOpened}
-        />
-      </div>
+  </div>
+  {historyOpen && <RedesignProjectHistoryModal project={project} personName={props.personName} onClose={() => setHistoryOpen(false)} />}
+  {settingsOpen && <ProjectSettingsModal
+    project={project}
+    people={props.workspace.people}
+    openNextStepCount={activeActions.length}
+    onSave={props.onSaveProjectSettings}
+    onComplete={props.onCompleteProject}
+    onClose={() => setSettingsOpen(false)}
+  />}
+  </>;
+}
+
+function RedesignProjectHistoryModal({ project, personName, onClose }: { project: Project; personName: (id: string) => string; onClose: () => void }) {
+  const [entries, setEntries] = useState<ProjectUpdateEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    void loadProjectUpdates(project.id)
+      .then((result) => { if (alive) setEntries(result); })
+      .catch((err) => { if (alive) setError(err instanceof Error ? err.message : "Project history could not be loaded."); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [project.id]);
+
+  return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="workflow-editor compact-modal project-context-modal" role="dialog" aria-modal="true">
+      <div className="editor-head"><div><span className="section-kicker">Project history</span><h2>{project.title}</h2></div><button className="quiet editor-close" type="button" onClick={onClose}>×</button></div>
+      <p className="editor-note">The project shows the current state. This is the trail of earlier checks and updates.</p>
+      {loading ? <div className="project-context-empty">Loading history…</div> : error ? <div className="auth-message error">{error}</div> : entries.length ? <div className="project-history-list">{entries.map((entry) => <article key={entry.id} className="project-history-entry"><div><strong>{projectHistoryLabel(entry.updateKind)}</strong><time>{formatProjectHistoryTimestamp(entry.createdAt)}</time></div><p>{entry.updateKind === "no_change" ? "No change recorded." : entry.summary || "No current-state text was recorded."}</p><small>{entry.authorId ? personName(entry.authorId) : "Existing state when history was enabled"}</small></article>)}</div> : <div className="project-context-empty">No earlier updates recorded yet.</div>}
     </section>
   </div>;
 }
@@ -1010,6 +1044,17 @@ function formatStatus(status: Tension["status"]) {
   if (status === "needs_sync") return "needs conversation";
   if (status === "awaiting_confirmation") return "awaiting confirmation";
   return status;
+}
+
+function projectHistoryLabel(kind: ProjectUpdateEntry["updateKind"]) {
+  if (kind === "baseline") return "Earlier current state";
+  if (kind === "no_change") return "Checked · no change";
+  if (kind === "edit") return "Current state edited";
+  return "Project update";
+}
+
+function formatProjectHistoryTimestamp(value: string) {
+  return new Intl.DateTimeFormat("en", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
 
 function readError(error: unknown) {
