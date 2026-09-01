@@ -280,6 +280,9 @@ function RedesignProjectDetail({ project, onOpenConversation, ...props }: Props 
       <div className={styles.projectDetailIdentity}>
         {project.role && <span className={styles.projectRole}>{project.role}</span>}
         <h1>{project.title}</h1>
+        <div className={styles.projectDetailPrimaryNavigation}>
+          <ProjectConversationAccess threadId={project.id} onOpen={onOpenConversation} />
+        </div>
         <div className={styles.projectDetailPeople}>
           <span className={styles.projectOwner} title={`Owner: ${props.personName(project.ownerId)}`}>
             <span aria-hidden="true">{props.personInitial(project.ownerId)}</span>
@@ -290,7 +293,6 @@ function RedesignProjectDetail({ project, onOpenConversation, ...props }: Props 
             {participants.length > 4 && <small>+{participants.length - 4}</small>}
           </span>}
           <ProjectCoiBadge projectId={project.id} personName={props.personName} />
-          <ProjectConversationAccess threadId={project.id} onOpen={onOpenConversation} />
         </div>
       </div>
       <div className={styles.projectCadence}>
@@ -446,7 +448,7 @@ function ProjectConversationAccess({ threadId, onOpen }: { threadId: string; onO
     type="button"
     onClick={onOpen}
   >
-    <span>Conversation</span>
+    <span>Open conversation →</span>
     <small>{summary.unreadCount > 0 ? `${summary.unreadCount} new · ${commentLabel}` : commentLabel}</small>
   </button>;
 }
