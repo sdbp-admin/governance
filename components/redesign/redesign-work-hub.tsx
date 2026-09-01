@@ -183,7 +183,6 @@ export function RedesignWorkHub(props: Props) {
               </span>}
               <span><small>last checked</small> {projectDate(project.lastUpdate)}</span>
               <span data-exception={project.nextPrompt <= todayLocalISO() ? "true" : undefined}><small>next prompt</small> {projectDate(project.nextPrompt)}</span>
-              <ConversationUnreadSignal threadType="project" threadId={project.id} onOpen={() => setConversationProject(project)} />
             </div>
             <ProjectWorkAwaiting
               tensions={linked}
@@ -209,6 +208,7 @@ export function RedesignWorkHub(props: Props) {
                 exceptions={commitmentExceptions}
                 onOpen={() => setProjectPanel({ kind: "commitments", projectId: project.id })}
               />
+              <ProjectConversationInteraction threadId={project.id} onOpen={() => setConversationProject(project)} />
             </div>
             <button className={styles.openProjectInline} type="button" onClick={() => props.onTarget({ kind: "project", id: project.id })}>Open project <span>→</span></button>
           </article>;
@@ -280,9 +280,6 @@ function RedesignProjectDetail({ project, onOpenConversation, ...props }: Props 
       <div className={styles.projectDetailIdentity}>
         {project.role && <span className={styles.projectRole}>{project.role}</span>}
         <h1>{project.title}</h1>
-        <div className={styles.projectDetailPrimaryNavigation}>
-          <ProjectConversationAccess threadId={project.id} onOpen={onOpenConversation} />
-        </div>
         <div className={styles.projectDetailPeople}>
           <span className={styles.projectOwner} title={`Owner: ${props.personName(project.ownerId)}`}>
             <span aria-hidden="true">{props.personInitial(project.ownerId)}</span>
@@ -293,6 +290,7 @@ function RedesignProjectDetail({ project, onOpenConversation, ...props }: Props 
             {participants.length > 4 && <small>+{participants.length - 4}</small>}
           </span>}
           <ProjectCoiBadge projectId={project.id} personName={props.personName} />
+          <ProjectConversationInteraction threadId={project.id} onOpen={onOpenConversation} detail />
         </div>
       </div>
       <div className={styles.projectCadence}>
@@ -439,17 +437,19 @@ function useCommentUnread(threadType: "project" | "tension", threadId: string) {
   return useCommentThreadSummary(threadType, threadId).unreadCount;
 }
 
-function ProjectConversationAccess({ threadId, onOpen }: { threadId: string; onOpen: () => void }) {
+function ProjectConversationInteraction({ threadId, onOpen, detail = false }: { threadId: string; onOpen: () => void; detail?: boolean }) {
   const summary = useCommentThreadSummary("project", threadId);
   const commentLabel = `${summary.totalCount} ${summary.totalCount === 1 ? "comment" : "comments"}`;
   return <button
-    className={styles.projectConversationAccess}
+    className={`${styles.projectObject} ${styles.projectConversationInteraction}${detail ? ` ${styles.projectConversationDetail}` : ""}`}
+    data-kind="conversation"
     data-unread={summary.unreadCount > 0 ? "true" : undefined}
     type="button"
     onClick={onOpen}
+    aria-label={summary.unreadCount > 0 ? `Open project conversation, ${summary.unreadCount} new` : `Open project conversation, ${commentLabel}`}
   >
-    <span>Open conversation →</span>
-    <small>{summary.unreadCount > 0 ? `${summary.unreadCount} new · ${commentLabel}` : commentLabel}</small>
+    <span>Conversation</span>
+    {summary.unreadCount > 0 ? <strong>{summary.unreadCount} new</strong> : <small>{commentLabel}</small>}
   </button>;
 }
 

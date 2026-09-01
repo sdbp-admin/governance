@@ -1012,38 +1012,6 @@
   background: rgba(37,150,190,.12);
   color: var(--brand-navy);
 }
-.projectCard .conversationUnreadSignal { margin-left: auto; }
-.projectDetailPeople .conversationUnreadSignal { margin-left: 3px; }
-.projectDetailPrimaryNavigation {
-  display: flex;
-  align-items: center;
-  margin-top: 18px;
-}
-.projectConversationAccess {
-  display: inline-grid;
-  gap: 4px;
-  min-width: 220px;
-  min-height: 56px;
-  padding: 10px 14px 10px 16px;
-  border: 1px solid #cadde4;
-  border-left: 3px solid #2596be;
-  border-radius: 10px;
-  background: #fff;
-  color: var(--brand-navy);
-  line-height: 1.2;
-  text-align: left;
-}
-.projectConversationAccess > span { color: #176f91; font-size: 15px; font-weight: 800; }
-.projectConversationAccess > small { color: #536672; font-size: 12.5px; font-weight: 650; }
-.projectConversationAccess:hover {
-  border-color: rgba(37,150,190,.48);
-  background: rgba(37,150,190,.055);
-}
-.projectConversationAccess[data-unread="true"] {
-  border-color: rgba(37,150,190,.30);
-  background: rgba(37,150,190,.085);
-}
-.projectConversationAccess[data-unread="true"] > small { color: #176f91; font-weight: 800; }
 .tensionConversationUnread {
   color: #176f91 !important;
   font-weight: 800 !important;
@@ -1129,7 +1097,7 @@
 }
 .projectObjects {
   display: grid;
-  grid-template-columns: repeat(2,minmax(0,1fr));
+  grid-template-columns: repeat(3,minmax(0,1fr));
   gap: 8px;
   margin-top: 13px;
 }
@@ -1164,6 +1132,10 @@
   --object-tone: var(--brand-green);
   --object-soft: rgba(154,180,22,.065);
 }
+.projectObject[data-kind="conversation"] {
+  --object-tone: #2596be;
+  --object-soft: rgba(37,150,190,.065);
+}
 .projectObject:hover {
   border-color: color-mix(in srgb, var(--object-tone) 35%, #dce3e6);
   background: var(--object-soft);
@@ -1193,6 +1165,31 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 1;
 }
+.projectConversationInteraction > small {
+  grid-column: 1 / -1;
+  color: #71808a;
+  font-size: 10.5px;
+  font-weight: 650;
+}
+.projectConversationInteraction[data-unread="true"] {
+  border-color: rgba(37,150,190,.42);
+  background: rgba(37,150,190,.095);
+}
+.projectConversationInteraction[data-unread="true"] > strong {
+  color: #176f91;
+  font-size: 16px;
+}
+.projectConversationDetail {
+  width: auto;
+  min-width: 148px;
+  min-height: 44px;
+  margin-left: 3px;
+  padding: 8px 11px 7px 13px;
+  border-radius: 9px;
+}
+.projectConversationDetail > span { font-size: 12.5px; }
+.projectConversationDetail > small { font-size: 11px; }
+.projectConversationDetail[data-unread="true"] > strong { font-size: 14px; }
 .projectException {
   display: flex;
   align-items: center;
