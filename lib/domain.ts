@@ -79,6 +79,27 @@ export type Tension = {
   poll?: TensionPoll;
 };
 
+export type TensionRequestKind = "input" | "conversation";
+export type TensionRequestStatus = "open" | "responded" | "closed";
+export type TensionRequestCloseReason = "requester_closed" | "withdrawn" | "tension_resolved" | "moved_to_governance" | "superseded";
+
+export type TensionRequest = {
+  id: string;
+  batchId: string;
+  tensionId: string;
+  kind: TensionRequestKind;
+  requesterId: string;
+  recipientId: string;
+  detail?: string;
+  status: TensionRequestStatus;
+  requestedAt: string;
+  respondedAt?: string;
+  respondedBy?: string;
+  closedAt?: string;
+  closedBy?: string;
+  closeReason?: TensionRequestCloseReason;
+};
+
 export type AttentionItem = {
   id: string;
   ownerId: string;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { AttentionItem, GovernanceEffect, GovernanceProposal, GovernanceStage, Project, Tension } from "@/lib/domain";
+import type { AttentionItem, GovernanceEffect, GovernanceProposal, GovernanceStage, Project, Tension, TensionRequest } from "@/lib/domain";
 import type { ContextualNextStepInput } from "@/components/contextual-next-steps";
 import { RecordsView } from "@/components/records-view";
 import { CompassModal } from "@/components/guidance";
@@ -15,6 +15,7 @@ import { WorkspaceGovernanceMeeting } from "@/components/governance-workspace-me
 import { loadCommunicationAttentionSignals, type CommunicationAttentionSignal } from "@/lib/supabase/board-feed";
 import { reopenProject, saveProjectSettings } from "@/lib/supabase/project-management";
 import { loadUrgentTensionIds, setTensionUrgency } from "@/lib/supabase/tension-urgency";
+import { defineTensionRequests, loadTensionRequests, markTensionRequestResponded } from "@/lib/supabase/tension-requests";
 import { useWorkspacePresence } from "@/lib/supabase/presence";
 import {
   acceptGovernanceProposal, acknowledgeAttentionSignal, canInvitePeople, chooseTensionPollOption,
@@ -38,6 +39,7 @@ export function RedesignLaunchApp({ liveProfile, accountControls }: { liveProfil
   const [workspace,setWorkspace]=useState<WorkspaceData>(EMPTY_WORKSPACE);
   const [urgentTensionIds,setUrgentTensionIds]=useState<Set<string>>(new Set());
   const [communicationSignals,setCommunicationSignals]=useState<CommunicationAttentionSignal[]>([]);
+  const [tensionRequests,setTensionRequests]=useState<TensionRequest[]>([]);
   const [view,setView]=useState<View>("attention");
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState("");
@@ -60,7 +62,7 @@ export function RedesignLaunchApp({ liveProfile, accountControls }: { liveProfil
   const refresh=useCallback(async(quiet=false)=>{
     if(!currentUserId)return;
     if(!quiet)setLoading(true);
-    try{const[next,canInvite,urgentIds,commSignals]=await Promise.all([loadWorkspace(),canInvitePeople(),loadUrgentTensionIds(),loadCommunicationAttentionSignals()]);setWorkspace(next);setInviteAllowed(canInvite);setUrgentTensionIds(urgentIds);setCommunicationSignals(commSignals);setError("");}
+    try{const[next,canInvite,urgentIds,commSignals,requests]=await Promise.all([loadWorkspace(),canInvitePeople(),loadUrgentTensionIds(),loadCommunicationAttentionSignals(),loadTensionRequests()]);setWorkspace(next);setInviteAllowed(canInvite);setUrgentTensionIds(urgentIds);setCommunicationSignals(commSignals);setTensionRequests(requests);setError("");}
     catch(e){setError(readError(e));}
     finally{if(!quiet)setLoading(false);}
   },[currentUserId]);
@@ -102,7 +104,18 @@ export function RedesignLaunchApp({ liveProfile, accountControls }: { liveProfil
   const peopleById=useMemo(()=>new Map(workspace.people.map(p=>[p.id,p])),[workspace.people]);
   const personName=(id:string)=>peopleById.get(id)?.name??"Unknown";
   const personInitial=(id:string)=>personName(id).charAt(0).toUpperCase();
-  const attention=useMemo(()=>deriveAttention(workspace,currentUserId,personName,urgentTensionIds,communicationSignals),[workspace,currentUserId,urgentTensionIds,communicationSignals]);
+  const attention=useMemo(()=>{
+    const nameFor=(id:string)=>peopleById.get(id)?.name??"Unknown";
+    const openForMe=tensionRequests.filter(request=>request.status==="open"&&request.recipientId===currentUserId);
+    const durableKeys=new Set(openForMe.map(request=>`${request.tensionId}:${request.recipientId}`));
+    const legacyWorkspace={...workspace,attentionSignals:(workspace.attentionSignals??[]).filter(signal=>signal.signalType!=="tension_need"||!signal.tensionId||!durableKeys.has(`${signal.tensionId}:${signal.recipientId}`))};
+    const durable: NavigableAttentionItem[]=openForMe.map(request=>{
+      const tension=workspace.tensions.find(candidate=>candidate.id===request.tensionId);
+      const context=request.detail?` ${request.detail}`:"";
+      return {id:`request-${request.id}`,ownerId:currentUserId,kind:"tension",targetId:request.tensionId,sourceKind:"tension",sourceId:request.tensionId,title:"You need to respond",reason:`${nameFor(request.requesterId)} requested ${request.kind==="conversation"?"a real conversation":"your input"}${tension?` on “${tension.title}”`:""}.${context}`,primaryAction:"Open tension",status:"needs_action"};
+    });
+    return [...durable,...deriveAttention(legacyWorkspace,currentUserId,nameFor,urgentTensionIds,communicationSignals)];
+  },[workspace,currentUserId,peopleById,urgentTensionIds,communicationSignals,tensionRequests]);
   const activeMeeting=activeMeetingId?workspace.governanceProposals.find(p=>p.id===activeMeetingId):undefined;
 
   async function run(action:()=>Promise<void>,success?:string){
@@ -147,7 +160,12 @@ export function RedesignLaunchApp({ liveProfile, accountControls }: { liveProfil
     await run(()=>updateTension(t.id,{status:"awaiting_confirmation",resolutionProposedBy:currentUserId,latestNote:`${personName(currentUserId)} believes this is resolved. Waiting for ${personName(t.raiserId)} to confirm.`}),"Marked resolved; waiting for the raiser to confirm.");
   }
   async function keepTensionOpen(t:Tension){await run(()=>updateTension(t.id,{status:"open",resolutionProposedBy:null,latestNote:t.latestNote??null}),"Tension kept open.");}
-  async function recordTensionNeed(t:Tension,k:TensionNeed,ids:string[],detail:string){if(!ids.length)return false;return run(()=>setTensionNeed(t.id,k,ids,detail),k==="sync"?"Conversation noted. It now appears for the people you need.":"Need noted. It now appears for the people you need.");}
+  async function recordTensionNeed(t:Tension,k:TensionNeed,ids:string[],detail:string){
+    if(!ids.length)return false;
+    if(k==="input")return run(()=>defineTensionRequests({tensionId:t.id,kind:"input",recipientIds:ids,detail}),"Need noted. It now appears for the people you need.");
+    return run(()=>setTensionNeed(t.id,k,ids,detail),"Conversation noted. It now appears for the people you need.");
+  }
+  async function markRequestResponded(requestId:string){return run(()=>markTensionRequestResponded(requestId),"Response recorded.");}
   async function moveTensionToGovernance(t:Tension){if(await run(()=>updateTension(t.id,{status:"governance",resolutionProposedBy:null,latestNote:"This tension needs a change to an ongoing role, responsibility, authority or standing way of working."}),"Moved to Governance."))setView("governance");}
   async function resolveWithNote(t:Tension,note:string){await run(()=>updateTension(t.id,{status:"resolved",resolutionProposedBy:null,latestNote:note}),"Tension resolved.");}
   async function changeTensionUrgency(t:Tension,urgent:boolean){return run(()=>setTensionUrgency(t.id,urgent),urgent?"Tension marked urgent.":"Urgent flag removed.");}
@@ -205,6 +223,7 @@ export function RedesignLaunchApp({ liveProfile, accountControls }: { liveProfil
       {view==="attention"&&<AttentionView items={attention} urgentTensionIds={urgentTensionIds} onPrimary={handleAttention} onOpenSource={handleOpenAttentionSource} onRaiseTension={()=>{setWorkCreateIntent("tension");setWorkTarget(null);setView("work");}}/>}
       {view==="work"&&<RedesignWorkHub
         workspace={workspace}
+        tensionRequests={tensionRequests}
         currentUserId={currentUserId}
         personName={personName}
         personInitial={personInitial}
@@ -228,6 +247,7 @@ export function RedesignLaunchApp({ liveProfile, accountControls }: { liveProfil
         onMarkResolved={markTensionResolved}
         onKeepOpen={keepTensionOpen}
         onNeed={recordTensionNeed}
+        onRequestResponded={markRequestResponded}
         onMoveGovernance={moveTensionToGovernance}
         onResolve={resolveWithNote}
         onCreatePoll={addTensionPoll}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { Action, Project, Tension } from "@/lib/domain";
+import type { Action, Project, Tension, TensionRequest } from "@/lib/domain";
 import { ContextualNextSteps, type ContextualNextStepInput } from "@/components/contextual-next-steps";
 import { WorkspaceWorkView } from "@/components/work-view";
 import { TensionsWorkspaceView } from "@/components/tensions-workspace-view";
@@ -24,6 +24,7 @@ type ProjectObjectPanel = { kind: "tensions" | "commitments"; projectId: string 
 
 type Props = {
   workspace: WorkspaceData;
+  tensionRequests: TensionRequest[];
   currentUserId: string;
   personName: (id: string) => string;
   personInitial: (id: string) => string;
@@ -47,6 +48,7 @@ type Props = {
   onMarkResolved: (tension: Tension) => Promise<void>;
   onKeepOpen: (tension: Tension) => Promise<void>;
   onNeed: (tension: Tension, kind: Need, ids: string[], detail: string) => Promise<boolean>;
+  onRequestResponded: (requestId: string) => Promise<boolean>;
   onMoveGovernance: (tension: Tension) => Promise<void>;
   onResolve: (tension: Tension, note: string) => Promise<void>;
   onCreatePoll: (id: string, times: string[]) => Promise<boolean>;
@@ -102,9 +104,11 @@ export function RedesignWorkHub(props: Props) {
 
   if (selectedTension) {
     const focusedWorkspace = { ...props.workspace, tensions: [selectedTension] };
+    const requests = props.tensionRequests.filter((request) => request.tensionId === selectedTension.id);
     return <div className={styles.detailShell}>
       <DetailHeader kind="Tension" title={selectedTension.title} onBack={() => props.onTarget(null)} />
       <div className={styles.tensionDetail}>
+        <TensionRequestContext requests={requests} currentUserId={props.currentUserId} personName={props.personName} onResponded={props.onRequestResponded} />
         <TensionsWorkspaceView
           workspace={focusedWorkspace}
           currentUserId={props.currentUserId}
@@ -170,6 +174,8 @@ export function RedesignWorkHub(props: Props) {
       {activeProjects.length ? <div className={styles.projectGrid}>
         {activeProjects.map((project) => {
           const linked = activeTensions.filter((tension) => tension.linkedProjectId === project.id);
+          const linkedIds = new Set(linked.map((tension) => tension.id));
+          const relevantRequests = props.tensionRequests.filter((request) => linkedIds.has(request.tensionId) && (request.requesterId === props.currentUserId || request.recipientId === props.currentUserId));
           const projectActions = openActions.filter((action) => action.projectId === project.id);
           const tensionExceptions = projectTensionExceptions(linked, props.urgentTensionIds);
           const commitmentExceptions = projectCommitmentExceptions(projectActions);
@@ -192,6 +198,7 @@ export function RedesignWorkHub(props: Props) {
               <span><small>last checked</small> {projectDate(project.lastUpdate)}</span>
               <span data-exception={project.nextPrompt <= todayLocalISO() ? "true" : undefined}><small>next prompt</small> {projectDate(project.nextPrompt)}</span>
             </div>
+            <RequestDependencyLines requests={relevantRequests} currentUserId={props.currentUserId} personName={props.personName} />
             <ProjectWorkAwaiting
               tensions={linked}
               commitments={projectActions}
@@ -232,9 +239,10 @@ export function RedesignWorkHub(props: Props) {
       </div>
       {unlinkedTensions.length ? <div className={styles.tensionGrid}>{unlinkedTensions.map((tension) => {
         const actionCount = openActions.filter((action) => action.sourceTensionId === tension.id).length;
+        const relevantRequests = props.tensionRequests.filter((candidate) => candidate.tensionId === tension.id && (candidate.requesterId === props.currentUserId || candidate.recipientId === props.currentUserId));
         return <button className={styles.tensionCard} type="button" key={tension.id} onClick={() => props.onTarget({ kind: "tension", id: tension.id })}>
           <span className={styles.tensionDot} aria-hidden="true" />
-          <span className={styles.tensionCardCopy}><small>{props.personName(tension.raiserId)} · {formatStatus(tension.status)}</small><strong>{tension.title}</strong>{tension.latestNote && <span>{tension.latestNote}</span>}</span>
+          <span className={styles.tensionCardCopy}><small>{props.personName(tension.raiserId)} · {formatStatus(tension.status)}</small><strong>{tension.title}</strong>{relevantRequests.length ? relevantRequests.map((request) => <span className={request.status === "open" && request.recipientId === props.currentUserId ? styles.requestNeedsYou : undefined} key={request.id}>{requestLabel(request, props.currentUserId, props.personName)}</span>) : tension.latestNote && <span>{tension.latestNote}</span>}</span>
           <span className={styles.tensionCardMeta}>{actionCount ? `${actionCount} ${actionCount === 1 ? "commitment" : "commitments"}` : "Open"} →</span>
         </button>;
       })}</div> : <div className={styles.emptyLine}>No unlinked tensions. Tensions connected to projects are shown with their project.</div>}
@@ -377,6 +385,7 @@ function RedesignProjectDetail({ project, onOpenConversation, ...props }: Props 
       {linkedTensions.length > 0 ? <div className={styles.projectTensionList}>{linkedTensions.map((tension) => {
         const need = tensionNeed(tension);
         const linkedCommitments = activeActions.filter((action) => action.sourceTensionId === tension.id);
+        const requests = props.tensionRequests.filter((request) => request.tensionId === tension.id);
         return <article className={styles.projectTensionRow} key={tension.id}>
           <div className={styles.projectTensionMain}>
             <div className={styles.projectPanelFacts}>
@@ -388,6 +397,7 @@ function RedesignProjectDetail({ project, onOpenConversation, ...props }: Props 
             <h3>{tension.title}</h3>
             {tension.latestNote && <p>{tension.latestNote}</p>}
             <small>Raised by {props.personName(tension.raiserId)}{need?.people.length ? ` · ${need.kind === "input" ? "input from" : "conversation with"} ${need.people.join(", ")}` : ""}</small>
+            <RequestDependencyLines requests={requests} currentUserId={props.currentUserId} personName={props.personName} />
           </div>
           <div className={styles.projectTensionActions}>
             {linkedCommitments.length > 0 && <button className="quiet small" type="button" onClick={() => scrollToCommitments(tension.id)}>{linkedCommitments.length} linked {linkedCommitments.length === 1 ? "commitment" : "commitments"}</button>}
@@ -408,6 +418,63 @@ function RedesignProjectDetail({ project, onOpenConversation, ...props }: Props 
     onClose={() => setSettingsOpen(false)}
   />}
   </>;
+}
+
+function TensionRequestContext({ requests, currentUserId, personName, onResponded }: {
+  requests: TensionRequest[];
+  currentUserId: string;
+  personName: (id: string) => string;
+  onResponded: (requestId: string) => Promise<boolean>;
+}) {
+  const [respondingId, setRespondingId] = useState<string | null>(null);
+  if (!requests.length) return null;
+
+  async function respond(requestId: string) {
+    setRespondingId(requestId);
+    await onResponded(requestId);
+    setRespondingId(null);
+  }
+
+  return <section className={styles.requestContext} aria-label="Tension requests">
+    {requests.map((request) => {
+      const needsCurrentUser = request.status === "open" && request.recipientId === currentUserId;
+      return <article className={needsCurrentUser ? styles.requestContextNeedsYou : styles.requestContextRow} key={request.id}>
+        <div>
+          <strong>{needsCurrentUser ? "You need to respond" : requestLabel(request, currentUserId, personName)}</strong>
+          <span>{personName(request.requesterId)} requested {request.kind === "conversation" ? "a real conversation" : "input"} from {personName(request.recipientId)} · {requestAge(request.requestedAt)}</span>
+          {request.detail && <p>{request.detail}</p>}
+        </div>
+        {needsCurrentUser && <button className="primary small" type="button" disabled={respondingId === request.id} onClick={() => void respond(request.id)}>{respondingId === request.id ? "Saving…" : "I’ve responded"}</button>}
+      </article>;
+    })}
+  </section>;
+}
+
+function RequestDependencyLines({ requests, currentUserId, personName }: {
+  requests: TensionRequest[];
+  currentUserId: string;
+  personName: (id: string) => string;
+}) {
+  if (!requests.length) return null;
+  return <div className={styles.requestDependencies} aria-label="Request dependencies">
+    {requests.map((request) => <span className={request.status === "open" && request.recipientId === currentUserId ? styles.requestNeedsYou : undefined} key={request.id}>{requestLabel(request, currentUserId, personName)}</span>)}
+  </div>;
+}
+
+function requestLabel(request: TensionRequest, currentUserId: string, personName: (id: string) => string) {
+  if (request.status === "open" && request.recipientId === currentUserId) return "You need to respond";
+  if (request.status === "open") return `Waiting for ${personName(request.recipientId)} · ${requestAge(request.requestedAt)}`;
+  if (request.recipientId === currentUserId) return "You responded";
+  return `${personName(request.recipientId)} responded`;
+}
+
+function requestAge(requestedAt: string) {
+  const requested = new Date(`${requestedAt.slice(0, 10)}T00:00:00Z`).getTime();
+  const today = new Date(`${todayLocalISO()}T00:00:00Z`).getTime();
+  const days = Math.max(0, Math.floor((today - requested) / 86_400_000));
+  if (days === 0) return "today";
+  if (days === 1) return "1 day";
+  return `${days} days`;
 }
 
 function RedesignProjectHistoryModal({ project, personName, onClose }: { project: Project; personName: (id: string) => string; onClose: () => void }) {

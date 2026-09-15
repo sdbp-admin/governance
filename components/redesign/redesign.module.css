@@ -42,6 +42,17 @@
 .tensionCardCopy span { color: var(--muted); margin-top: 3px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tensionCardMeta { color: var(--accent-dark); font-size: 11px; white-space: nowrap; }
 .emptyLine { border: 1px dashed var(--border); border-radius: 14px; padding: 18px; color: var(--muted); font-size: 13px; background: rgba(255,255,255,.45); }
+.requestDependencies { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 11px; }
+.requestDependencies > span { display: inline-flex; align-items: center; min-height: 28px; padding: 5px 9px; border-radius: 9px; background: rgba(43,55,70,.055); color: var(--muted); font-size: 12px; font-weight: 700; }
+.requestDependencies > .requestNeedsYou, .requestNeedsYou { background: rgba(239,103,40,.11); color: #a74418; font-weight: 800; }
+.tensionCardCopy .requestNeedsYou { color: #a74418; }
+.requestContext { display: grid; gap: 8px; margin-bottom: 14px; }
+.requestContextRow, .requestContextNeedsYou { display: flex; justify-content: space-between; align-items: center; gap: 18px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 13px; background: rgba(255,255,255,.72); }
+.requestContextNeedsYou { border-color: rgba(239,103,40,.38); background: rgba(239,103,40,.075); }
+.requestContext strong, .requestContext span, .requestContext p { display: block; }
+.requestContext strong { font-size: 15px; }
+.requestContext span { margin-top: 3px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.requestContext p { margin: 7px 0 0; color: var(--text); font-size: 13px; line-height: 1.45; }
 .detailShell { animation: redesignFade .18s ease; }
 .detailHeader { display: grid; grid-template-columns: auto minmax(0,1fr); align-items: start; gap: 18px; padding-bottom: 18px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
 .detailHeader h2 { margin-top: 4px; font-size: 26px; }
@@ -73,6 +84,7 @@
   .tensionCard { grid-template-columns: 9px minmax(0,1fr); }
   .tensionCardMeta { grid-column: 2; }
   .commitmentRow { grid-template-columns: 1fr; }
+  .requestContextRow, .requestContextNeedsYou { align-items: flex-start; flex-direction: column; }
 }
 
 .redesignSidebar { display: flex; flex-direction: column; }
