@@ -150,6 +150,44 @@
 .pulseGrid strong { color: var(--brand-navy); font-size: 28px; line-height: 1; }
 .pulseGrid span { color: var(--muted); font-size: 11px; }
 
+.meetingLandscape { display: grid; gap: 14px; }
+.landscapeLegend { display: flex; flex-wrap: wrap; gap: 14px; color: var(--muted); font-size: 11px; }
+.landscapeLegend span { display: inline-flex; align-items: center; gap: 6px; }
+.projectField {
+  min-height: 470px;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: center;
+  align-items: center;
+  justify-content: center;
+  gap: 20px 28px;
+  padding: 30px;
+  overflow: hidden;
+  border-radius: 28px;
+  background: radial-gradient(circle at 48% 42%, #f7fbfb 0, #eef5f3 68%, #f8faf9 100%);
+}
+.meetingProject, .unlinkedObject { flex: 0 0 auto; border-radius: 50%; }
+.meetingProject {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 14px;
+  padding: 22px;
+  border: 1px solid #9dcbd7;
+  background: rgba(241,248,247,.92);
+  text-align: center;
+}
+.meetingProject strong, .unlinkedObject strong { display: block; max-width: 120px; color: var(--brand-navy); font-size: 13px; line-height: 1.2; }
+.meetingProject small, .unlinkedObject small { display: block; margin-top: 4px; color: var(--muted); font-size: 9px; }
+.objectCluster { max-width: 86px; display: flex; flex-wrap: wrap; justify-content: center; gap: 5px; }
+.tensionDot, .actionDot, .overdueDot { display: inline-block; border-radius: 50%; }
+.objectCluster .tensionDot { width: 11px; height: 11px; }
+.objectCluster .actionDot, .objectCluster .overdueDot { width: 7px; height: 7px; margin: 2px; }
+.tensionDot { width: 9px; height: 9px; background: #f6ae7b; border: 1px solid #ef8e55; }
+.actionDot { width: 8px; height: 8px; background: #77bfcf; border: 1px solid #3694ad; }
+.overdueDot { width: 8px; height: 8px; background: #d9695f; border: 1px solid #b84840; }
+.unlinkedObject { width: 104px; height: 104px; display: grid; place-content: center; padding: 14px; border: 1px solid #ef9d6d; background: #fff1e7; text-align: center; }
+
 .syncGrid { display: grid; grid-template-columns: 1.15fr .85fr; gap: 15px; align-items: start; }
 .syncPanel { padding: 19px; border: 1px solid var(--border); border-radius: 17px; background: #fbfcfc; }
 .panelHead { display: flex; justify-content: space-between; gap: 14px; align-items: flex-end; }
@@ -194,6 +232,8 @@
 .agendaRow strong { display: block; color: var(--brand-navy); }
 .agendaRow small { color: var(--muted); font-size: 10px; }
 .agendaRow p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+.agendaSelected { border-color: #9fc9d6; background: #f7fbfc; }
+.agendaStart { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 14px; padding: 13px 15px; border-radius: 13px; background: var(--accent-soft); color: var(--brand-navy); }
 .governanceAside { margin-top: 18px; padding: 16px; border: 1px solid #f0d7bd; border-radius: 14px; background: var(--warm-soft); }
 .governanceAside > strong { color: var(--brand-navy); }
 .governanceAside p { margin: 5px 0 9px; color: #65533f; font-size: 12px; }
@@ -233,6 +273,16 @@
 .resolutionCheck { margin-top: 20px; padding: 18px; border: 1px solid #d4e2e6; border-radius: 14px; background: #fbfcfc; }
 .resolutionCheck h3 { margin-top: 5px; }
 .resolutionCheck p { color: var(--muted); font-size: 13px; }
+.outcomeRecorder { margin-top: 13px; padding: 17px; border: 1px solid #b9d9e3; border-radius: 14px; background: #f8fcfd; }
+.outcomeRecorder > strong { display: block; margin-bottom: 10px; color: var(--brand-navy); font-size: 13px; }
+.outcomeRecorder > p { color: var(--muted); font-size: 12px; }
+.commitmentFields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0; }
+.commitmentFields label { display: grid; gap: 5px; color: var(--muted); font-size: 11px; }
+.commitmentFields select, .commitmentFields input { min-width: 0; padding: 9px 10px; border: 1px solid var(--border); border-radius: 9px; background: #fff; color: var(--text); }
+.confirmCheck { display: flex; align-items: flex-start; gap: 8px; margin: 12px 0; color: var(--brand-navy); font-size: 12px; }
+.confirmCheck input { margin-top: 2px; }
+.recordPreview { margin: 9px 0; }
+.skipRecord { margin-top: 10px; padding: 7px 0; border: 0; background: transparent; color: var(--muted); font-size: 11px; text-decoration: underline; }
 .noSelection { display: grid; justify-items: start; gap: 12px; }
 
 .closingCard { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; margin-bottom: 15px; }
@@ -270,6 +320,7 @@
   .launcher { top: auto; bottom: 18px; right: 18px; }
   .teachingGrid, .pulseGrid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .syncGrid, .triageLayout { grid-template-columns: 1fr; }
+  .projectField { min-height: 380px; padding: 20px; }
   .triageQueue { grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); }
   .triageQueue > span { grid-column: 1/-1; }
 }
@@ -281,6 +332,7 @@
   .step { min-height: 42px; }
   .teachingGrid, .pulseGrid, .distinction, .outcomes, .closingCard { grid-template-columns: 1fr; }
   .raiseBar { grid-template-columns: 1fr; }
+  .commitmentFields { grid-template-columns: 1fr; }
   .raiserSelect { min-width: 0; }
   .agendaRow { grid-template-columns: 30px minmax(0,1fr); }
   .agendaRow > button { grid-column: 2; justify-self: start; }

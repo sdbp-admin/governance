@@ -13,6 +13,8 @@ export type RoleDefinition = {
   id: string;
   title: string;
   category: RoleCategory;
+  isCircle?: boolean;
+  parentId?: string;
   holderIds: string[];
   purpose: string;
   scope: string;
@@ -122,6 +124,8 @@ export type GovernanceStage =
   | "clarify"
   | "objection_round"
   | "integration"
+  | "deferred"
+  | "withdrawn"
   | "accepted";
 
 export type StandingAgreementCategory =
@@ -146,6 +150,8 @@ export type StandingAgreement = {
 export type GovernanceRoleSnapshot = {
   title: string;
   category: RoleCategory;
+  isCircle: boolean;
+  parentId: string | null;
   purpose: string;
   scope: string;
   responsibilities: string[];

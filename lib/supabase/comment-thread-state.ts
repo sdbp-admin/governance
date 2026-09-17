@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase/client";
 
-export type CommentThreadType = "project" | "tension";
+export type CommentThreadType = "project" | "tension" | "action";
 
 export type CommentThreadSummary = {
   totalCount: number;

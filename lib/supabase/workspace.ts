@@ -60,6 +60,8 @@ type RoleRow = {
   id: string;
   title: string;
   category: "board" | "operating";
+  is_circle: boolean;
+  parent_role_id: string | null;
   purpose: string;
   scope: string;
   responsibilities: string[] | null;
@@ -154,7 +156,7 @@ type PollVoteRow = { poll_id: string; option_id: string; person_id: string; avai
 export async function loadWorkspace(): Promise<WorkspaceData> {
   const [peopleResult, rolesResult, assignmentsResult, projectsResult, actionsResult, tensionsResult, proposalsResult, attentionResult] = await Promise.all([
     supabase.from("people").select("id,name,email,auth_user_id,can_invite").eq("active", true).order("name"),
-    supabase.from("roles").select("id,title,category,purpose,scope,responsibilities,accountabilities,source,definition_status").order("title"),
+    supabase.from("roles").select("id,title,category,is_circle,parent_role_id,purpose,scope,responsibilities,accountabilities,source,definition_status").order("title"),
     supabase.from("role_assignments").select("role_id,person_id,ends_on").is("ends_on", null),
     supabase.from("projects").select("id,title,owner_id,role_id,status,summary,last_update_at,next_prompt_on,source_tension_id,participant_ids,created_at").order("created_at", { ascending: false }),
     supabase.from("actions").select("id,title,owner_id,status,due_on,project_id,source_label,source_tension_id").order("created_at", { ascending: false }),
@@ -171,6 +173,8 @@ export async function loadWorkspace(): Promise<WorkspaceData> {
     id: row.id,
     title: row.title,
     category: row.category,
+    isCircle: row.is_circle,
+    parentId: row.parent_role_id ?? undefined,
     holderIds: assignments.filter((assignment) => assignment.role_id === row.id).map((assignment) => assignment.person_id),
     purpose: row.purpose,
     scope: row.scope,
@@ -357,6 +361,8 @@ export async function saveRole(role: RoleDefinition) {
     id: role.id,
     title: role.title.trim(),
     category: role.category,
+    is_circle: Boolean(role.isCircle),
+    parent_role_id: role.parentId ?? null,
     purpose: role.purpose.trim(),
     scope: role.scope.trim(),
     responsibilities: role.responsibilities,
@@ -446,14 +452,25 @@ export async function setActionStatus(actionId: string, status: Action["status"]
   if (error) throw error;
 }
 
-export async function createTension(input: { title: string; raiserId: string; projectId?: string }) {
-  const { error } = await supabase.from("tensions").insert({
+type CreateTensionInput = { title: string; raiserId: string; projectId?: string };
+
+export async function createTension(input: CreateTensionInput) {
+  await insertTension(input);
+}
+
+export async function createTensionAndReturnId(input: CreateTensionInput) {
+  return insertTension(input);
+}
+
+async function insertTension(input: CreateTensionInput) {
+  const { data, error } = await supabase.from("tensions").insert({
     title: input.title.trim(),
     raiser_id: input.raiserId,
     project_id: input.projectId ?? null,
     status: "open",
-  });
+  }).select("id").single();
   if (error) throw error;
+  return data.id as string;
 }
 
 export async function setTensionNeed(tensionId: string, kind: "input" | "sync", recipientIds: string[], detail: string) {

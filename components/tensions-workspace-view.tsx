@@ -267,7 +267,7 @@ function Process({ tension, people, currentUserId, onClose, onNeed, onMoveGovern
       <label className="field"><span>{choice === "sync" ? "What needs to be worked through?" : "What do you need?"} <em>optional</em></span><textarea rows={3} value={detail} onChange={(event) => setDetail(event.target.value)} /></label>
       <button className="primary small" disabled={!ids.length} onClick={() => void save(choice)}>Keep {choice === "sync" ? "conversation" : "this"} visible</button>
     </div>}
-    {choice === "governance" && <div className="outcome-form"><p>Use this when an ongoing role, responsibility, authority or standing way of working should change.</p><button className="primary small" onClick={() => void onMoveGovernance(tension)}>Move to Governance</button></div>}
+    {choice === "governance" && <div className="outcome-form"><p>This identifies the tension as structural and opens Governance preparation. Its current context is preserved; a proposal still needs to be prepared before a Governance Meeting can process it.</p><button className="primary small" onClick={() => void onMoveGovernance(tension)}>Mark structural &amp; prepare proposal</button></div>}
     <div className="process-actions"><button className="quiet" onClick={onClose}>Close</button></div>
   </div>;
 }

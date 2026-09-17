@@ -20,7 +20,7 @@ export function GovernanceWorkspaceView({ workspace, currentUserId, personName, 
 }) {
   const used = new Set(workspace.governanceProposals.map((proposal) => proposal.tensionId));
   const ready = workspace.tensions.filter((tension) => tension.status === "governance" && !used.has(tension.id));
-  const open = workspace.governanceProposals.filter((proposal) => proposal.stage !== "accepted");
+  const open = workspace.governanceProposals.filter((proposal) => proposal.stage !== "accepted" && proposal.stage !== "withdrawn");
   const accepted = workspace.governanceProposals.filter((proposal) => proposal.stage === "accepted");
   const boardRoles = workspace.roles.filter((role) => role.category === "board");
   const operatingRoles = workspace.roles.filter((role) => role.category === "operating");
@@ -87,5 +87,5 @@ function ProposalStarter({ tension, mine, personName, workspace, currentUserId, 
   </article>;
 }
 
-function stageName(stage: GovernanceProposal["stage"]) { return ({ prepared: "Prepared", present_proposal: "Present proposal", clarifying_questions: "Clarifying questions", reaction_round: "Reaction round", clarify: "Option to clarify", objection_round: "Objection round", integration: "Integration", accepted: "Accepted" } as Record<GovernanceProposal["stage"], string>)[stage]; }
+function stageName(stage: GovernanceProposal["stage"]) { return ({ prepared: "Prepared", present_proposal: "Present proposal", clarifying_questions: "Clarifying questions", reaction_round: "Reaction round", clarify: "Option to clarify", objection_round: "Objection round", integration: "Integration", deferred: "Deferred", withdrawn: "Withdrawn", accepted: "Accepted" } as Record<GovernanceProposal["stage"], string>)[stage]; }
 function formatDate(value: string) { return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(new Date(`${value}T12:00:00`)); }

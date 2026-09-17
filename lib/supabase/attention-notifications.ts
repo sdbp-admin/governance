@@ -4,8 +4,9 @@ export type AttentionNotificationRequest =
   | { tensionId: string }
   | { kind: "board_post"; postId: string }
   | { kind: "board_post_comment"; commentId: string }
-  | { kind: "project_comment"; commentId: string }
-  | { kind: "tension_comment"; commentId: string }
+  | { kind: "project_comment"; commentId: string; recipientIds?: string[] }
+  | { kind: "tension_comment"; commentId: string; recipientIds?: string[] }
+  | { kind: "action_comment"; commentId: string; recipientIds?: string[] }
   | { kind: "action_proposed"; recipientId: string; title: string; context?: string }
   | { kind: "tension_poll"; tensionId: string }
   | { kind: "meeting_poll"; pollId: string }

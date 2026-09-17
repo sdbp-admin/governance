@@ -35,12 +35,14 @@ type NotificationPayload = {
     | "board_post_comment"
     | "project_comment"
     | "tension_comment"
+    | "action_comment"
     | "action_proposed"
     | "tension_poll"
     | "meeting_poll"
     | "governance_consent";
   postId?: string;
   commentId?: string;
+  recipientIds?: string[];
   recipientId?: string;
   title?: string;
   context?: string;
@@ -144,7 +146,7 @@ async function buildAttentionDeliveries(
     const { data: project, error: projectError } = await supabase.from("projects").select("id,title,owner_id").eq("id", comment.project_id).maybeSingle();
     if (projectError) throw projectError;
     if (!project) return [];
-    const ids = uniqueIds([project.owner_id as string, ...(((comment.mentioned_ids as string[] | null) ?? []))]);
+    const ids = requestedRecipients(uniqueIds([project.owner_id as string, ...(((comment.mentioned_ids as string[] | null) ?? []))]), payload.recipientIds);
     const recipients = await peopleByIds(supabase, ids);
     return attentionDeliveries(recipients, actor, `Project · ${project.title}`, `${actor.name} added a comment that needs your attention.`, appUrl);
   }
@@ -157,9 +159,21 @@ async function buildAttentionDeliveries(
     const { data: tension, error: tensionError } = await supabase.from("tensions").select("id,title,raiser_id").eq("id", comment.tension_id).maybeSingle();
     if (tensionError) throw tensionError;
     if (!tension) return [];
-    const ids = uniqueIds([tension.raiser_id as string, ...(((comment.mentioned_ids as string[] | null) ?? []))]);
+    const ids = requestedRecipients(uniqueIds([tension.raiser_id as string, ...(((comment.mentioned_ids as string[] | null) ?? []))]), payload.recipientIds);
     const recipients = await peopleByIds(supabase, ids);
     return attentionDeliveries(recipients, actor, "tension comment", `${actor.name} added a comment that needs your attention.`, appUrl);
+  }
+
+  if (payload.kind === "action_comment") {
+    if (!payload.commentId) throw new Error("commentId is required.");
+    const { data: comment, error } = await supabase.from("action_comments").select("id,action_id,author_id,mentioned_ids").eq("id", payload.commentId).maybeSingle();
+    if (error) throw error;
+    if (!comment || comment.author_id !== actor.id) return [];
+    const { data: action, error: actionError } = await supabase.from("actions").select("id,title").eq("id", comment.action_id).maybeSingle();
+    if (actionError) throw actionError;
+    if (!action) return [];
+    const recipients = await peopleByIds(supabase, requestedRecipients((comment.mentioned_ids as string[] | null) ?? [], payload.recipientIds));
+    return attentionDeliveries(recipients, actor, `Commitment · ${action.title}`, `${actor.name} mentioned you in a commitment comment.`, appUrl);
   }
 
   if (payload.kind === "action_proposed") {
@@ -331,6 +345,12 @@ async function activeGovernancePeople(supabase: SupabaseClient) {
 
 function uniqueIds(ids: string[]) {
   return [...new Set(ids.filter(Boolean))];
+}
+
+function requestedRecipients(eligibleIds: string[], requestedIds?: string[]) {
+  if (!requestedIds) return uniqueIds(eligibleIds);
+  const requested = new Set(uniqueIds(requestedIds));
+  return uniqueIds(eligibleIds).filter((id) => requested.has(id));
 }
 
 function dedupeDeliveries(deliveries: Delivery[]) {

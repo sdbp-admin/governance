@@ -1,6 +1,6 @@
 import type { GovernanceStage } from "@/lib/domain";
 
-export const GOVERNANCE_STEPS: { id: Exclude<GovernanceStage, "prepared">; name: string; description: string }[] = [
+export const GOVERNANCE_STEPS: { id: Exclude<GovernanceStage, "prepared" | "deferred" | "withdrawn">; name: string; description: string }[] = [
   { id: "present_proposal", name: "Present Proposal", description: "The proposer describes the tension and presents the governance change intended to address it." },
   { id: "clarifying_questions", name: "Clarifying Questions", description: "Participants ask factual questions to understand the tension and proposal. Reactions, opinions and debate wait." },
   { id: "reaction_round", name: "Reaction Round", description: "Each participant may react to the proposal. The proposer listens without responding during the round." },

@@ -27,6 +27,8 @@ export function formatShortDate(value: string) {
 
 export function humanGovernanceStage(stage: GovernanceStage) {
   if (stage === "prepared") return "Prepared for meeting";
+  if (stage === "deferred") return "Deferred";
+  if (stage === "withdrawn") return "Withdrawn";
   return GOVERNANCE_STEPS.find((step) => step.id === stage)?.name ?? stage;
 }
 

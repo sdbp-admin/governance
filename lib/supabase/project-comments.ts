@@ -8,6 +8,7 @@ export type ProjectCommentEntry = {
   body: string;
   mentionedIds: string[];
   createdAt: string;
+  updatedAt: string | null;
 };
 
 type ProjectCommentRow = {
@@ -17,17 +18,25 @@ type ProjectCommentRow = {
   body: string;
   mentioned_ids?: string[] | null;
   created_at: string;
+  updated_at?: string | null;
 };
 
 export async function loadProjectComments(projectId: string): Promise<ProjectCommentEntry[]> {
   const result = await supabase
     .from("project_comments")
-    .select("id,project_id,author_id,body,mentioned_ids,created_at")
+    .select("id,project_id,author_id,body,mentioned_ids,created_at,updated_at")
     .eq("project_id", projectId)
     .order("created_at", { ascending: true });
 
   if (result.error) {
     if (!isOptionalSchemaError(result.error)) throw result.error;
+    const current = await supabase
+      .from("project_comments")
+      .select("id,project_id,author_id,body,mentioned_ids,created_at")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: true });
+    if (!current.error) return ((current.data ?? []) as ProjectCommentRow[]).map(mapComment);
+    if (!isOptionalSchemaError(current.error)) throw current.error;
     const legacy = await supabase
       .from("project_comments")
       .select("id,project_id,author_id,body,created_at")
@@ -67,6 +76,17 @@ export async function addProjectComment(projectId: string, body: string, mention
   throw result.error;
 }
 
+export async function editProjectComment(commentId: string, body: string, mentionedIds: string[] = []) {
+  const { data, error } = await supabase.rpc("edit_project_comment", {
+    target_comment_id: commentId,
+    comment_body: body.trim(),
+    mention_ids: mentionedIds,
+  });
+  if (error) throw error;
+  const recipientIds = (data ?? []) as string[];
+  if (recipientIds.length) await notifyAttention({ kind: "project_comment", commentId, recipientIds });
+}
+
 function mapComment(row: ProjectCommentRow): ProjectCommentEntry {
   return {
     id: row.id,
@@ -75,6 +95,7 @@ function mapComment(row: ProjectCommentRow): ProjectCommentEntry {
     body: row.body,
     mentionedIds: row.mentioned_ids ?? [],
     createdAt: row.created_at,
+    updatedAt: row.updated_at ?? null,
   };
 }
 

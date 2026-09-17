@@ -166,7 +166,7 @@ export function RedesignLaunchApp({ liveProfile, accountControls }: { liveProfil
     return run(()=>setTensionNeed(t.id,k,ids,detail),"Conversation noted. It now appears for the people you need.");
   }
   async function markRequestResponded(requestId:string){return run(()=>markTensionRequestResponded(requestId),"Response recorded.");}
-  async function moveTensionToGovernance(t:Tension){if(await run(()=>updateTension(t.id,{status:"governance",resolutionProposedBy:null,latestNote:"This tension needs a change to an ongoing role, responsibility, authority or standing way of working."}),"Moved to Governance."))setView("governance");}
+  async function moveTensionToGovernance(t:Tension){if(await run(()=>updateTension(t.id,{status:"governance",resolutionProposedBy:null}),"Marked for Governance preparation."))setView("governance");}
   async function resolveWithNote(t:Tension,note:string){await run(()=>updateTension(t.id,{status:"resolved",resolutionProposedBy:null,latestNote:note}),"Tension resolved.");}
   async function changeTensionUrgency(t:Tension,urgent:boolean){return run(()=>setTensionUrgency(t.id,urgent),urgent?"Tension marked urgent.":"Urgent flag removed.");}
   const addTensionPoll=(id:string,times:string[])=>run(()=>createTensionPoll(id,times),"Availability poll created.");
