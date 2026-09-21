@@ -9,6 +9,80 @@ import type { WorkspaceData } from "@/lib/supabase/workspace";
 import { supabase } from "@/lib/supabase/client";
 
 export type PersonalAttention = { id: string; kind: "request" | "commitment" | "mention" | "need" | "confirmation" | "update" | "governance"; projectId?: string; tensionId?: string; actionId?: string; requestId?: string; signalId?: string; commentId?: string; label: string };
+export type SpatialUnreadActivity = {
+  kind: "project" | "tension" | "action";
+  sourceId: string;
+  projectId?: string;
+  tensionId?: string;
+  actionId?: string;
+  unreadCount: number;
+};
+
+export async function loadSpatialUnreadActivity(workspace: WorkspaceData, userId: string, mentions: PersonalAttention[] = []): Promise<SpatialUnreadActivity[]> {
+  const [projectParticipation, tensionParticipation, actionParticipation] = await Promise.all([
+    supabase.from("project_comments").select("project_id").eq("author_id", userId),
+    supabase.from("tension_comments").select("tension_id").eq("author_id", userId),
+    supabase.from("action_comments").select("action_id").eq("author_id", userId),
+  ]);
+  const participationError = projectParticipation.error || tensionParticipation.error || actionParticipation.error;
+  if (participationError) throw participationError;
+
+  const projectIds = new Set<string>();
+  const tensionIds = new Set<string>();
+  const actionIds = new Set<string>();
+
+  for (const project of workspace.projects) {
+    if (project.status === "active" && (project.ownerId === userId || (project.participantIds ?? []).includes(userId))) projectIds.add(project.id);
+  }
+  for (const tension of workspace.tensions) {
+    if (tension.status !== "resolved" && tension.raiserId === userId) tensionIds.add(tension.id);
+  }
+  for (const action of workspace.actions) {
+    if ((action.status === "open" || action.status === "proposed") && action.ownerId === userId) actionIds.add(action.id);
+  }
+
+  for (const row of projectParticipation.data ?? []) projectIds.add(row.project_id as string);
+  for (const row of tensionParticipation.data ?? []) tensionIds.add(row.tension_id as string);
+  for (const row of actionParticipation.data ?? []) actionIds.add(row.action_id as string);
+  for (const mention of mentions) {
+    if (mention.actionId) actionIds.add(mention.actionId);
+    else if (mention.tensionId) tensionIds.add(mention.tensionId);
+    else if (mention.projectId) projectIds.add(mention.projectId);
+  }
+
+  const descriptors = [
+    ...[...projectIds].map(sourceId => ({ kind: "project" as const, sourceId })),
+    ...[...tensionIds].map(sourceId => ({ kind: "tension" as const, sourceId })),
+    ...[...actionIds].map(sourceId => ({ kind: "action" as const, sourceId })),
+  ];
+
+  const summaries = await Promise.all(descriptors.map(async descriptor => ({
+    ...descriptor,
+    summary: await loadCommentThreadSummary(descriptor.kind, descriptor.sourceId),
+  })));
+
+  return summaries.flatMap(({ kind, sourceId, summary }) => {
+    if (summary.unreadCount <= 0) return [];
+    if (kind === "project") return [{ kind, sourceId, projectId: sourceId, unreadCount: summary.unreadCount }];
+    if (kind === "tension") {
+      const tension = workspace.tensions.find(item => item.id === sourceId);
+      if (!tension) return [];
+      return [{ kind, sourceId, tensionId: sourceId, projectId: tension.linkedProjectId, unreadCount: summary.unreadCount }];
+    }
+    const action = workspace.actions.find(item => item.id === sourceId);
+    if (!action) return [];
+    const sourceTension = action.sourceTensionId ? workspace.tensions.find(item => item.id === action.sourceTensionId) : undefined;
+    return [{
+      kind,
+      sourceId,
+      actionId: sourceId,
+      tensionId: action.sourceTensionId,
+      projectId: action.projectId ?? sourceTension?.linkedProjectId,
+      unreadCount: summary.unreadCount,
+    }];
+  });
+}
+
 export async function loadSpatialMentions(workspace: WorkspaceData, userId: string): Promise<PersonalAttention[]> {
   const [communication, actionSignals] = await Promise.all([loadCommunicationAttentionSignals(), loadActionCommentAttentionSignals(userId)]);
   const projectSignals = (workspace.attentionSignals ?? []).filter(s => s.recipientId === userId && s.signalType === "project_comment" && s.projectId);
