@@ -63,6 +63,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [newlyCreatedProjectId, setNewlyCreatedProjectId] = useState<string | null>(null);
   const [newlyCreatedTensionId, setNewlyCreatedTensionId] = useState<string | null>(null);
   const [resizing, setResizing] = useState(false);
   const [viewport, setViewport] = useState({ width: 1440, height: 900 });
@@ -116,7 +117,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
 
   useEffect(() => {
     if (!notice) return;
-    const timer = window.setTimeout(() => { setNotice(""); setNewlyCreatedTensionId(null); }, 4200);
+    const timer = window.setTimeout(() => { setNotice(""); setNewlyCreatedProjectId(null); setNewlyCreatedTensionId(null); }, 4200);
     return () => window.clearTimeout(timer);
   }, [notice]);
 
@@ -175,56 +176,45 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
   const unlinkedNodes = useMemo(() => placeUnlinkedTensions(unlinked, packed.map(node => toScreen(node, view)), radii, positions, view, w, h),
     [unlinked, packed, radii, positions, view, w, h]);
 
-  // Initial placement must respect the user's actual saved landscape. Saved circles are
-  // never moved here: only an unsaved circle that would initially overlap something
-  // already occupying the landscape is assigned and persisted to nearby blank space.
+  // Only newly created top-level circles get an automatic initial placement.
+  // Existing personal layouts are never rearranged; after initial placement users remain
+  // free to drag or resize circles however they want.
   useEffect(() => {
     if (depth.kind !== "organisation") return;
 
-    const entries = [
-      ...packed.map(node => ({
-        storageId: node.project.id,
-        circle: toScreen(node, view),
-        saved: Boolean(positions[node.project.id]),
-      })),
-      ...unlinkedNodes.map(node => ({
-        storageId: node.storageId,
-        circle: toScreen(node, view),
-        saved: Boolean(positions[node.storageId]),
-      })),
+    const targetProject = newlyCreatedProjectId ? packed.find(node => node.project.id === newlyCreatedProjectId) : undefined;
+    const targetTension = newlyCreatedTensionId ? unlinkedNodes.find(node => node.tension.id === newlyCreatedTensionId) : undefined;
+    const target = targetProject
+      ? { storageId: targetProject.project.id, circle: toScreen(targetProject, view) }
+      : targetTension
+        ? { storageId: targetTension.storageId, circle: toScreen(targetTension, view) }
+        : undefined;
+
+    if (!target || positions[target.storageId]) return;
+
+    const occupied = [
+      ...packed.filter(node => node.project.id !== target.storageId).map(node => toScreen(node, view)),
+      ...unlinkedNodes.filter(node => node.storageId !== target.storageId).map(node => toScreen(node, view)),
     ];
 
-    const occupied = entries.filter(entry => entry.saved).map(entry => entry.circle);
-    const placements: Record<string, ProjectPosition> = {};
+    if (!occupied.some(other => circlesOverlap(target.circle, other, 18))) return;
 
-    for (const entry of entries.filter(entry => !entry.saved)) {
-      let circle = entry.circle;
-      if (occupied.some(other => circlesOverlap(circle, other, 18))) {
-        const blank = findBlankScreenPosition(occupied, circle.r, w, h);
-        if (blank) {
-          circle = { ...blank, r: circle.r };
-          placements[entry.storageId] = {
-            x: (circle.x - view.x) / view.scale,
-            y: (circle.y - view.y) / view.scale,
-          };
-        }
-      }
-      occupied.push(circle);
-    }
+    const blank = findBlankScreenPosition(occupied, target.circle.r, w, h);
+    if (!blank) return;
 
-    if (!Object.keys(placements).length) return;
     setPositions(current => {
-      const next = { ...current };
-      let changed = false;
-      for (const [storageId, position] of Object.entries(placements)) {
-        if (current[storageId]) continue;
-        next[storageId] = position;
-        changed = true;
-      }
-      if (changed) savePositions(positionStorageKey, next);
-      return changed ? next : current;
+      if (current[target.storageId]) return current;
+      const next = {
+        ...current,
+        [target.storageId]: {
+          x: (blank.x - view.x) / view.scale,
+          y: (blank.y - view.y) / view.scale,
+        },
+      };
+      savePositions(positionStorageKey, next);
+      return next;
     });
-  }, [depth.kind, packed, unlinkedNodes, positions, positionStorageKey, view.x, view.y, view.scale, w, h]);
+  }, [depth.kind, newlyCreatedProjectId, newlyCreatedTensionId, packed, unlinkedNodes, positions, positionStorageKey, view.x, view.y, view.scale, w, h]);
 
   const previewLayouts = useMemo(() => new Map(packed.map(node => {
     const projectTensions = tensions.filter(tension => tension.linkedProjectId === node.project.id);
@@ -522,7 +512,10 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
       style={{ left: projectTooltip.x, top: projectTooltip.y }} role="tooltip"><strong>{projectTooltip.title}</strong><small>{projectTooltip.summary}</small></div>}
     <SpatialSurfaces surface={mainSurface} workspace={workspace} profile={profile} run={run} onClose={() => setMainSurface(null)} onSurface={setMainSurface} onProject={id => navigate({ kind: "project", projectId: id })} onAction={openAction} onCapture={() => { navigate({ kind: "organisation" }); setCapture("tension"); }} onSignOut={onSignOut} />
     {capture && <Capture kind={capture} projectId={depth.kind === "project" ? projectId : undefined} userId={profile.id} run={run}
-      onCreated={depth.kind === "organisation" && capture === "tension" ? id => setNewlyCreatedTensionId(id) : undefined} onClose={() => setCapture(null)} />}
+      onCreated={id => {
+        if (capture === "project") setNewlyCreatedProjectId(id);
+        else if (depth.kind === "organisation") setNewlyCreatedTensionId(id);
+      }} onClose={() => setCapture(null)} />}
     {orphanAction && <SpatialDialog title="Commitment" onClose={() => setOrphanAction(null)}><h3>{orphanAction.title}</h3><p>No source project or tension is recorded for this commitment.</p></SpatialDialog>}
     {attentionError && <div className={styles.attentionWarning} role="status">{attentionError}</div>}
     {error && <div className={styles.error} role="alert">{error}<button onClick={() => void refresh(true)}>Retry</button></div>}
