@@ -648,7 +648,7 @@ function ProjectContext({ project, workspace, peopleById, surface, onSurface, te
   const conversationNeedsAttention = conversationTrails.some(trail => trail.needsAttention);
   const updateNeedsAttention = trails.some(trail => trail.endpoint === "project_update" && trail.needsAttention);
   return <div className={styles.projectContext} data-reading={Boolean(surface)}>
-    <header><span className={styles.eyebrow}>Project</span><h1>{project.title}{unreadCount > 0 && <ActivityBadge count={unreadCount} />}</h1></header>
+    <header><span className={styles.eyebrow}>Project</span><h1>{project.title}</h1></header>
     <div className={styles.projectFacts}>
       <p className={styles.currentState}>{project.summary || "No current state has been recorded."}</p>
       <div className={styles.owner}><span aria-hidden="true">{initials(peopleById.get(project.ownerId) ?? "?")}</span><div><strong>{peopleById.get(project.ownerId) ?? "Unknown"}</strong><small>Project owner</small></div></div>
