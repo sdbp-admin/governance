@@ -100,7 +100,7 @@ export function SpatialPoll({ tension, userId, workspace, run }: { tension: Tens
   return <div className={styles.adapted}><TensionAvailabilityPoll tension={tension} currentUserId={userId} personName={id => workspace.people.find(p => p.id === id)?.name ?? "Unknown"} onCreate={(id, times) => run(() => createTensionPoll(id, times))} onVote={(id, options) => run(() => voteTensionPoll(id, options))} onChoose={(id, option) => run(() => chooseTensionPollOption(id, option))} /></div>;
 }
 
-export function SpatialNextSteps({ parent, kind, workspace, userId, run, onOpen, attentionActionId }: { parent: Project | Tension; kind: "project" | "tension"; workspace: WorkspaceData; userId: string; run: SpatialRun; onOpen?: (action: Action) => void; attentionActionId?: string }) {
+export function SpatialNextSteps({ parent, kind, workspace, userId, run, onOpen, attentionActionId, attentionActionIds = [] }: { parent: Project | Tension; kind: "project" | "tension"; workspace: WorkspaceData; userId: string; run: SpatialRun; onOpen?: (action: Action) => void; attentionActionId?: string; attentionActionIds?: string[] }) {
   const relevant = workspace.actions.filter(a => kind === "project" ? a.projectId === parent.id : a.sourceTensionId === parent.id);
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -114,7 +114,7 @@ export function SpatialNextSteps({ parent, kind, workspace, userId, run, onOpen,
     return () => { delete row.dataset.attentionTarget; row.removeAttribute("tabindex"); };
   }, [attentionActionId]);
   return <div ref={root} className={styles.adapted} data-spatial-commitments={parent.id}>
-    <style>{`@keyframes spatialActionAttentionPulse { 0%, 100% { background: #2596be05; box-shadow: inset 3px 0 0 #2596be58, 0 0 2px 0 #2596be08; } 50% { background: #2596be30; box-shadow: inset 3px 0 0 #1689b1, 0 0 28px 5px #2596be4a; } }\n${relevant.filter(a => a.ownerId === userId && (a.status === "open" || a.status === "proposed")).map(a => `[data-spatial-commitments="${parent.id}"] [data-action-id="${a.id}"] { border-left-color: #2596be; animation: spatialActionAttentionPulse 1.6s ease-in-out infinite; }`).join("\n")}`}</style>
+    <style>{`@keyframes spatialActionAttentionPulse { 0%, 100% { background: #2596be05; box-shadow: inset 3px 0 0 #2596be58, 0 0 2px 0 #2596be08; } 50% { background: #2596be30; box-shadow: inset 3px 0 0 #1689b1, 0 0 28px 5px #2596be4a; } }\n${relevant.filter(a => attentionActionIds.includes(a.id)).map(a => `[data-spatial-commitments="${parent.id}"] [data-action-id="${a.id}"] { border-left-color: #2596be; animation: spatialActionAttentionPulse 1.6s ease-in-out infinite; }`).join("\n")}`}</style>
     <ContextualNextSteps parentType={kind} parentId={parent.id} parentTitle={parent.title} projectId={kind === "tension" ? (parent as Tension).linkedProjectId : parent.id} actions={workspace.actions} people={workspace.people} currentUserId={userId} personName={id => workspace.people.find(p => p.id === id)?.name ?? "Unknown"}
     onAdd={input => run(() => createAction({ ...input, status: input.ownerId === userId ? "open" : "proposed" }))} onStatus={async (id, status) => { const { setActionStatus } = await import("@/lib/supabase/workspace"); return run(() => setActionStatus(id, status)); }} />
     <div className={styles.commitmentContext}>{relevant.filter(a => a.status === "open" || a.status === "proposed").map(a => <div key={a.id} data-personal={a.ownerId === userId || undefined}>{a.due && a.due < localToday() && <small>Overdue · {a.title}</small>}{a.sourceTensionId && kind === "project" && <button onClick={() => onOpen?.(a)}>From tension · {workspace.tensions.find(t => t.id === a.sourceTensionId)?.title ?? "Open source"}</button>}</div>)}</div>
@@ -122,9 +122,9 @@ export function SpatialNextSteps({ parent, kind, workspace, userId, run, onOpen,
   </div>;
 }
 
-export function SpatialCommitmentFocus({ action, people, currentUserId, sourceTension, position, run, signalIds = [], targetCommentId, onOpenSource, onClose }: {
+export function SpatialCommitmentFocus({ action, people, currentUserId, sourceTension, position, run, signalIds = [], targetCommentId, needsAttention = false, conversationNeedsAttention = false, unreadCount = 0, onOpenSource, onClose }: {
   action: Action; people: WorkspaceData["people"]; currentUserId: string; sourceTension?: Tension;
-  position: { x: number; y: number; side: "left" | "right" }; run: SpatialRun; signalIds?: string[]; targetCommentId?: string; onOpenSource?: () => void; onClose: () => void;
+  position: { x: number; y: number; side: "left" | "right" }; run: SpatialRun; signalIds?: string[]; targetCommentId?: string; needsAttention?: boolean; conversationNeedsAttention?: boolean; unreadCount?: number; onOpenSource?: () => void; onClose: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(action.title);
@@ -178,12 +178,12 @@ export function SpatialCommitmentFocus({ action, people, currentUserId, sourceTe
       <h2>{action.title}</h2>
       <dl><div><dt>{action.status === "proposed" ? "Proposed to" : "Owner"}</dt><dd>{name(action.ownerId)}</dd></div><div><dt>Due</dt><dd>{action.due ? formatCommitmentDate(action.due) : "No deadline"}</dd></div></dl>
       {sourceTension && <div className={styles.commitmentSource}><span>From tension ↗</span><button onClick={onOpenSource} aria-label={`Open tension: ${sourceTension.title}`}>{sourceTension.title}</button></div>}
-      <button className={styles.commitmentConversation} data-unread={Boolean(threadSummary?.unreadCount) || undefined} aria-expanded={conversationOpen}
-        onClick={() => setConversationOpen(open => !open)}>Comments{threadSummary ? ` · ${threadSummary.totalCount}` : ""}{threadSummary?.unreadCount ? ` · ${threadSummary.unreadCount} new` : ""}</button>
+      <button className={styles.commitmentConversation} data-personal={!conversationOpen && conversationNeedsAttention || undefined} data-unread={unreadCount > 0 || undefined} aria-expanded={conversationOpen}
+        onClick={() => setConversationOpen(open => !open)}>Comments{unreadCount > 0 && <span className={styles.activityBadge}>{unreadCount > 9 ? "9+" : unreadCount}</span>}{threadSummary ? ` · ${threadSummary.totalCount}` : ""}</button>
       {conversationOpen && <SpatialConversation kind="action" id={action.id} people={people} userId={currentUserId} signalIds={signalIds} targetCommentId={targetCommentId} compact />}
       <div className={styles.commitmentActions}><button disabled={busy} onClick={() => { setTitle(action.title); setOwnerId(action.ownerId); setDue(action.due ?? ""); setEditing(true); }}>Edit</button>
-        {action.ownerId === currentUserId && action.status === "proposed" && <button disabled={busy} onClick={() => void changeStatus("open")}>Accept</button>}
-        {action.ownerId === currentUserId && action.status === "open" && <button disabled={busy} onClick={() => void changeStatus("done")}>Done</button>}</div>
+        {action.ownerId === currentUserId && action.status === "proposed" && <button data-personal={needsAttention || undefined} disabled={busy} onClick={() => void changeStatus("open")}>Accept</button>}
+        {action.ownerId === currentUserId && action.status === "open" && <button data-personal={needsAttention || undefined} disabled={busy} onClick={() => void changeStatus("done")}>Done</button>}</div>
     </> : <form onSubmit={event => { event.preventDefault(); void save(); }}>
       <label>Commitment<input autoFocus value={title} onChange={event => setTitle(event.target.value)} /></label>
       <label>Owner<select value={ownerId} onChange={event => setOwnerId(event.target.value)}>{people.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
