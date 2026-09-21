@@ -46,7 +46,7 @@
   border-radius: inherit; pointer-events: none; opacity: 0;
 }
 .projectObject[data-needs-me="true"][data-mode="overview"]::after { animation: projectAttentionPulse 4s ease-in-out infinite; }
-.tensionObject[data-needs-me="true"][data-mode="named"]::after,
+.tensionObject[data-needs-me="true"][data-mode="named"]::after { animation: tensionAttentionPulse 1.7s ease-in-out infinite; }
 .tensionObject[data-needs-me="true"][data-mode="overview"]::after { animation: tensionAttentionPulse 4s ease-in-out infinite; }
 .tensionObject[data-newly-created="true"][data-mode="overview"]::after { animation: newObjectReveal 1.35s ease-in-out 3; }
 @keyframes projectAttentionPulse {
@@ -181,6 +181,15 @@
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;
   transform: translateY(-16%); transition: opacity 130ms;
 }
+.activityBadge {
+  display: inline-flex; align-items: center; justify-content: center; vertical-align: .16em;
+  min-width: 18px; height: 18px; margin-left: 6px; padding: 0 5px; border-radius: 999px;
+  background: #25d366; color: #fff; font-size: 11px; line-height: 1; font-weight: 750;
+  letter-spacing: 0; white-space: nowrap; box-shadow: 0 1px 4px #182a1f2b;
+}
+.projectLabel[data-small] .activityBadge { min-width: 15px; height: 15px; margin-left: 4px; padding: 0 4px; font-size: 9px; }
+.tensionLabel strong .activityBadge, .actionLabel strong .activityBadge, .projectContext h1 .activityBadge, .tensionTabs .activityBadge { margin-left: 7px; }
+.tensionTabs .activityBadge { min-width: 17px; height: 17px; font-size: 10px; }
 .projectLabel[data-small] { letter-spacing: .05em; font-weight: 700; }
 .projectObject[data-mode="project"] { background: color-mix(in srgb, var(--object-colour) 4%, var(--paper)); box-shadow: none; z-index: 1; }
 .projectObject[data-mode="tension"] { opacity: .16; background: transparent; }
@@ -229,7 +238,7 @@
 .objectField[data-action-focus] .actionObject[data-focused="true"] { z-index: 7; opacity: 1; border-color: var(--action-colour); box-shadow: 0 0 0 7px color-mix(in srgb, var(--action-colour) 12%, transparent), 0 14px 28px #2b374618; }
 .objectField[data-action-focus] .objectLinks { opacity: .28; }
 .actionObject::after { content: ""; position: absolute; inset: -3px; border-radius: inherit; border: 2px solid transparent; pointer-events: none; opacity: 0; }
-.actionObject[data-needs-me="true"][data-mode="named"]::after { animation: tensionAttentionPulse 1.6s ease-in-out infinite; }
+.actionObject[data-needs-me="true"][data-mode="named"]::after { animation: tensionAttentionPulse 1.7s ease-in-out infinite; }
 .actionLabel { position: absolute; inset: 15%; display: flex; flex-direction: column; justify-content: center; gap: 5px; overflow: hidden; opacity: 0; }
 .actionObject[data-mode="named"] .actionLabel { opacity: 1; }
 .actionLabel strong { font-size: 12px; line-height: 1.25; font-weight: 580; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
