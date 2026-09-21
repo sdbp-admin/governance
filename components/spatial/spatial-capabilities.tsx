@@ -38,7 +38,7 @@ export function Capture({ kind, projectId, userId, run, onCreated, onClose }: { 
     e.preventDefault(); if (!text.trim() || busy) return; setBusy(true);
     let createdId: string | undefined;
     const ok = await run(async () => {
-      if (kind === "project") await createProject({ title: text, ownerId: userId });
+      if (kind === "project") createdId = await createProject({ title: text, ownerId: userId });
       else createdId = await createTensionAndReturnId({ title: text, raiserId: userId, projectId });
     }, kind === "project" ? "Project added to the landscape." : "Captured. Decide what would help when you open it.");
     setBusy(false); if (ok) { onClose(); if (createdId) onCreated?.(createdId); }
