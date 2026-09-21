@@ -11,7 +11,7 @@ import { Capture, ProjectTools, TensionTools, SpatialPoll, SpatialNextSteps, Spa
 import { SpatialConversation } from "./spatial-conversation";
 import { activeProjectActions, layoutProjectObjects, layoutProjectPreviewObjects } from "./spatial-project-objects";
 import { SpatialSurfaces, type SpatialSurface } from "./spatial-surfaces";
-import { loadSpatialMentions, spatialAttention, loadGovernanceResponseAttention, type PersonalAttention } from "./spatial-attention";
+import { loadSpatialMentions, spatialAttention, loadGovernanceResponseAttention, loadSpatialUnreadActivity, type PersonalAttention, type SpatialUnreadActivity } from "./spatial-attention";
 import type { SpatialProfile } from "@/components/spatial/spatial-authenticated-launch";
 import styles from "@/components/spatial/spatial.module.css";
 
@@ -54,6 +54,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
   const [capture, setCapture] = useState<"project" | "tension" | null>(null);
   const [mentions, setMentions] = useState<PersonalAttention[]>([]);
   const [governanceAttention, setGovernanceAttention] = useState<PersonalAttention[]>([]);
+  const [unreadActivity, setUnreadActivity] = useState<SpatialUnreadActivity[]>([]);
   const [attentionError, setAttentionError] = useState("");
   const [tensionTab, setTensionTab] = useState<"conversation" | "requests" | "commitments">("conversation");
   const [attentionTarget, setAttentionTarget] = useState<AttentionTarget | null>(null);
@@ -80,7 +81,8 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
       setError("");
       try {
         const [nextMentions, nextGovernance] = await Promise.all([loadSpatialMentions(next, profile.id), loadGovernanceResponseAttention(next, profile.id)]);
-        setMentions(nextMentions); setGovernanceAttention(nextGovernance); setAttentionError("");
+        const nextUnread = await loadSpatialUnreadActivity(next, profile.id, nextMentions);
+        setMentions(nextMentions); setGovernanceAttention(nextGovernance); setUnreadActivity(nextUnread); setAttentionError("");
       } catch (reason) { setAttentionError(`Personal attention could not be fully refreshed: ${readError(reason)}`); }
     } catch (reason) { setError(readError(reason)); }
     finally { if (!quiet) setLoading(false); }
@@ -153,6 +155,11 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
     return () => window.clearTimeout(timer);
   }, [depth.kind, newlyCreatedTensionId, newlyCreatedIsVisible]);
   const needsProject = (id: string) => attention.some(a => a.projectId === id);
+  const unreadForProject = (id: string) => unreadActivity.filter(item => item.projectId === id).reduce((sum, item) => sum + item.unreadCount, 0);
+  const unreadForTension = (id: string) => unreadActivity.filter(item => item.tensionId === id).reduce((sum, item) => sum + item.unreadCount, 0);
+  const unreadForAction = (id: string) => unreadActivity.filter(item => item.actionId === id).reduce((sum, item) => sum + item.unreadCount, 0);
+  const directProjectUnread = (id: string) => unreadActivity.find(item => item.kind === "project" && item.sourceId === id)?.unreadCount ?? 0;
+  const directTensionUnread = (id: string) => unreadActivity.find(item => item.kind === "tension" && item.sourceId === id)?.unreadCount ?? 0;
   const peopleById = useMemo(() => new Map(workspace.people.map((p) => [p.id, p.name])), [workspace.people]);
   const personName = (id: string) => peopleById.get(id) ?? "Unknown";
   const linked = tensions.filter((t) => t.linkedProjectId === projectId);
@@ -352,7 +359,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
           (geometry.y - 12) / view.scale, (h - geometry.y - 12) / view.scale), MIN_RADIUS, MAX_RADIUS) : MAX_RADIUS;
         return <InteractiveProjectCircle key={node.project.id} id={node.project.id} title={node.project.title} summary={summary}
           geometry={geometry} logicalPosition={{ x: node.x, y: node.y }} radius={node.r} scale={view.scale}
-          mode={!zoomed ? "overview" : selected ? depth.kind : "receded"} needsAttention={mine} colour={COLOURS[tone(node.project.id)]}
+          mode={!zoomed ? "overview" : selected ? depth.kind : "receded"} needsAttention={mine} unreadCount={!zoomed ? unreadForProject(node.project.id) : 0} colour={COLOURS[tone(node.project.id)]}
           label={small ? initials(node.project.title) : node.project.title} small={small} labelSize={small ? 15 : clamp(origin.r * .15, 16, 27)}
           maximumRadius={visibleMaximum} onOpen={() => navigate({ kind: "project", projectId: node.project.id })}
           onBegin={beginPersonalLayout} onMove={(x, y) => moveProject(node.project.id, x, y, node.r)}
@@ -419,7 +426,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
             style={circleStyle(geometry)} disabled={!expanded} tabIndex={expanded ? 0 : -1}
             aria-label={`Enter tension: ${tension.title}`} title={expanded ? tension.title : undefined}
             onClick={() => personalAttention ? openPersonal(personalAttention) : navigate({ kind: "tension", projectId: node.project.id, tensionId: tension.id })}>
-            <span className={styles.tensionLabel}><strong>{tension.title}</strong>
+            <span className={styles.tensionLabel}><strong>{tension.title}{expanded && unreadForTension(tension.id) > 0 && <ActivityBadge count={unreadForTension(tension.id)} />}</strong>
               <small>{personal ? "Needs you" : tension.status === "awaiting_confirmation" ? "Awaiting confirmation" : `Raised by ${personName(tension.raiserId)}`}</small>
             </span>
           </button>;
@@ -443,7 +450,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
             onClick={() => { setSurface(null); setFocusedActionId(current => current === action.id ? null : action.id); setAttentionTarget({ kind: "action", id: action.id }); }}
             title={expanded ? `${action.title} · ${personName(action.ownerId)} · ${action.status === "proposed" ? "Proposed" : "Open"}` : undefined}
             aria-label={`Open commitment: ${action.title} · ${personName(action.ownerId)}${action.status === "proposed" ? " · Proposed" : ""}${personal ? " · Needs you" : ""}`}>
-            <span className={styles.actionLabel}><strong>{action.title}</strong><small>{personName(action.ownerId)}{action.status === "proposed" ? " · proposed" : ""}</small></span>
+            <span className={styles.actionLabel}><strong>{action.title}{expanded && unreadForAction(action.id) > 0 && <ActivityBadge count={unreadForAction(action.id)} />}</strong><small>{personName(action.ownerId)}{action.status === "proposed" ? " · proposed" : ""}</small></span>
           </button>;
         });
       })}
@@ -467,7 +474,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
         return <InteractiveProjectCircle key={tension.id} id={tension.id} domId={`spatial-tension-${tension.id}`} kind="tension"
           title={tension.title} summary="Not linked to a project" geometry={geometry} logicalPosition={{ x: node.x, y: node.y }}
           radius={node.r} scale={view.scale} mode={!zoomed ? "overview" : selected ? "focal" : "receded"}
-          needsAttention={Boolean(personalAttention)} newlyCreated={tension.id === newlyCreatedTensionId} colour={COLOURS.orange}
+          needsAttention={Boolean(personalAttention)} unreadCount={!zoomed ? unreadForTension(tension.id) : 0} newlyCreated={tension.id === newlyCreatedTensionId} colour={COLOURS.orange}
           label={tension.title} small={false} labelSize={clamp(origin.r * .16, 13, 18)} maximumRadius={visibleMaximum}
           onOpen={() => personalAttention ? openPersonal(personalAttention) : navigate({ kind: "tension", tensionId: tension.id })}
           onBegin={() => {
@@ -482,7 +489,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
           onInteracting={setResizing} onTooltip={setProjectTooltip} />;
       })}
       {depth.kind === "project" && selectedProject && <ProjectContext key={selectedProject.id} project={selectedProject} workspace={workspace} peopleById={peopleById}
-        surface={surface} onSurface={setSurface} tensionCount={linked.length} userId={profile.id} run={run} onCapture={() => setCapture("tension")} attention={attention.filter(a => a.projectId === selectedProject.id)} requests={requests} onPersonal={openPersonal} />}
+        surface={surface} onSurface={setSurface} tensionCount={linked.length} userId={profile.id} run={run} onCapture={() => setCapture("tension")} attention={attention.filter(a => a.projectId === selectedProject.id)} requests={requests} unreadCount={directProjectUnread(selectedProject.id)} onPersonal={openPersonal} />}
       {depth.kind === "project" && selectedProject && surface && <div className={styles.projectReading} ref={surfaceRef} tabIndex={-1} aria-label={surface === "conversation" ? "Project conversation" : "Project commitments"}>
         <button className={styles.closeReading} onClick={() => setSurface(null)}>← Back to project</button>
         {surface === "conversation" ? <SpatialConversation key={selectedProject.id} kind="project" id={selectedProject.id} userId={profile.id} people={workspace.people} signalIds={(workspace.attentionSignals ?? []).filter(s => s.projectId === selectedProject.id && s.recipientId === profile.id && s.signalType === "project_comment").map(s => s.id)} targetCommentId={attentionTarget?.kind === "project" && attentionTarget.id === selectedProject.id ? attentionTarget.commentId : undefined} /> :
@@ -490,7 +497,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
       </div>}
       {depth.kind === "tension" && selectedTension && <TensionContext key={selectedTension.id} tension={selectedTension} workspace={workspace}
         requests={requests.filter((r) => r.tensionId === selectedTension.id)} currentUserId={profile.id} peopleById={peopleById}
-        urgent={urgentIds.has(selectedTension.id)} run={run} initialTab={tensionTab} attention={attention.filter(a => a.tensionId === selectedTension.id)} onPersonal={openPersonal}
+        urgent={urgentIds.has(selectedTension.id)} run={run} initialTab={tensionTab} attention={attention.filter(a => a.tensionId === selectedTension.id)} unreadCount={directTensionUnread(selectedTension.id)} onPersonal={openPersonal}
         targetCommentId={attentionTarget?.kind === "tension" && attentionTarget.id === selectedTension.id ? attentionTarget.commentId : undefined}
         targetActionId={attentionTarget?.kind === "action" ? attentionTarget.id : undefined} targetRequestId={attentionTarget?.kind === "request" ? attentionTarget.id : undefined}
         targetResolution={attentionTarget?.kind === "resolution" && attentionTarget.id === selectedTension.id}
@@ -525,11 +532,11 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
   </main>;
 }
 
-function InteractiveProjectCircle({ id, domId, kind = "project", title, summary, geometry, logicalPosition, radius, scale, mode, needsAttention, newlyCreated, colour, label, small, labelSize,
+function InteractiveProjectCircle({ id, domId, kind = "project", title, summary, geometry, logicalPosition, radius, scale, mode, needsAttention, unreadCount = 0, newlyCreated, colour, label, small, labelSize,
   maximumRadius, onOpen, onBegin, onMove, onResize, onInteracting, onTooltip }: {
     domId?: string; kind?: "project" | "tension";
     id: string; title: string; summary: string; geometry: Circle; logicalPosition: ProjectPosition; radius: number; scale: number;
-    mode: "overview" | "project" | "tension" | "focal" | "receded"; needsAttention: boolean; newlyCreated?: boolean; colour: string; label: string; small: boolean;
+    mode: "overview" | "project" | "tension" | "focal" | "receded"; needsAttention: boolean; unreadCount?: number; newlyCreated?: boolean; colour: string; label: string; small: boolean;
     labelSize: number; maximumRadius: number; onOpen: () => void; onBegin: () => void; onMove: (x: number, y: number) => void;
     onResize: (radius: number) => void; onInteracting: (active: boolean) => void; onTooltip: (tooltip: ProjectTooltip | null) => void;
   }) {
@@ -610,14 +617,14 @@ function InteractiveProjectCircle({ id, domId, kind = "project", title, summary,
     onClick={event => { if (mode !== "overview") return; if (gesture.current?.didMove) { event.preventDefault(); event.stopPropagation(); gesture.current = null; return; } gesture.current = null; onOpen(); }}>
     <button id={domId} className={styles.projectFace} tabIndex={mode === "overview" ? 0 : -1} disabled={mode !== "overview"}
       aria-label={`${kind === "tension" ? "Open unlinked tension" : "Enter project"}: ${title}`}>
-      <strong className={styles.projectLabel} data-small={small || undefined} style={{ fontSize: labelSize }}>{label}</strong>
+      <strong className={styles.projectLabel} data-small={small || undefined} style={{ fontSize: labelSize }}>{label}{unreadCount > 0 && <ActivityBadge count={unreadCount} />}</strong>
     </button>
   </div>;
 }
 
-function ProjectContext({ project, workspace, peopleById, surface, onSurface, tensionCount, userId, run, onCapture, attention, requests, onPersonal }: {
+function ProjectContext({ project, workspace, peopleById, surface, onSurface, tensionCount, userId, run, onCapture, attention, requests, unreadCount, onPersonal }: {
   project: Project; workspace: WorkspaceData; peopleById: Map<string, string>; surface: ProjectSurface; onSurface: (surface: ProjectSurface) => void; tensionCount: number;
-  userId: string; run: Run; onCapture: () => void; attention: PersonalAttention[]; requests: TensionRequest[]; onPersonal: (item: PersonalAttention) => void;
+  userId: string; run: Run; onCapture: () => void; attention: PersonalAttention[]; requests: TensionRequest[]; unreadCount: number; onPersonal: (item: PersonalAttention) => void;
 }) {
   const [summary, setSummary] = useState({ totalCount: 0, unreadCount: 0 });
   const [summaryError, setSummaryError] = useState("");
@@ -631,7 +638,7 @@ function ProjectContext({ project, workspace, peopleById, surface, onSurface, te
   const projectMention = attention.find((item) => item.kind === "mention" && !item.tensionId);
   const personalCommitment = attention.find((item) => item.kind === "commitment" && !item.tensionId);
   return <div className={styles.projectContext} data-reading={Boolean(surface)}>
-    <header><span className={styles.eyebrow}>Project</span><h1>{project.title}</h1></header>
+    <header><span className={styles.eyebrow}>Project</span><h1>{project.title}{unreadCount > 0 && <ActivityBadge count={unreadCount} />}</h1></header>
     <div className={styles.projectFacts}>
       <p className={styles.currentState}>{project.summary || "No current state has been recorded."}</p>
       <div className={styles.owner}><span aria-hidden="true">{initials(peopleById.get(project.ownerId) ?? "?")}</span><div><strong>{peopleById.get(project.ownerId) ?? "Unknown"}</strong><small>Project owner</small></div></div>
@@ -652,9 +659,9 @@ function ProjectContext({ project, workspace, peopleById, surface, onSurface, te
   </div>;
 }
 
-function TensionContext({ tension, workspace, requests, currentUserId, peopleById, urgent, run, initialTab, attention, onPersonal, targetCommentId, targetActionId, targetRequestId, targetResolution, onGovernance }: {
+function TensionContext({ tension, workspace, requests, currentUserId, peopleById, urgent, run, initialTab, attention, unreadCount, onPersonal, targetCommentId, targetActionId, targetRequestId, targetResolution, onGovernance }: {
   tension: Tension; workspace: WorkspaceData; requests: TensionRequest[]; currentUserId: string;
-  peopleById: Map<string, string>; urgent: boolean; run: Run; initialTab: "conversation" | "requests" | "commitments"; attention: PersonalAttention[]; onPersonal: (item: PersonalAttention) => void; targetCommentId?: string; targetActionId?: string; targetRequestId?: string; targetResolution?: boolean; onGovernance: () => void;
+  peopleById: Map<string, string>; urgent: boolean; run: Run; initialTab: "conversation" | "requests" | "commitments"; attention: PersonalAttention[]; unreadCount: number; onPersonal: (item: PersonalAttention) => void; targetCommentId?: string; targetActionId?: string; targetRequestId?: string; targetResolution?: boolean; onGovernance: () => void;
 }) {
   const [tab, setTab] = useState<"conversation" | "requests" | "commitments">(initialTab);
   const [requestOpen, setRequestOpen] = useState(false);
@@ -701,7 +708,7 @@ function TensionContext({ tension, workspace, requests, currentUserId, peopleByI
     {attention.filter(a => a.kind === "need" || a.kind === "confirmation" || a.kind === "governance").map(a => <p className={styles.exactAttention} data-personal key={a.id}>{a.label}{a.kind === "governance" && <button onClick={onGovernance}>Open Governance</button>}</p>)}
     <div className={styles.tensionTabs} role="tablist" aria-label="Tension information">
       {(["conversation", "requests", "commitments"] as const).map((name) => { const nextAttention = attention.find(a => name === "conversation" ? a.kind === "mention" : name === "requests" ? a.kind === "request" || a.kind === "need" : a.kind === "commitment"); return <button key={name} id={`tab-${name}`} role="tab" data-personal={tab !== name && Boolean(nextAttention) || undefined} aria-selected={tab === name} aria-controls="tension-panel" onClick={() => nextAttention ? onPersonal(nextAttention) : setTab(name)}>
-        {name === "conversation" ? "Conversation" : name === "requests" ? `Requests · ${activeRequests.length}` : `Commitments · ${commitments.length}`}
+        {name === "conversation" ? <>Conversation{unreadCount > 0 && <ActivityBadge count={unreadCount} />}</> : name === "requests" ? `Requests · ${activeRequests.length}` : `Commitments · ${commitments.length}`}
       </button>; })}
     </div>
     <section id="tension-panel" className={styles.tensionPanel} role="tabpanel" aria-labelledby={`tab-${tab}`}>
@@ -860,6 +867,9 @@ function commitmentFocusPosition(circle: Circle, width: number, height: number) 
   const panelWidth = 292, gap = 17;
   const side = circle.x + circle.r + gap + panelWidth <= width ? "right" : "left";
   return { x: side === "right" ? circle.x + circle.r + gap : circle.x - circle.r - gap, y: clamp(circle.y - 88, 12, Math.max(12, height - 270)), side } as const;
+}
+function ActivityBadge({ count }: { count: number }) {
+  return <span className={styles.activityBadge} aria-label={`${count} unread ${count === 1 ? "item" : "items"}`}>{count > 9 ? "9+" : count}</span>;
 }
 function initials(value: string) { return value.split(/[\s&]+/).filter(Boolean).slice(0, 3).map((word) => word[0]).join("").toUpperCase(); }
 function elapsed(value: string) { const label = age(value); return label === "today" ? "today" : `${label} ago`; }
