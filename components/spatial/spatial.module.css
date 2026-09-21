@@ -101,7 +101,7 @@
 .thread mark { background: #2596be13; color: #16617b; border-radius: 3px; padding: 1px 3px; }
 .thread small { color: #64717b; font-size: 12px; }
 .composer label { display: grid; gap: 8px; font-size: 14px; }
-.mentionSuggestions { display: flex; flex-wrap: wrap; gap: 5px; }
+.mentionSuggestions { display: flex; flex-wrap: wrap; gap: 5px; max-height: 180px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding-right: 4px; }
 .mentionSuggestions button { padding: 7px 12px; border: 1px solid #2596be35; background: #2596be08; color: #16617b; border-radius: 4px; }
 .attentionWarning { position: fixed; z-index: 45; left: 30px; bottom: 18px; max-width: 70vw; background: #fff7ea; color: #7a491c; font-size: 13px; padding: 10px 16px; }
 /* Existing secondary components retain their behaviour; only this lab's presentation changes. */
