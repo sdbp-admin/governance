@@ -60,10 +60,10 @@ export function SpatialConversation({ kind, id, people, userId, signalIds = [], 
   const editMentionedIds = mentionIdsFor(editing?.body ?? "");
   const trigger = suppressed ? null : body.slice(0, cursor).match(/(?:^|\s)@([^@\n]*)$/);
   const query = trigger?.[1].toLowerCase() ?? "";
-  const suggestions = trigger ? people.filter(p => p.id !== userId && p.name.toLowerCase().includes(query)).slice(0, 6) : [];
+  const suggestions = trigger ? people.filter(p => p.id !== userId && p.name.toLowerCase().includes(query)) : [];
   const editTrigger = editSuppressed ? null : (editing?.body ?? "").slice(0, editCursor).match(/(?:^|\s)@([^@\n]*)$/);
   const editQuery = editTrigger?.[1].toLowerCase() ?? "";
-  const editSuggestions = editTrigger ? people.filter(p => p.id !== userId && p.name.toLowerCase().includes(editQuery)).slice(0, 6) : [];
+  const editSuggestions = editTrigger ? people.filter(p => p.id !== userId && p.name.toLowerCase().includes(editQuery)) : [];
   function insert(label: string) {
     const start = body.lastIndexOf("@", cursor - 1); if (start < 0) return;
     const insertion = `@${label} `; setBody(body.slice(0, start) + insertion + body.slice(cursor)); setCursor(start + insertion.length); setSuppressed(true);
