@@ -148,7 +148,7 @@ export function RedesignLaunchApp({ liveProfile, accountControls }: { liveProfil
 
   const addNextStep=(input:ContextualNextStepInput)=>run(()=>createAction({...input,status:input.ownerId===currentUserId?"open":"proposed"}),input.ownerId===currentUserId?"Next step added.":`Next step proposed to ${personName(input.ownerId)}.`);
   const changeActionStatus=(id:string,status:"open"|"done")=>run(()=>setActionStatus(id,status),status==="open"?"Next step accepted.":"Next step completed.");
-  const addProject=(input:{title:string;ownerId:string;participantIds:string[];summary:string;sourceTensionId?:string})=>run(()=>createProject(input),"Project added.");
+  const addProject=(input:{title:string;ownerId:string;participantIds:string[];summary:string;sourceTensionId?:string})=>run(async()=>{await createProject(input);},"Project added.");
   async function saveProjectUpdate(id:string,summary:string){if(await run(()=>updateProject(id,summary),"Project updated."))setProjectEditorId(null);}
   async function noProjectChange(id:string){if(await run(()=>touchProject(id),"Project checked. No change recorded."))setProjectEditorId(null);}
   async function markProjectComplete(id:string){await run(()=>completeProject(id),"Project completed.");}
