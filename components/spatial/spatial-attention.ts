@@ -61,26 +61,32 @@ export async function loadSpatialUnreadActivity(workspace: WorkspaceData, userId
     summary: await loadCommentThreadSummary(descriptor.kind, descriptor.sourceId),
   })));
 
-  return summaries.flatMap(({ kind, sourceId, summary }) => {
-    if (summary.unreadCount <= 0) return [];
-    if (kind === "project") return [{ kind, sourceId, projectId: sourceId, unreadCount: summary.unreadCount }];
+  const unread: SpatialUnreadActivity[] = [];
+  for (const { kind, sourceId, summary } of summaries) {
+    if (summary.unreadCount <= 0) continue;
+    if (kind === "project") {
+      unread.push({ kind, sourceId, projectId: sourceId, unreadCount: summary.unreadCount });
+      continue;
+    }
     if (kind === "tension") {
       const tension = workspace.tensions.find(item => item.id === sourceId);
-      if (!tension) return [];
-      return [{ kind, sourceId, tensionId: sourceId, projectId: tension.linkedProjectId, unreadCount: summary.unreadCount }];
+      if (!tension) continue;
+      unread.push({ kind, sourceId, tensionId: sourceId, projectId: tension.linkedProjectId, unreadCount: summary.unreadCount });
+      continue;
     }
     const action = workspace.actions.find(item => item.id === sourceId);
-    if (!action) return [];
+    if (!action) continue;
     const sourceTension = action.sourceTensionId ? workspace.tensions.find(item => item.id === action.sourceTensionId) : undefined;
-    return [{
+    unread.push({
       kind,
       sourceId,
       actionId: sourceId,
       tensionId: action.sourceTensionId,
       projectId: action.projectId ?? sourceTension?.linkedProjectId,
       unreadCount: summary.unreadCount,
-    }];
-  });
+    });
+  }
+  return unread;
 }
 
 export async function loadSpatialMentions(workspace: WorkspaceData, userId: string): Promise<PersonalAttention[]> {
