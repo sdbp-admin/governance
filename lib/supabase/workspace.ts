@@ -389,7 +389,7 @@ export async function deleteRole(roleId: string) {
 
 export async function createProject(input: { title: string; ownerId: string; participantIds?: string[]; summary?: string; sourceTensionId?: string }) {
   const today = todayISO();
-  const { error } = await supabase.from("projects").insert({
+  const { data, error } = await supabase.from("projects").insert({
     title: input.title.trim(),
     owner_id: input.ownerId,
     status: "active",
@@ -398,8 +398,9 @@ export async function createProject(input: { title: string; ownerId: string; par
     next_prompt_on: addDays(today, 7),
     source_tension_id: input.sourceTensionId ?? null,
     participant_ids: unique([input.ownerId, ...(input.participantIds ?? [])]),
-  });
+  }).select("id").single();
   if (error) throw error;
+  return data.id as string;
 }
 
 export async function updateProject(projectId: string, summary: string) {
