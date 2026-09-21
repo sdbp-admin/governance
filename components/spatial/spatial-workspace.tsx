@@ -174,6 +174,58 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
   const view = fitLandscape(viewBasis, w, h);
   const unlinkedNodes = useMemo(() => placeUnlinkedTensions(unlinked, packed.map(node => toScreen(node, view)), radii, positions, view, w, h),
     [unlinked, packed, radii, positions, view, w, h]);
+
+  // Initial placement must respect the user's actual saved landscape. Saved circles are
+  // never moved here: only an unsaved circle that would initially overlap something
+  // already occupying the landscape is assigned and persisted to nearby blank space.
+  useEffect(() => {
+    if (depth.kind !== "organisation") return;
+
+    const entries = [
+      ...packed.map(node => ({
+        storageId: node.project.id,
+        circle: toScreen(node, view),
+        saved: Boolean(positions[node.project.id]),
+      })),
+      ...unlinkedNodes.map(node => ({
+        storageId: node.storageId,
+        circle: toScreen(node, view),
+        saved: Boolean(positions[node.storageId]),
+      })),
+    ];
+
+    const occupied = entries.filter(entry => entry.saved).map(entry => entry.circle);
+    const placements: Record<string, ProjectPosition> = {};
+
+    for (const entry of entries.filter(entry => !entry.saved)) {
+      let circle = entry.circle;
+      if (occupied.some(other => circlesOverlap(circle, other, 18))) {
+        const blank = findBlankScreenPosition(occupied, circle.r, w, h);
+        if (blank) {
+          circle = { ...blank, r: circle.r };
+          placements[entry.storageId] = {
+            x: (circle.x - view.x) / view.scale,
+            y: (circle.y - view.y) / view.scale,
+          };
+        }
+      }
+      occupied.push(circle);
+    }
+
+    if (!Object.keys(placements).length) return;
+    setPositions(current => {
+      const next = { ...current };
+      let changed = false;
+      for (const [storageId, position] of Object.entries(placements)) {
+        if (current[storageId]) continue;
+        next[storageId] = position;
+        changed = true;
+      }
+      if (changed) savePositions(positionStorageKey, next);
+      return changed ? next : current;
+    });
+  }, [depth.kind, packed, unlinkedNodes, positions, positionStorageKey, view.x, view.y, view.scale, w, h]);
+
   const previewLayouts = useMemo(() => new Map(packed.map(node => {
     const projectTensions = tensions.filter(tension => tension.linkedProjectId === node.project.id);
     const actions = activeProjectActions(workspace.actions, node.project.id);
@@ -748,6 +800,35 @@ function placeUnlinkedTensions(tensions: Tension[], projectCircles: Circle[], ra
     occupied.push(screen);
     return { tension, storageId, x: (screen.x - view.x) / view.scale, y: (screen.y - view.y) / view.scale, r };
   });
+}
+
+function circlesOverlap(a: Circle, b: Circle, gap = 0) {
+  return Math.hypot(a.x - b.x, a.y - b.y) < a.r + b.r + gap;
+}
+
+function findBlankScreenPosition(occupied: Circle[], radius: number, width: number, height: number): ProjectPosition | null {
+  const edge = 18;
+  const gap = 24;
+  const minX = radius + edge;
+  const maxX = width - radius - edge;
+  const minY = radius + 72;
+  const maxY = height - radius - 42;
+  if (minX > maxX || minY > maxY) return null;
+
+  const centre = { x: width / 2, y: height * 0.53 };
+  const step = Math.max(28, Math.min(58, radius * 0.42));
+  let best: { x: number; y: number; cost: number } | null = null;
+
+  for (let y = minY; y <= maxY + 0.1; y += step) {
+    for (let x = minX; x <= maxX + 0.1; x += step) {
+      const candidate: Circle = { x, y, r: radius };
+      if (occupied.some(other => circlesOverlap(candidate, other, gap))) continue;
+      const cost = Math.hypot(x - centre.x, (y - centre.y) * 1.15);
+      if (!best || cost < best.cost) best = { x, y, cost };
+    }
+  }
+
+  return best ? { x: best.x, y: best.y } : null;
 }
 
 function fitLandscape(nodes: Circle[], width: number, height: number) {
