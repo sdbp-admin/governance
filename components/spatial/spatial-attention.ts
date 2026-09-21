@@ -17,6 +17,85 @@ export type SpatialUnreadActivity = {
   actionId?: string;
   unreadCount: number;
 };
+export type SpatialTrailEndpoint =
+  | "project_conversation"
+  | "project_update"
+  | "tension_conversation"
+  | "tension_requests"
+  | "tension_resolution"
+  | "action"
+  | "action_conversation"
+  | "governance";
+
+export type SpatialSignalTrail = {
+  id: string;
+  endpoint: SpatialTrailEndpoint;
+  projectId?: string;
+  tensionId?: string;
+  actionId?: string;
+  needsAttention: boolean;
+  unreadCount: number;
+};
+
+export function buildSpatialSignalTrails(
+  workspace: WorkspaceData,
+  attention: PersonalAttention[],
+  unreadActivity: SpatialUnreadActivity[],
+): SpatialSignalTrail[] {
+  const resolvePath = (projectId?: string, tensionId?: string, actionId?: string) => {
+    const action = actionId ? workspace.actions.find(item => item.id === actionId) : undefined;
+    const resolvedTensionId = tensionId ?? action?.sourceTensionId;
+    const tension = resolvedTensionId ? workspace.tensions.find(item => item.id === resolvedTensionId) : undefined;
+    return {
+      projectId: projectId ?? action?.projectId ?? tension?.linkedProjectId,
+      tensionId: resolvedTensionId,
+      actionId,
+    };
+  };
+
+  const trails: SpatialSignalTrail[] = [];
+
+  for (const item of attention) {
+    const path = resolvePath(item.projectId, item.tensionId, item.actionId);
+    let endpoint: SpatialTrailEndpoint;
+    if (item.actionId) endpoint = item.kind === "mention" && item.commentId ? "action_conversation" : "action";
+    else if (item.tensionId) {
+      if (item.kind === "mention" && item.commentId) endpoint = "tension_conversation";
+      else if (item.kind === "request" || item.kind === "need") endpoint = "tension_requests";
+      else if (item.kind === "confirmation") endpoint = "tension_resolution";
+      else if (item.kind === "governance") endpoint = "governance";
+      else endpoint = "tension_conversation";
+    } else if (item.kind === "update") endpoint = "project_update";
+    else if (item.kind === "governance") endpoint = "governance";
+    else endpoint = "project_conversation";
+
+    trails.push({
+      id: `attention:${item.id}`,
+      endpoint,
+      ...path,
+      needsAttention: true,
+      unreadCount: 0,
+    });
+  }
+
+  for (const item of unreadActivity) {
+    const path = resolvePath(item.projectId, item.tensionId, item.actionId);
+    const endpoint: SpatialTrailEndpoint =
+      item.kind === "project" ? "project_conversation" :
+      item.kind === "tension" ? "tension_conversation" :
+      "action_conversation";
+
+    trails.push({
+      id: `unread:${item.kind}:${item.sourceId}`,
+      endpoint,
+      ...path,
+      needsAttention: false,
+      unreadCount: item.unreadCount,
+    });
+  }
+
+  return trails;
+}
 
 export async function loadSpatialUnreadActivity(workspace: WorkspaceData, userId: string, mentions: PersonalAttention[] = []): Promise<SpatialUnreadActivity[]> {
   const [projectParticipation, tensionParticipation, actionParticipation] = await Promise.all([
