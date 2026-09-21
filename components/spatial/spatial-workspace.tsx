@@ -11,7 +11,7 @@ import { Capture, ProjectTools, TensionTools, SpatialPoll, SpatialNextSteps, Spa
 import { SpatialConversation } from "./spatial-conversation";
 import { activeProjectActions, layoutProjectObjects, layoutProjectPreviewObjects } from "./spatial-project-objects";
 import { SpatialSurfaces, type SpatialSurface } from "./spatial-surfaces";
-import { loadSpatialMentions, spatialAttention, loadGovernanceResponseAttention, loadSpatialUnreadActivity, type PersonalAttention, type SpatialUnreadActivity } from "./spatial-attention";
+import { buildSpatialSignalTrails, loadSpatialMentions, spatialAttention, loadGovernanceResponseAttention, loadSpatialUnreadActivity, type PersonalAttention, type SpatialSignalTrail, type SpatialUnreadActivity } from "./spatial-attention";
 import type { SpatialProfile } from "@/components/spatial/spatial-authenticated-launch";
 import styles from "@/components/spatial/spatial.module.css";
 
@@ -154,12 +154,13 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
     const timer = window.setTimeout(() => document.getElementById(`spatial-tension-${newlyCreatedTensionId}`)?.focus({ preventScroll: true }), 40);
     return () => window.clearTimeout(timer);
   }, [depth.kind, newlyCreatedTensionId, newlyCreatedIsVisible]);
-  const needsProject = (id: string) => attention.some(a => a.projectId === id);
-  const unreadForProject = (id: string) => unreadActivity.filter(item => item.projectId === id).reduce((sum, item) => sum + item.unreadCount, 0);
-  const unreadForTension = (id: string) => unreadActivity.filter(item => item.tensionId === id).reduce((sum, item) => sum + item.unreadCount, 0);
-  const unreadForAction = (id: string) => unreadActivity.filter(item => item.actionId === id).reduce((sum, item) => sum + item.unreadCount, 0);
-  const directProjectUnread = (id: string) => unreadActivity.find(item => item.kind === "project" && item.sourceId === id)?.unreadCount ?? 0;
-  const directTensionUnread = (id: string) => unreadActivity.find(item => item.kind === "tension" && item.sourceId === id)?.unreadCount ?? 0;
+  const signalTrails = buildSpatialSignalTrails(workspace, attention, unreadActivity);
+  const needsProject = (id: string) => signalTrails.some(trail => trail.projectId === id && trail.needsAttention);
+  const needsTension = (id: string) => signalTrails.some(trail => trail.tensionId === id && trail.needsAttention);
+  const needsAction = (id: string) => signalTrails.some(trail => trail.actionId === id && trail.needsAttention);
+  const unreadForProject = (id: string) => signalTrails.filter(trail => trail.projectId === id).reduce((sum, trail) => sum + trail.unreadCount, 0);
+  const unreadForTension = (id: string) => signalTrails.filter(trail => trail.tensionId === id).reduce((sum, trail) => sum + trail.unreadCount, 0);
+  const unreadForAction = (id: string) => signalTrails.filter(trail => trail.actionId === id).reduce((sum, trail) => sum + trail.unreadCount, 0);
   const peopleById = useMemo(() => new Map(workspace.people.map((p) => [p.id, p.name])), [workspace.people]);
   const personName = (id: string) => peopleById.get(id) ?? "Unknown";
   const linked = tensions.filter((t) => t.linkedProjectId === projectId);
@@ -417,7 +418,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
             geometry = { x: w / 2 + (initial.x - anchor.x) * 3.2, y: h / 2 + (initial.y - anchor.y) * 3.2, r: initial.r };
           }
           const personalAttention = attention.find((item) => item.tensionId === tension.id);
-          const personal = Boolean(personalAttention);
+          const personal = needsTension(tension.id);
           const expanded = depth.kind === "project" && inProject;
           return <button key={tension.id} className={styles.tensionObject} data-tension-id={tension.id} data-preview-project-id={!zoomed ? node.project.id : undefined}
             data-mode={isSelected ? "focal" : expanded ? "named" : !zoomed ? "seed" : "receded"}
@@ -442,7 +443,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
           const point = previewLayouts.get(node.project.id)?.actionNodes.get(action.id) ?? innerPoint(projectTensions.length + index, projectTensions.length + actions.length, origin.r);
           const expanded = depth.kind === "project" && projectId === node.project.id;
           const geometry = expanded ? objectLayout.actionNodes.get(action.id)! : { x: origin.x + point.x, y: origin.y + point.y, r: point.r };
-          const personal = attention.some(item => item.actionId === action.id);
+          const personal = needsAction(action.id);
           return <button key={action.id} className={styles.actionObject} data-spatial-action-id={action.id} data-preview-project-id={!zoomed ? node.project.id : undefined}
             data-mode={expanded ? "named" : zoomed ? "receded" : "seed"} data-linked={Boolean(source) || undefined}
             data-proposed={action.status === "proposed" || undefined} data-needs-me={personal || undefined} data-focused={focusedActionId === action.id || undefined}
@@ -459,6 +460,9 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
         position={commitmentFocusPosition(focusedActionPosition, objectLayout.width, objectLayout.height)} run={run}
         signalIds={mentions.filter(item => item.actionId === focusedAction.id && item.signalId).map(item => item.signalId!)}
         targetCommentId={attentionTarget?.kind === "action" && attentionTarget.id === focusedAction.id ? attentionTarget.commentId : undefined}
+        needsAttention={needsAction(focusedAction.id)}
+        conversationNeedsAttention={signalTrails.some(trail => trail.actionId === focusedAction.id && trail.endpoint === "action_conversation" && trail.needsAttention)}
+        unreadCount={signalTrails.filter(trail => trail.actionId === focusedAction.id && trail.endpoint === "action_conversation").reduce((sum, trail) => sum + trail.unreadCount, 0)}
         onOpenSource={focusedAction.sourceTensionId ? () => navigate({ kind: "tension", projectId: selectedProject.id, tensionId: focusedAction.sourceTensionId! }) : undefined}
         onClose={() => setFocusedActionId(null)} />}
       </div>
@@ -489,7 +493,8 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
           onInteracting={setResizing} onTooltip={setProjectTooltip} />;
       })}
       {depth.kind === "project" && selectedProject && <ProjectContext key={selectedProject.id} project={selectedProject} workspace={workspace} peopleById={peopleById}
-        surface={surface} onSurface={setSurface} tensionCount={linked.length} userId={profile.id} run={run} onCapture={() => setCapture("tension")} attention={attention.filter(a => a.projectId === selectedProject.id)} requests={requests} unreadCount={directProjectUnread(selectedProject.id)} onPersonal={openPersonal} />}
+        surface={surface} onSurface={setSurface} tensionCount={linked.length} userId={profile.id} run={run} onCapture={() => setCapture("tension")} attention={attention.filter(a => a.projectId === selectedProject.id)} requests={requests}
+        trails={signalTrails.filter(trail => trail.projectId === selectedProject.id)} onPersonal={openPersonal} />}
       {depth.kind === "project" && selectedProject && surface && <div className={styles.projectReading} ref={surfaceRef} tabIndex={-1} aria-label={surface === "conversation" ? "Project conversation" : "Project commitments"}>
         <button className={styles.closeReading} onClick={() => setSurface(null)}>← Back to project</button>
         {surface === "conversation" ? <SpatialConversation key={selectedProject.id} kind="project" id={selectedProject.id} userId={profile.id} people={workspace.people} signalIds={(workspace.attentionSignals ?? []).filter(s => s.projectId === selectedProject.id && s.recipientId === profile.id && s.signalType === "project_comment").map(s => s.id)} targetCommentId={attentionTarget?.kind === "project" && attentionTarget.id === selectedProject.id ? attentionTarget.commentId : undefined} /> :
@@ -497,7 +502,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
       </div>}
       {depth.kind === "tension" && selectedTension && <TensionContext key={selectedTension.id} tension={selectedTension} workspace={workspace}
         requests={requests.filter((r) => r.tensionId === selectedTension.id)} currentUserId={profile.id} peopleById={peopleById}
-        urgent={urgentIds.has(selectedTension.id)} run={run} initialTab={tensionTab} attention={attention.filter(a => a.tensionId === selectedTension.id)} unreadCount={directTensionUnread(selectedTension.id)} onPersonal={openPersonal}
+        urgent={urgentIds.has(selectedTension.id)} run={run} initialTab={tensionTab} attention={attention.filter(a => a.tensionId === selectedTension.id)} trails={signalTrails.filter(trail => trail.tensionId === selectedTension.id)} onPersonal={openPersonal}
         targetCommentId={attentionTarget?.kind === "tension" && attentionTarget.id === selectedTension.id ? attentionTarget.commentId : undefined}
         targetActionId={attentionTarget?.kind === "action" ? attentionTarget.id : undefined} targetRequestId={attentionTarget?.kind === "request" ? attentionTarget.id : undefined}
         targetResolution={attentionTarget?.kind === "resolution" && attentionTarget.id === selectedTension.id}
@@ -622,9 +627,9 @@ function InteractiveProjectCircle({ id, domId, kind = "project", title, summary,
   </div>;
 }
 
-function ProjectContext({ project, workspace, peopleById, surface, onSurface, tensionCount, userId, run, onCapture, attention, requests, unreadCount, onPersonal }: {
+function ProjectContext({ project, workspace, peopleById, surface, onSurface, tensionCount, userId, run, onCapture, attention, requests, trails, onPersonal }: {
   project: Project; workspace: WorkspaceData; peopleById: Map<string, string>; surface: ProjectSurface; onSurface: (surface: ProjectSurface) => void; tensionCount: number;
-  userId: string; run: Run; onCapture: () => void; attention: PersonalAttention[]; requests: TensionRequest[]; unreadCount: number; onPersonal: (item: PersonalAttention) => void;
+  userId: string; run: Run; onCapture: () => void; attention: PersonalAttention[]; requests: TensionRequest[]; trails: SpatialSignalTrail[]; onPersonal: (item: PersonalAttention) => void;
 }) {
   const [summary, setSummary] = useState({ totalCount: 0, unreadCount: 0 });
   const [summaryError, setSummaryError] = useState("");
@@ -635,8 +640,13 @@ function ProjectContext({ project, workspace, peopleById, surface, onSurface, te
     return () => { active = false; };
   }, [project.id, surface]);
   const actions = workspace.actions.filter((a) => a.projectId === project.id && isActiveAction(a));
-  const projectMention = attention.find((item) => item.kind === "mention" && !item.tensionId);
+  const projectMention = attention.find((item) => item.kind === "mention" && !item.tensionId && !item.actionId);
   const personalCommitment = attention.find((item) => item.kind === "commitment" && !item.tensionId);
+  const unreadCount = trails.reduce((sum, trail) => sum + trail.unreadCount, 0);
+  const conversationTrails = trails.filter(trail => trail.endpoint === "project_conversation");
+  const conversationUnread = conversationTrails.reduce((sum, trail) => sum + trail.unreadCount, 0);
+  const conversationNeedsAttention = conversationTrails.some(trail => trail.needsAttention);
+  const updateNeedsAttention = trails.some(trail => trail.endpoint === "project_update" && trail.needsAttention);
   return <div className={styles.projectContext} data-reading={Boolean(surface)}>
     <header><span className={styles.eyebrow}>Project</span><h1>{project.title}{unreadCount > 0 && <ActivityBadge count={unreadCount} />}</h1></header>
     <div className={styles.projectFacts}>
@@ -646,22 +656,22 @@ function ProjectContext({ project, workspace, peopleById, surface, onSurface, te
       <p className={styles.rhythm}>Last checked {formatDate(project.lastUpdate)}<br />Next prompt {formatDate(project.nextPrompt)}</p>
     </div>
     <div className={styles.projectAccess}>
-      <button data-personal={surface !== "conversation" && Boolean(projectMention) || undefined} data-unread={summary.unreadCount > 0 || undefined} onClick={() => surface === "conversation" ? onSurface(null) : projectMention ? onPersonal(projectMention) : onSurface("conversation")} aria-expanded={surface === "conversation"}>
-        <span>Conversation <i aria-hidden="true">↗</i></span><strong>{summary.unreadCount ? `${summary.unreadCount} new` : summaryError || `${summary.totalCount} ${summary.totalCount === 1 ? "comment" : "comments"}`}</strong>
+      <button data-personal={surface !== "conversation" && conversationNeedsAttention || undefined} data-unread={conversationUnread > 0 || undefined} onClick={() => surface === "conversation" ? onSurface(null) : projectMention ? onPersonal(projectMention) : onSurface("conversation")} aria-expanded={surface === "conversation"}>
+        <span>Conversation{conversationUnread > 0 && <ActivityBadge count={conversationUnread} />} <i aria-hidden="true">↗</i></span><strong>{summaryError || `${summary.totalCount} ${summary.totalCount === 1 ? "comment" : "comments"}`}</strong>
       </button>
       <button data-personal={surface !== "commitments" && Boolean(personalCommitment) || undefined} onClick={() => surface === "commitments" ? onSurface(null) : personalCommitment ? onPersonal(personalCommitment) : onSurface("commitments")} aria-expanded={surface === "commitments"}><span>Commitments <i aria-hidden="true">↗</i></span><strong>{actions.length} open</strong></button>
     </div>
     <button className={styles.captureInline} onClick={onCapture}>+ Bring something up</button>
-    <ProjectTools project={project} workspace={workspace} userId={userId} run={run} needsUpdate={attention.some(a => a.kind === "update")} />
+    <ProjectTools project={project} workspace={workspace} userId={userId} run={run} needsUpdate={updateNeedsAttention} />
     {attention.some(a => a.tensionId && !workspace.tensions.some(t => t.id === a.tensionId && t.status !== "resolved")) && <details><summary>Outstanding work from resolved objects</summary>{attention.filter(a => a.tensionId && workspace.tensions.some(t => t.id === a.tensionId && t.status === "resolved")).map(a => <button key={a.id} onClick={() => onPersonal(a)}>{a.label} · {workspace.actions.find(action => action.id === a.actionId)?.title}</button>)}</details>}
     <WaitingContext projectId={project.id} workspace={workspace} requests={requests} userId={userId} onOpen={onPersonal} />
     {!tensionCount && <p className={styles.quietEmpty}>No unresolved objects are linked to this project.</p>}
   </div>;
 }
 
-function TensionContext({ tension, workspace, requests, currentUserId, peopleById, urgent, run, initialTab, attention, unreadCount, onPersonal, targetCommentId, targetActionId, targetRequestId, targetResolution, onGovernance }: {
+function TensionContext({ tension, workspace, requests, currentUserId, peopleById, urgent, run, initialTab, attention, trails, onPersonal, targetCommentId, targetActionId, targetRequestId, targetResolution, onGovernance }: {
   tension: Tension; workspace: WorkspaceData; requests: TensionRequest[]; currentUserId: string;
-  peopleById: Map<string, string>; urgent: boolean; run: Run; initialTab: "conversation" | "requests" | "commitments"; attention: PersonalAttention[]; unreadCount: number; onPersonal: (item: PersonalAttention) => void; targetCommentId?: string; targetActionId?: string; targetRequestId?: string; targetResolution?: boolean; onGovernance: () => void;
+  peopleById: Map<string, string>; urgent: boolean; run: Run; initialTab: "conversation" | "requests" | "commitments"; attention: PersonalAttention[]; trails: SpatialSignalTrail[]; onPersonal: (item: PersonalAttention) => void; targetCommentId?: string; targetActionId?: string; targetRequestId?: string; targetResolution?: boolean; onGovernance: () => void;
 }) {
   const [tab, setTab] = useState<"conversation" | "requests" | "commitments">(initialTab);
   const [requestOpen, setRequestOpen] = useState(false);
@@ -672,6 +682,12 @@ function TensionContext({ tension, workspace, requests, currentUserId, peopleByI
   const personName = (id: string) => peopleById.get(id) ?? "Unknown";
   const commitments = workspace.actions.filter((a) => a.sourceTensionId === tension.id && isActiveAction(a));
   const activeRequests = requests.filter((r) => r.status !== "closed");
+  const conversationTrails = trails.filter(trail => trail.endpoint === "tension_conversation");
+  const conversationUnread = conversationTrails.reduce((sum, trail) => sum + trail.unreadCount, 0);
+  const conversationNeedsAttention = conversationTrails.some(trail => trail.needsAttention);
+  const requestsNeedAttention = trails.some(trail => trail.endpoint === "tension_requests" && trail.needsAttention);
+  const commitmentsNeedAttention = trails.some(trail => trail.actionId && trail.needsAttention);
+  const attentionActionIds = [...new Set(trails.filter(trail => trail.actionId && trail.needsAttention).map(trail => trail.actionId!))];
   useEffect(() => {
     if (!targetRequestId || tab !== "requests") return;
     const timer = window.setTimeout(() => {
@@ -707,8 +723,11 @@ function TensionContext({ tension, workspace, requests, currentUserId, peopleByI
     <TensionTools tension={tension} workspace={workspace} userId={currentUserId} urgent={urgent} run={run} onGovernance={onGovernance} hasDurable={activeRequests.length > 0} />
     {attention.filter(a => a.kind === "need" || a.kind === "confirmation" || a.kind === "governance").map(a => <p className={styles.exactAttention} data-personal key={a.id}>{a.label}{a.kind === "governance" && <button onClick={onGovernance}>Open Governance</button>}</p>)}
     <div className={styles.tensionTabs} role="tablist" aria-label="Tension information">
-      {(["conversation", "requests", "commitments"] as const).map((name) => { const nextAttention = attention.find(a => name === "conversation" ? a.kind === "mention" : name === "requests" ? a.kind === "request" || a.kind === "need" : a.kind === "commitment"); return <button key={name} id={`tab-${name}`} role="tab" data-personal={tab !== name && Boolean(nextAttention) || undefined} aria-selected={tab === name} aria-controls="tension-panel" onClick={() => nextAttention ? onPersonal(nextAttention) : setTab(name)}>
-        {name === "conversation" ? <>Conversation{unreadCount > 0 && <ActivityBadge count={unreadCount} />}</> : name === "requests" ? `Requests · ${activeRequests.length}` : `Commitments · ${commitments.length}`}
+      {(["conversation", "requests", "commitments"] as const).map((name) => {
+        const nextAttention = attention.find(a => name === "conversation" ? a.kind === "mention" : name === "requests" ? a.kind === "request" || a.kind === "need" : a.kind === "commitment");
+        const needsAttention = name === "conversation" ? conversationNeedsAttention : name === "requests" ? requestsNeedAttention : commitmentsNeedAttention;
+        return <button key={name} id={`tab-${name}`} role="tab" data-personal={tab !== name && needsAttention || undefined} aria-selected={tab === name} aria-controls="tension-panel" onClick={() => nextAttention ? onPersonal(nextAttention) : setTab(name)}>
+        {name === "conversation" ? <>Conversation{conversationUnread > 0 && <ActivityBadge count={conversationUnread} />}</> : name === "requests" ? `Requests · ${activeRequests.length}` : `Commitments · ${commitments.length}`}
       </button>; })}
     </div>
     <section id="tension-panel" className={styles.tensionPanel} role="tabpanel" aria-labelledby={`tab-${tab}`}>
@@ -727,7 +746,7 @@ function TensionContext({ tension, workspace, requests, currentUserId, peopleByI
         {!activeRequests.length && <p className={styles.quietEmpty}>No durable requests are recorded. Any legacy need remains in the recorded context above.</p>}
         <SpatialPoll tension={tension} userId={currentUserId} workspace={workspace} run={run} />
       </section>}
-      {tab === "commitments" && <section className={styles.tensionCommitments}><h2>Commitments</h2><SpatialNextSteps parent={tension} kind="tension" workspace={workspace} userId={currentUserId} run={run} attentionActionId={targetActionId} /></section>}
+      {tab === "commitments" && <section className={styles.tensionCommitments}><h2>Commitments</h2><SpatialNextSteps parent={tension} kind="tension" workspace={workspace} userId={currentUserId} run={run} attentionActionId={targetActionId} attentionActionIds={attentionActionIds} /></section>}
     </section>
     <footer ref={resolutionCheck} className={styles.resolutionEdge} data-target={resolutionTargeted || undefined} tabIndex={resolutionTargeted ? -1 : undefined} aria-label="Resolution check">
       {tension.status === "awaiting_confirmation" ? mine ? <><span>{personName(tension.resolutionProposedBy ?? "")} believes this is resolved.</span><button disabled={busy} onClick={async () => { setBusy(true); await run(() => updateTension(tension.id, { status: "open", resolutionProposedBy: null, latestNote: tension.latestNote ?? null })); setBusy(false); }}>No, keep open</button><button disabled={busy} onClick={() => void resolve()}>Yes, resolved</button></> : <span>Waiting for {personName(tension.raiserId)} to confirm.</span> :
