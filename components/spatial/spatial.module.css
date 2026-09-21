@@ -184,7 +184,7 @@
 .activityBadge {
   display: inline-flex; align-items: center; justify-content: center; vertical-align: .16em;
   min-width: 18px; height: 18px; margin-left: 6px; padding: 0 5px; border-radius: 999px;
-  background: #25d366; color: #fff; font-size: 11px; line-height: 1; font-weight: 750;
+  background: #1fa855; color: #fff; font-size: 12px; line-height: 1; font-weight: 800;
   letter-spacing: 0; white-space: nowrap; box-shadow: 0 1px 4px #182a1f2b;
 }
 .projectLabel[data-small] .activityBadge { min-width: 15px; height: 15px; margin-left: 4px; padding: 0 4px; font-size: 9px; }
@@ -262,7 +262,7 @@
 .commitmentSource > button { display: block; width: 100%; padding: 5px 6px; margin: 0 -6px; border: 0; border-radius: 4px; background: transparent; color: var(--ink); text-align: left; font-size: 12px; font-weight: 560; line-height: 1.4; overflow-wrap: anywhere; transition: background 140ms, color 140ms; }
 .commitmentSource > button:hover, .commitmentSource > button:focus, .commitmentSource > button:focus-visible { background: #2596be0d; color: #166f8d; }
 .commitmentConversation { display: block; width: 100%; padding: 9px 0; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--muted); text-align: left; font-size: 12px; }
-.commitmentConversation[data-unread] { color: #166f8d; font-weight: 650; }
+.commitmentConversation[data-unread] { color: var(--ink); font-weight: 650; border-bottom-color: #1fa85566; }
 .commitmentFocus .conversationPlane[data-compact] { margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--line); }
 .commitmentFocus .conversationPlane[data-compact] > header { margin-bottom: 12px; }
 .commitmentFocus .conversationPlane[data-compact] h2 { margin: 0; font-size: 14px; }
@@ -307,8 +307,8 @@
 .projectAccess button > span { font-size: 18px; letter-spacing: -.02em; }
 .projectAccess i { font-size: 14px; color: var(--muted); font-style: normal; }
 .projectAccess strong { font-size: 11px; font-weight: 500; color: var(--muted); white-space: nowrap; }
-.projectAccess button[data-unread] strong { font-weight: 750; color: #b44816; font-size: 14px; }
-.projectAccess button[data-unread] { border-color: var(--orange); }
+.projectAccess button[data-unread] strong { font-weight: 650; color: var(--muted); font-size: 11px; }
+.projectAccess button[data-unread] { border-color: #1fa85566; }
 .projectAccess button:hover { color: #1780a6; }
 .projectAccess button[data-personal="true"] { border-left: 0; border-bottom-width: 2px; padding-left: 10px; animation: accessAttentionPulse 1.6s ease-in-out infinite; }
 .projectTools > button[data-personal="true"] { border: 1px solid #2596be55; border-radius: 5px; padding: 9px 12px; animation: controlAttentionPulse 1.6s ease-in-out infinite; }
