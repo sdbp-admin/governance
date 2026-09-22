@@ -688,6 +688,13 @@ function TensionContext({ tension, workspace, requests, currentUserId, peopleByI
   const personName = (id: string) => peopleById.get(id) ?? "Unknown";
   const commitments = workspace.actions.filter((a) => a.sourceTensionId === tension.id && isActiveAction(a));
   const activeRequests = requests.filter((r) => r.status !== "closed");
+  const requestGroups = [...activeRequests.reduce((groups, request) => {
+    const key = request.batchId || request.id;
+    const group = groups.get(key) ?? [];
+    group.push(request);
+    groups.set(key, group);
+    return groups;
+  }, new Map<string, TensionRequest[]>()).values()];
   const conversationTrails = trails.filter(trail => trail.endpoint === "tension_conversation");
   const conversationUnread = conversationTrails.reduce((sum, trail) => sum + trail.unreadCount, 0);
   const conversationNeedsAttention = conversationTrails.some(trail => trail.needsAttention);
@@ -723,9 +730,14 @@ function TensionContext({ tension, workspace, requests, currentUserId, peopleByI
     <header className={styles.tensionIdentity}><div className={styles.tensionMeta}><span className={styles.eyebrow}>Tension</span><span>Raised {elapsed(tension.createdAt)} · {personName(tension.raiserId)}</span><span>{tensionState(tension)}{urgent ? " · explicitly urgent" : ""}</span></div><h1 data-prose={tension.title.length > 180 || undefined}>{tension.title}</h1>
       {tension.latestNote && <details className={styles.needContext} open><summary>Recorded need / context</summary><p>{tension.latestNote}</p></details>}
     </header>
-    {activeRequests.length > 0 && <div className={styles.dependencyStrip}>{activeRequests.map((request) => <button key={request.id} data-owes={request.status === "open" && request.recipientId === currentUserId || undefined} onClick={() => setTab("requests")}>
-      {requestLabel(request, currentUserId, personName)}<small>{request.status === "open" ? ` · ${age(request.requestedAt)}` : request.respondedAt ? ` · ${formatDate(request.respondedAt)}` : ""}</small>
-    </button>)}</div>}
+    {requestGroups.length > 0 && <div className={styles.dependencyStrip}>{requestGroups.map((group) => {
+      const open = group.filter(request => request.status === "open");
+      const mine = open.some(request => request.recipientId === currentUserId);
+      const names = open.length ? open.map(request => personName(request.recipientId)) : group.map(request => personName(request.recipientId));
+      return <button key={group[0].batchId || group[0].id} data-owes={mine || undefined} onClick={() => setTab("requests")}>
+        {open.length ? `Waiting for ${names.join(", ")}` : `Responses from ${names.join(", ")}`}<small>{` · ${age(group[0].requestedAt)}`}</small>
+      </button>;
+    })}</div>}
     <TensionTools tension={tension} workspace={workspace} userId={currentUserId} urgent={urgent} run={run} onGovernance={onGovernance} hasDurable={activeRequests.length > 0} />
     {attention.filter(a => a.kind === "need" || a.kind === "confirmation" || a.kind === "governance").map(a => <p className={styles.exactAttention} data-personal key={a.id}>{a.label}{a.kind === "governance" && <button onClick={onGovernance}>Open Governance</button>}</p>)}
     <div className={styles.tensionTabs} role="tablist" aria-label="Tension information">
@@ -743,12 +755,21 @@ function TensionContext({ tension, workspace, requests, currentUserId, peopleByI
         {requestOpen && <RequestComposer tension={tension} people={workspace.people.filter((p) => p.id !== currentUserId)} onCancel={() => setRequestOpen(false)} onSave={async (kind, recipientIds, detail) => {
           if (await run(() => defineTensionRequests({ tensionId: tension.id, kind, recipientIds, detail }), "Request recorded.")) setRequestOpen(false);
         }} />}
-        {activeRequests.map((request) => <article className={styles.requestRow} id={`spatial-request-${request.id}`} tabIndex={request.id === targetRequestId ? -1 : undefined} data-target={request.id === targetRequestId || undefined} key={request.id} data-open={request.status === "open"} data-personal={request.status === "open" && request.recipientId === currentUserId || undefined}>
-          <div><strong>{requestLabel(request, currentUserId, personName)}</strong><small>{personName(request.requesterId)} → {personName(request.recipientId)} · {request.kind === "conversation" ? "Real conversation" : "Input / help"} · requested {elapsed(request.requestedAt)}</small></div>
-          {request.detail && <p>{request.detail}</p>}
-          {request.respondedAt && <small>Responded {formatTimestamp(request.respondedAt)}</small>}
-          {request.status === "open" && request.recipientId === currentUserId && <button disabled={busy} onClick={async () => { setBusy(true); await run(() => markTensionRequestResponded(request.id), "Your response is recorded."); setBusy(false); }}>I’ve responded</button>}
-        </article>)}
+        {requestGroups.map((group) => {
+          const first = group[0];
+          const open = group.filter(request => request.status === "open");
+          const targeted = targetRequestId ? group.some(request => request.id === targetRequestId) : false;
+          const mine = group.find(request => request.status === "open" && request.recipientId === currentUserId);
+          const recipientNames = group.map(request => personName(request.recipientId));
+          return <article className={styles.requestRow} id={targeted && targetRequestId ? `spatial-request-${targetRequestId}` : undefined} tabIndex={targeted ? -1 : undefined}
+            data-target={targeted || undefined} key={first.batchId || first.id} data-open={open.length > 0 || undefined} data-personal={Boolean(mine) || undefined}>
+            <div><strong>{open.length ? `Waiting for ${open.map(request => personName(request.recipientId)).join(", ")}` : `Responses received from ${recipientNames.join(", ")}`}</strong>
+              <small>{personName(first.requesterId)} → {recipientNames.join(", ")} · {first.kind === "conversation" ? "Real conversation" : "Input / help"} · requested {elapsed(first.requestedAt)}</small></div>
+            {first.detail && <p>{first.detail}</p>}
+            <small>{group.map(request => `${personName(request.recipientId)}: ${request.status === "open" ? "waiting" : request.respondedAt ? `responded ${formatDate(request.respondedAt)}` : request.status}`).join(" · ")}</small>
+            {mine && <button disabled={busy} onClick={async () => { setBusy(true); await run(() => markTensionRequestResponded(mine.id), "Your response is recorded."); setBusy(false); }}>I’ve responded</button>}
+          </article>;
+        })}
         {!activeRequests.length && <p className={styles.quietEmpty}>No durable requests are recorded. Any legacy need remains in the recorded context above.</p>}
         <SpatialPoll tension={tension} userId={currentUserId} workspace={workspace} run={run} />
       </section>}
