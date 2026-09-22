@@ -16,8 +16,8 @@ import type { SpatialProfile } from "./spatial-authenticated-launch";
 import styles from "./spatial.module.css";
 
 export type SpatialSurface = "governance" | "records" | "commitments" | "account" | "compass" | "completed" | null;
-export function SpatialSurfaces({ surface, workspace, profile, run, onClose, onSurface, onProject, onAction, onCapture, onSignOut }: {
-  surface: SpatialSurface; workspace: WorkspaceData; profile: SpatialProfile; run: SpatialRun; onClose: () => void;
+export function SpatialSurfaces({ surface, workspace, profile, run, governanceTargetProposalId, onClose, onSurface, onProject, onAction, onCapture, onSignOut }: {
+  surface: SpatialSurface; workspace: WorkspaceData; profile: SpatialProfile; run: SpatialRun; governanceTargetProposalId?: string | null; onClose: () => void;
   onSurface: (surface: SpatialSurface) => void; onProject: (id: string) => void; onAction: (action: Action) => void; onCapture: () => void; onSignOut: () => void;
 }) {
   const [inviteAllowed, setInviteAllowed] = useState(false);
@@ -39,7 +39,7 @@ export function SpatialSurfaces({ surface, workspace, profile, run, onClose, onS
     <header className={styles.surfaceHeading}><div><span className={styles.eyebrow}>SDBP</span><h1>{surface === "records" ? "Records" : "Governance"}</h1></div><button onClick={onClose}>← Spatial workspace</button></header>
     {surface === "records" ? <RecordsView governanceProposals={workspace.governanceProposals} tensions={workspace.tensions} profileId={profile.id} /> : <>
       <section className={styles.secondarySection}><h2>People, roles & availability</h2><OrganisationWorkspaceView workspace={workspace} currentUserId={profile.id} canInvite={inviteAllowed} personName={name} presence={presence} onInvite={(n, email) => run(() => invitePerson(n, email), "Invitation sent.")} onSaveRole={role => run(() => saveRole(role))} onDeleteRole={id => run(() => deleteRole(id))} onOpenProject={onProject} /></section>
-      <GovernanceWorkspaceView workspace={workspace} currentUserId={profile.id} personName={name} onCreateProposal={input => run(() => createGovernanceProposal({ ...input, proposerId: profile.id }))} onStartMeeting={startMeeting} onGoTensions={onCapture} onGoRecords={() => onSurface("records")} />
+      <GovernanceWorkspaceView workspace={workspace} currentUserId={profile.id} personName={name} focusProposalId={governanceTargetProposalId} onCreateProposal={input => run(() => createGovernanceProposal({ ...input, proposerId: profile.id }))} onStartMeeting={startMeeting} onGoTensions={onCapture} onGoRecords={() => onSurface("records")} />
     </>}
   </section>;
 }
