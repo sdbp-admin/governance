@@ -87,8 +87,10 @@ export async function loadBoardFeed(): Promise<BoardFeedPost[]> {
   }));
 }
 
-export async function createBoardPost(body: string, mentionIds: string[]) {
-  const { data, error } = await supabase.rpc("create_board_post", { post_body: body.trim(), mention_ids: mentionIds });
+export async function createBoardPost(body: string, mentionIds: string[], mentionAll = false) {
+  const { data, error } = mentionAll
+    ? await supabase.rpc("create_board_post_with_all", { post_body: body.trim() })
+    : await supabase.rpc("create_board_post", { post_body: body.trim(), mention_ids: mentionIds });
   if (error) throw error;
   if (data) await notifyAttention({ kind: "board_post", postId: String(data) });
 }
@@ -98,8 +100,10 @@ export async function editBoardPost(postId: string, body: string) {
   if (error) throw error;
 }
 
-export async function addBoardPostComment(postId: string, body: string, mentionIds: string[]) {
-  const { data, error } = await supabase.rpc("add_board_post_comment", { target_post_id: postId, comment_body: body.trim(), mention_ids: mentionIds });
+export async function addBoardPostComment(postId: string, body: string, mentionIds: string[], mentionAll = false) {
+  const { data, error } = mentionAll
+    ? await supabase.rpc("add_board_post_comment_with_all", { target_post_id: postId, comment_body: body.trim() })
+    : await supabase.rpc("add_board_post_comment", { target_post_id: postId, comment_body: body.trim(), mention_ids: mentionIds });
   if (error) throw error;
   if (data) await notifyAttention({ kind: "board_post_comment", commentId: String(data) });
 }
