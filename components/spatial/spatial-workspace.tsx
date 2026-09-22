@@ -156,14 +156,18 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
   }, [depth.kind, newlyCreatedTensionId, newlyCreatedIsVisible]);
   const signalTrails = buildSpatialSignalTrails(workspace, attention, unreadActivity);
   const needsProject = (id: string) => signalTrails.some(trail => trail.projectId === id && trail.needsAttention);
-  const needsTension = (id: string) => signalTrails.some(trail => trail.tensionId === id && trail.needsAttention);
+  const needsTension = (id: string) => signalTrails.some(trail => trail.tensionId === id && !trail.actionId && trail.needsAttention);
   const needsAction = (id: string) => signalTrails.some(trail => trail.actionId === id && trail.needsAttention);
   const unreadForProject = (id: string) => signalTrails.filter(trail => trail.projectId === id).reduce((sum, trail) => sum + trail.unreadCount, 0);
-  const unreadForTension = (id: string) => signalTrails.filter(trail => trail.tensionId === id).reduce((sum, trail) => sum + trail.unreadCount, 0);
+  const unreadForTension = (id: string) => signalTrails.filter(trail => trail.tensionId === id && !trail.actionId).reduce((sum, trail) => sum + trail.unreadCount, 0);
   const unreadForAction = (id: string) => signalTrails.filter(trail => trail.actionId === id).reduce((sum, trail) => sum + trail.unreadCount, 0);
   const peopleById = useMemo(() => new Map(workspace.people.map((p) => [p.id, p.name])), [workspace.people]);
   const personName = (id: string) => peopleById.get(id) ?? "Unknown";
-  const linked = tensions.filter((t) => t.linkedProjectId === projectId);
+  const linked = workspace.tensions.filter((t) => t.linkedProjectId === projectId &&
+    (t.status !== "resolved" || unreadForTension(t.id) > 0 || needsTension(t.id) || t.id === selectedTension?.id));
+  const visibleActions = workspace.actions.filter((action) => projectId &&
+    (action.projectId ?? workspace.tensions.find(tension => tension.id === action.sourceTensionId)?.linkedProjectId) === projectId &&
+    (isActiveAction(action) || unreadForAction(action.id) > 0 || needsAction(action.id) || action.id === focusedActionId));
   const zoomed = depth.kind !== "organisation";
   const { width: w, height: h } = viewport;
 
@@ -232,10 +236,10 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
   const selectedOrigin = packed.find((p) => p.project.id === projectId);
   const focusCircle: Circle = { x: w * 0.5, y: h * 0.55, r: w * 0.49 };
   const tensionCircle: Circle = { x: w * 0.53, y: h * 0.57, r: Math.max(w * 0.4, h * 0.76) };
-  const objectLayout = layoutProjectObjects(linked, activeProjectActions(workspace.actions, projectId ?? ""), w * (surface ? 0.32 : 0.51), h * 0.8);
+  const objectLayout = layoutProjectObjects(linked, visibleActions, w * (surface ? 0.32 : 0.51), h * 0.8);
   const projectNodes = objectLayout.tensionNodes;
   const focusedActionCandidate = focusedActionId ? workspace.actions.find(action => action.id === focusedActionId) : undefined;
-  const focusedAction = focusedActionCandidate && isActiveAction(focusedActionCandidate) && focusedActionCandidate.projectId === projectId ? focusedActionCandidate : undefined;
+  const focusedAction = focusedActionCandidate && visibleActions.some(action => action.id === focusedActionCandidate.id) ? focusedActionCandidate : undefined;
   const focusedActionPosition = focusedAction ? objectLayout.actionNodes.get(focusedAction.id) : undefined;
   const focusedPosition = selectedTension ? projectNodes.get(selectedTension.id) : undefined;
   function up() {
@@ -309,8 +313,9 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
     if (item.kind === "governance") { setMainSurface("governance"); return; }
     if (item.actionId) {
       const action = workspace.actions.find(a => a.id === item.actionId);
-      if (action && item.commentId && action.projectId && isActiveAction(action)) {
-        navigate({ kind: "project", projectId: action.projectId });
+      const actionProjectId = action?.projectId ?? workspace.tensions.find(tension => tension.id === action?.sourceTensionId)?.linkedProjectId;
+      if (action && item.commentId && actionProjectId) {
+        navigate({ kind: "project", projectId: actionProjectId });
         setFocusedActionId(action.id);
         setAttentionTarget({ kind: "action", id: action.id, commentId: item.commentId });
       } else if (action) {
@@ -395,10 +400,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
         })}
       </svg>}
       {packed.flatMap((node) => {
-        const children = tensions.filter((t) => t.linkedProjectId === node.project.id);
-        // A commitment can still refer to a resolved tension. Keep its context reachable
-        // without counting it among the project's unresolved circles.
-        if (selectedTension?.status === "resolved" && selectedTension.linkedProjectId === node.project.id) children.push(selectedTension);
+        const children = node.project.id === projectId ? linked : tensions.filter((t) => t.linkedProjectId === node.project.id);
         return children.map((tension, index) => {
           const origin = toScreen(node, view);
           const point = previewLayouts.get(node.project.id)?.tensionNodes.get(tension.id) ?? innerPoint(index, children.length, origin.r);
@@ -417,25 +419,27 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
             const anchor = selectedOrigin ? toScreen(selectedOrigin, view) : { x: w / 2, y: h / 2 };
             geometry = { x: w / 2 + (initial.x - anchor.x) * 3.2, y: h / 2 + (initial.y - anchor.y) * 3.2, r: initial.r };
           }
-          const personalAttention = attention.find((item) => item.tensionId === tension.id);
+          const personalAttention = attention.find((item) => item.tensionId === tension.id && !item.actionId);
           const personal = needsTension(tension.id);
           const expanded = depth.kind === "project" && inProject;
           return <button key={tension.id} className={styles.tensionObject} data-tension-id={tension.id} data-preview-project-id={!zoomed ? node.project.id : undefined}
             data-mode={isSelected ? "focal" : expanded ? "named" : !zoomed ? "seed" : "receded"}
             data-needs-me={personal || undefined} data-urgent={urgentIds.has(tension.id) || undefined}
-            data-governance={tension.status === "governance" || undefined}
+            data-governance={tension.status === "governance" || undefined} data-historical={tension.status === "resolved" || undefined}
             style={circleStyle(geometry)} disabled={!expanded} tabIndex={expanded ? 0 : -1}
             aria-label={`Enter tension: ${tension.title}`} title={expanded ? tension.title : undefined}
-            onClick={() => personalAttention ? openPersonal(personalAttention) : navigate({ kind: "tension", projectId: node.project.id, tensionId: tension.id })}>
-            <span className={styles.tensionLabel}><strong>{tension.title}{expanded && unreadForTension(tension.id) > 0 && <ActivityBadge count={unreadForTension(tension.id)} />}</strong>
-              <small>{personal ? "Needs you" : tension.status === "awaiting_confirmation" ? "Awaiting confirmation" : `Raised by ${personName(tension.raiserId)}`}</small>
+            onClick={(event) => (event.target instanceof Element && Boolean(event.target.closest(`.${styles.activityBadge}`))) || !personalAttention
+              ? navigate({ kind: "tension", projectId: node.project.id, tensionId: tension.id }) : openPersonal(personalAttention)}>
+            <span className={styles.tensionLabel}><strong>{tension.title}</strong>
+              <small>{personal ? "Needs you" : tension.status === "resolved" ? "Resolved · conversation" : tension.status === "awaiting_confirmation" ? "Awaiting confirmation" : `Raised by ${personName(tension.raiserId)}`}</small>
             </span>
+            {expanded && unreadForTension(tension.id) > 0 && <ActivityBadge count={unreadForTension(tension.id)} />}
           </button>;
         });
       })}
 
       {packed.flatMap(node => {
-        const actions = activeProjectActions(workspace.actions, node.project.id);
+        const actions = node.project.id === projectId ? visibleActions : activeProjectActions(workspace.actions, node.project.id);
         const projectTensions = tensions.filter(t => t.linkedProjectId === node.project.id);
         return actions.map((action, index) => {
           const source = projectTensions.find(t => t.id === action.sourceTensionId);
@@ -446,12 +450,13 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
           const personal = needsAction(action.id);
           return <button key={action.id} className={styles.actionObject} data-spatial-action-id={action.id} data-preview-project-id={!zoomed ? node.project.id : undefined}
             data-mode={expanded ? "named" : zoomed ? "receded" : "seed"} data-linked={Boolean(source) || undefined}
-            data-proposed={action.status === "proposed" || undefined} data-needs-me={personal || undefined} data-focused={focusedActionId === action.id || undefined}
+            data-proposed={action.status === "proposed" || undefined} data-completed={action.status === "done" || undefined} data-needs-me={personal || undefined} data-focused={focusedActionId === action.id || undefined}
             style={circleStyle(geometry)} disabled={!expanded} tabIndex={expanded ? 0 : -1}
             onClick={() => { setSurface(null); setFocusedActionId(current => current === action.id ? null : action.id); setAttentionTarget({ kind: "action", id: action.id }); }}
-            title={expanded ? `${action.title} · ${personName(action.ownerId)} · ${action.status === "proposed" ? "Proposed" : "Open"}` : undefined}
-            aria-label={`Open commitment: ${action.title} · ${personName(action.ownerId)}${action.status === "proposed" ? " · Proposed" : ""}${personal ? " · Needs you" : ""}`}>
-            <span className={styles.actionLabel}><strong>{action.title}{expanded && unreadForAction(action.id) > 0 && <ActivityBadge count={unreadForAction(action.id)} />}</strong><small>{personName(action.ownerId)}{action.status === "proposed" ? " · proposed" : ""}</small></span>
+            title={expanded ? `${action.title} · ${personName(action.ownerId)} · ${action.status === "proposed" ? "Proposed" : action.status === "done" ? "Completed" : "Open"}` : undefined}
+            aria-label={`Open commitment: ${action.title} · ${personName(action.ownerId)}${action.status === "proposed" ? " · Proposed" : action.status === "done" ? " · Completed" : ""}${personal ? " · Needs you" : ""}`}>
+            <span className={styles.actionLabel}><strong>{action.title}</strong><small>{personName(action.ownerId)}{action.status === "proposed" ? " · proposed" : action.status === "done" ? " · completed" : ""}</small></span>
+            {expanded && unreadForAction(action.id) > 0 && <ActivityBadge count={unreadForAction(action.id)} />}
           </button>;
         });
       })}
@@ -470,7 +475,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
       {unlinkedNodes.map((node) => {
         const tension = node.tension;
         const selected = depth.kind === "tension" && depth.tensionId === tension.id;
-        const personalAttention = attention.find((item) => item.tensionId === tension.id);
+        const personalAttention = attention.find((item) => item.tensionId === tension.id && !item.actionId);
         const origin = toScreen(node, view);
         const geometry = selected ? tensionCircle : zoomed ? { ...origin, r: origin.r * .72 } : origin;
         const visibleMaximum = !zoomed ? clamp(Math.min((geometry.x - 12) / view.scale, (w - geometry.x - 12) / view.scale,
@@ -622,7 +627,8 @@ function InteractiveProjectCircle({ id, domId, kind = "project", title, summary,
     onClick={event => { if (mode !== "overview") return; if (gesture.current?.didMove) { event.preventDefault(); event.stopPropagation(); gesture.current = null; return; } gesture.current = null; onOpen(); }}>
     <button id={domId} className={styles.projectFace} tabIndex={mode === "overview" ? 0 : -1} disabled={mode !== "overview"}
       aria-label={`${kind === "tension" ? "Open unlinked tension" : "Enter project"}: ${title}`}>
-      <strong className={styles.projectLabel} data-small={small || undefined} style={{ fontSize: labelSize }}>{label}{unreadCount > 0 && <ActivityBadge count={unreadCount} />}</strong>
+      <strong className={styles.projectLabel} data-small={small || undefined} style={{ fontSize: labelSize }}>{label}</strong>
+      {unreadCount > 0 && <ActivityBadge count={unreadCount} />}
     </button>
   </div>;
 }

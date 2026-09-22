@@ -173,7 +173,7 @@ export function SpatialCommitmentFocus({ action, people, currentUserId, sourceTe
   return <aside className={styles.commitmentFocus} data-side={position.side} data-proposed={action.status === "proposed" || undefined}
     style={{ left: position.x, top: position.y }} aria-label={`Focused commitment: ${action.title}`}>
     <div className={styles.commitmentFocusScroll}>
-    <header><span>{action.status === "proposed" ? "Proposed commitment" : "Commitment"}</span><button onClick={onClose} aria-label="Close commitment details">×</button></header>
+    <header><span>{action.status === "proposed" ? "Proposed commitment" : action.status === "done" ? "Completed commitment" : "Commitment"}</span><button onClick={onClose} aria-label="Close commitment details">×</button></header>
     {!editing ? <>
       <h2>{action.title}</h2>
       <dl><div><dt>{action.status === "proposed" ? "Proposed to" : "Owner"}</dt><dd>{name(action.ownerId)}</dd></div><div><dt>Due</dt><dd>{action.due ? formatCommitmentDate(action.due) : "No deadline"}</dd></div></dl>
