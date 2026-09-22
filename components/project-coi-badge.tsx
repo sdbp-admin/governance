@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { loadProjectConflicts, type ProjectConflict } from "@/lib/supabase/project-coi";
 
@@ -11,6 +11,14 @@ export function ProjectCoiBadge({ projectId, personName }: {
   const [conflicts, setConflicts] = useState<ProjectConflict[]>([]);
   const [popover, setPopover] = useState<{ left: number; top: number } | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+
+  useLayoutEffect(() => {
+    if (!popover || !popoverRef.current) return;
+    const rect = popoverRef.current.getBoundingClientRect();
+    const top = Math.max(12, Math.min(popover.top, window.innerHeight - rect.height - 12));
+    if (top !== popover.top) setPopover(current => current ? { ...current, top } : null);
+  }, [popover]);
 
   const refresh = useCallback(async () => {
     try {
@@ -58,7 +66,7 @@ export function ProjectCoiBadge({ projectId, personName }: {
       <span aria-hidden="true">⚠</span> COI · {names.join(", ")}
     </button>
     {popover && typeof document !== "undefined" ? createPortal(
-      <div className="project-coi-popover" style={{ left: popover.left, top: popover.top }} role="tooltip">
+      <div ref={popoverRef} className="project-coi-popover" style={{ left: popover.left, top: popover.top }} role="tooltip">
         <strong>Conflict of interest</strong>
         {conflicts.map((conflict) => <div className="project-coi-popover-person" key={conflict.id}>
           <b>{personName(conflict.personId)}</b>

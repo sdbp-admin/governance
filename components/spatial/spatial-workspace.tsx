@@ -520,7 +520,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
       </div>}
       {depth.kind === "tension" && selectedTension && <TensionContext key={selectedTension.id} tension={selectedTension} workspace={workspace}
         requests={requests.filter((r) => r.tensionId === selectedTension.id)} currentUserId={profile.id} peopleById={peopleById}
-        urgent={urgentIds.has(selectedTension.id)} run={run} initialTab={tensionTab} attention={attention.filter(a => a.tensionId === selectedTension.id)} trails={signalTrails.filter(trail => trail.tensionId === selectedTension.id)} onPersonal={openPersonal}
+        urgent={urgentIds.has(selectedTension.id)} run={run} initialTab={tensionTab} attention={attention.filter(a => a.tensionId === selectedTension.id)} trails={signalTrails.filter(trail => trail.tensionId === selectedTension.id)}
         targetCommentId={attentionTarget?.kind === "tension" && attentionTarget.id === selectedTension.id ? attentionTarget.commentId : undefined}
         targetActionId={attentionTarget?.kind === "action" ? attentionTarget.id : undefined} targetRequestId={attentionTarget?.kind === "request" ? attentionTarget.id : undefined}
         targetResolution={attentionTarget?.kind === "resolution" && attentionTarget.id === selectedTension.id}
@@ -690,9 +690,9 @@ function ProjectContext({ project, workspace, peopleById, surface, onSurface, te
   </div>;
 }
 
-function TensionContext({ tension, workspace, requests, currentUserId, peopleById, urgent, run, initialTab, attention, trails, onPersonal, targetCommentId, targetActionId, targetRequestId, targetResolution, onGovernance }: {
+function TensionContext({ tension, workspace, requests, currentUserId, peopleById, urgent, run, initialTab, attention, trails, targetCommentId, targetActionId, targetRequestId, targetResolution, onGovernance }: {
   tension: Tension; workspace: WorkspaceData; requests: TensionRequest[]; currentUserId: string;
-  peopleById: Map<string, string>; urgent: boolean; run: Run; initialTab: "conversation" | "requests" | "commitments"; attention: PersonalAttention[]; trails: SpatialSignalTrail[]; onPersonal: (item: PersonalAttention) => void; targetCommentId?: string; targetActionId?: string; targetRequestId?: string; targetResolution?: boolean; onGovernance: () => void;
+  peopleById: Map<string, string>; urgent: boolean; run: Run; initialTab: "conversation" | "requests" | "commitments"; attention: PersonalAttention[]; trails: SpatialSignalTrail[]; targetCommentId?: string; targetActionId?: string; targetRequestId?: string; targetResolution?: boolean; onGovernance: () => void;
 }) {
   const [tab, setTab] = useState<"conversation" | "requests" | "commitments">(initialTab);
   const [requestOpen, setRequestOpen] = useState(false);
@@ -757,9 +757,8 @@ function TensionContext({ tension, workspace, requests, currentUserId, peopleByI
     {attention.filter(a => a.kind === "need" || a.kind === "confirmation" || a.kind === "governance").map(a => <p className={styles.exactAttention} data-personal key={a.id}>{a.label}{a.kind === "governance" && <button onClick={onGovernance}>Open Governance</button>}</p>)}
     <div className={styles.tensionTabs} role="tablist" aria-label="Tension information">
       {(["conversation", "requests", "commitments"] as const).map((name) => {
-        const nextAttention = attention.find(a => name === "conversation" ? a.kind === "mention" : name === "requests" ? a.kind === "request" || a.kind === "need" : a.kind === "commitment");
         const needsAttention = name === "conversation" ? conversationNeedsAttention : name === "requests" ? requestsNeedAttention : commitmentsNeedAttention;
-        return <button key={name} id={`tab-${name}`} role="tab" data-personal={tab !== name && needsAttention || undefined} aria-selected={tab === name} aria-controls="tension-panel" onClick={() => nextAttention ? onPersonal(nextAttention) : setTab(name)}>
+        return <button key={name} id={`tab-${name}`} role="tab" data-personal={tab !== name && needsAttention || undefined} aria-selected={tab === name} aria-controls="tension-panel" onClick={() => setTab(name)}>
         {name === "conversation" ? <>Conversation{conversationUnread > 0 && <ActivityBadge count={conversationUnread} />}</> : name === "requests" ? `Requests · ${activeRequests.length}` : `Commitments · ${commitments.length}`}
       </button>; })}
     </div>

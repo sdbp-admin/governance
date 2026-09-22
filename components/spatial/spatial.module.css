@@ -203,7 +203,7 @@
 .projectTooltip strong { font-size: 12px; font-weight: 650; }
 .projectTooltip small { margin-top: 2px; color: var(--muted); font-size: 11px; }
 .shell[data-resizing] .projectObject, .shell[data-resizing] .tensionObject { transition-duration: 80ms; }
-.tensionObject { z-index: 3; padding: 0; color: var(--ink); border: 1px solid #ef672873; background: #f9eadf; box-shadow: none; overflow: hidden; }
+.tensionObject { z-index: 3; padding: 0; color: var(--ink); border: 1px solid #ef672873; background: #f9eadf; box-shadow: none; }
 .tensionObject[data-mode="overview"] { touch-action: none; cursor: grab; background: transparent; border-color: #ef672866; box-shadow: 0 12px 28px -24px #ef67286b; }
 .tensionObject[data-mode="overview"]:active { cursor: grabbing; }
 .tensionObject[data-mode="overview"]:hover { border-color: var(--orange); background: transparent; box-shadow: 0 0 0 7px #ef67280b; }

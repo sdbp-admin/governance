@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
     const smtpUser = requiredEnv("SMTP_USER");
     const smtpPassword = requiredEnv("SMTP_APP_PASSWORD");
     const smtpFromName = Deno.env.get("SMTP_FROM_NAME")?.trim() || "SDBP Workspace";
-    const appUrl = Deno.env.get("APP_URL")?.trim() || "https://sdbp-admin.github.io/governance/";
+    const appUrl = spatialAppUrl(Deno.env.get("APP_URL")?.trim() || "https://sdbp-admin.github.io/governance/");
 
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
@@ -191,7 +191,7 @@ async function buildAttentionDeliveries(
         payload.title!.trim(),
         "",
         context.trimEnd(),
-        "Open My Attention to review or accept it:",
+        "Open Spatial Workspace to review or accept it:",
         appUrl,
       ].filter((line) => line !== "").join("\n"),
     }));
@@ -264,7 +264,7 @@ async function buildLegacyTensionDeliveries(
         "",
         "Please check the current situation and confirm whether you got what you needed.",
         "",
-        `Open My Attention: ${appUrl}`,
+        `Open Spatial Workspace: ${appUrl}`,
       ].join("\n"),
     }));
   }
@@ -320,7 +320,7 @@ function attentionDeliveries(recipients: PersonRow[], actor: PersonRow, subjectC
       "",
       message,
       "",
-      "Open My Attention to see the context and respond:",
+      "Open Spatial Workspace to see the context and respond:",
       appUrl,
     ].join("\n"),
   }));
@@ -477,6 +477,14 @@ function requiredEnv(name: string) {
   const value = Deno.env.get(name)?.trim();
   if (!value) throw new Error(`${name} is not configured.`);
   return value;
+}
+
+function spatialAppUrl(baseUrl: string) {
+  const url = new URL(baseUrl);
+  url.pathname = `${url.pathname.replace(/\/(?:redesign|spatial)\/?$/, "").replace(/\/$/, "")}/spatial/`;
+  url.search = "";
+  url.hash = "";
+  return url.toString();
 }
 
 function json(value: unknown, status = 200) {
