@@ -295,14 +295,6 @@
 .tensionLabel small { font-size: 10px; line-height: 1.3; margin-top: 10px; color: #81583f; max-width: 100%; }
 .projectContext { position: absolute; z-index: 8; left: 10%; top: 14%; width: 27%; max-width: 370px; max-height: 77%; overflow: auto; padding: 0 8px 20px 0; scrollbar-width: thin; animation: revealContext 350ms 160ms both; transition: opacity 250ms; }
 .projectContext h1 { margin: 8px 0 22px; font-size: clamp(25px, 2.8vw, 42px); letter-spacing: -.05em; line-height: 1.08; font-weight: 560; overflow-wrap: anywhere; }
-.projectAttention { margin: 0 0 24px; padding: 12px 14px; border: 1px solid #2596be70; border-radius: 7px; background: #e9f4f5; }
-.projectAttention > strong { display: block; margin-bottom: 6px; font-size: 12px; color: #125d78; }
-.projectAttention > div { max-height: min(30vh, 240px); overflow-y: auto; }
-.projectAttention button { display: block; width: 100%; padding: 10px 0; border: 0; border-top: 1px solid #2596be36; background: transparent; color: var(--ink); text-align: left; }
-.projectAttention button span, .projectAttention button small { display: block; line-height: 1.4; }
-.projectAttention button span { font-size: 13px; font-weight: 630; }
-.projectAttention button small { margin-top: 3px; font-size: 11px; color: var(--muted); }
-.projectAttention button:hover, .projectAttention button:focus-visible { color: #12617d; background: #2596be13; }
 .currentState { font-size: 15px; line-height: 1.6; margin: 0 0 25px; color: #3a4855; white-space: pre-wrap; overflow-wrap: anywhere; }
 .projectFacts { max-height: 38vh; overflow: auto; scrollbar-width: thin; padding-right: 8px; }
 .owner { display: flex; align-items: center; gap: 10px; }

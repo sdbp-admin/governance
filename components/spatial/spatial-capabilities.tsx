@@ -45,16 +45,10 @@ export function Capture({ kind, projectId, userId, run, onCreated, onClose }: { 
   }}><label>{kind === "project" ? "Project title" : "What needs dealing with?"}<textarea autoFocus rows={kind === "project" ? 2 : 4} value={text} placeholder={kind === "tension" ? "What do you see that needs attention? You can decide what’s needed next." : undefined} onChange={e => setText(e.target.value)} /></label>{kind === "project" && <small>You start as owner. People and settings can be completed inside the project.</small>}<button type="submit" disabled={busy || !text.trim()}>{busy ? "Saving…" : kind === "project" ? "Create project" : "Capture"}</button></form></SpatialDialog>;
 }
 
-export function ProjectTools({ project, workspace, userId, run, needsUpdate = false, updateRequest = 0 }: { project: Project; workspace: WorkspaceData; userId: string; run: SpatialRun; needsUpdate?: boolean; updateRequest?: number }) {
+export function ProjectTools({ project, workspace, userId, run, needsUpdate = false }: { project: Project; workspace: WorkspaceData; userId: string; run: SpatialRun; needsUpdate?: boolean }) {
   const [panel, setPanel] = useState<"update" | "history" | "settings" | null>(null);
   const [draft, setDraft] = useState(project.summary);
   const [busy, setBusy] = useState(false);
-  const handledUpdateRequest = useRef(0);
-  useEffect(() => {
-    if (updateRequest <= handledUpdateRequest.current) return;
-    handledUpdateRequest.current = updateRequest;
-    setDraft(project.summary); setPanel("update");
-  }, [updateRequest, project.summary]);
   const name = (id: string) => workspace.people.find(p => p.id === id)?.name ?? "Unknown";
   return <div className={`${styles.projectTools} ${styles.adapted}`}>
     {project.ownerId === userId && project.status === "active" && <button data-personal={needsUpdate && panel !== "update" || undefined} onClick={() => { setDraft(project.summary); setPanel("update"); }}>Update current state</button>}

@@ -654,7 +654,6 @@ function ProjectContext({ project, workspace, peopleById, surface, onSurface, te
 }) {
   const [summary, setSummary] = useState({ totalCount: 0, unreadCount: 0 });
   const [summaryError, setSummaryError] = useState("");
-  const [updateRequest, setUpdateRequest] = useState(0);
   useEffect(() => {
     let active = true;
     void loadCommentThreadSummary("project", project.id).then((next) => { if (active) setSummary(next); })
@@ -671,17 +670,6 @@ function ProjectContext({ project, workspace, peopleById, surface, onSurface, te
   const updateNeedsAttention = trails.some(trail => trail.endpoint === "project_update" && trail.needsAttention);
   return <div className={styles.projectContext} data-reading={Boolean(surface)}>
     <header><span className={styles.eyebrow}>Project</span><h1>{project.title}</h1></header>
-    {attention.length > 0 && <div className={styles.projectAttention} aria-label="Your attention in this project">
-      <strong>{attention.length} {attention.length === 1 ? "item needs" : "items need"} you here</strong>
-      <div>{attention.map(item => {
-        const subject = item.actionId ? workspace.actions.find(action => action.id === item.actionId)?.title
-          : item.tensionId ? workspace.tensions.find(tension => tension.id === item.tensionId)?.title : undefined;
-        return <button key={item.id} type="button" onClick={() => item.kind === "update" ? setUpdateRequest(current => current + 1) : onPersonal(item)}>
-          <span>{subject ?? (item.kind === "update" ? "Update current state" : item.label)}</span>
-          {subject && <small>{item.label}</small>}
-        </button>;
-      })}</div>
-    </div>}
     <div className={styles.projectFacts}>
       <p className={styles.currentState}>{project.summary || "No current state has been recorded."}</p>
       <div className={styles.owner}><span aria-hidden="true">{initials(peopleById.get(project.ownerId) ?? "?")}</span><div><strong>{peopleById.get(project.ownerId) ?? "Unknown"}</strong><small>Project owner</small></div></div>
@@ -695,7 +683,7 @@ function ProjectContext({ project, workspace, peopleById, surface, onSurface, te
       <button data-personal={surface !== "commitments" && Boolean(personalCommitment) || undefined} onClick={() => surface === "commitments" ? onSurface(null) : personalCommitment ? onPersonal(personalCommitment) : onSurface("commitments")} aria-expanded={surface === "commitments"}><span>Commitments <i aria-hidden="true">↗</i></span><strong>{actions.length} open</strong></button>
     </div>
     <button className={styles.captureInline} onClick={onCapture}>+ Bring something up</button>
-    <ProjectTools project={project} workspace={workspace} userId={userId} run={run} needsUpdate={updateNeedsAttention} updateRequest={updateRequest} />
+    <ProjectTools project={project} workspace={workspace} userId={userId} run={run} needsUpdate={updateNeedsAttention} />
     {attention.some(a => a.tensionId && !workspace.tensions.some(t => t.id === a.tensionId && t.status !== "resolved")) && <details><summary>Outstanding work from resolved objects</summary>{attention.filter(a => a.tensionId && workspace.tensions.some(t => t.id === a.tensionId && t.status === "resolved")).map(a => <button key={a.id} onClick={() => onPersonal(a)}>{a.label} · {workspace.actions.find(action => action.id === a.actionId)?.title}</button>)}</details>}
     <WaitingContext projectId={project.id} workspace={workspace} requests={requests} userId={userId} onOpen={onPersonal} />
     {!tensionCount && <p className={styles.quietEmpty}>No unresolved objects are linked to this project.</p>}
