@@ -8,7 +8,7 @@ import { loadCommentThreadSummary } from "@/lib/supabase/comment-thread-state";
 import type { WorkspaceData } from "@/lib/supabase/workspace";
 import { supabase } from "@/lib/supabase/client";
 
-export type PersonalAttention = { id: string; kind: "request" | "commitment" | "mention" | "need" | "confirmation" | "update" | "governance"; projectId?: string; tensionId?: string; actionId?: string; requestId?: string; signalId?: string; commentId?: string; label: string };
+export type PersonalAttention = { id: string; kind: "request" | "commitment" | "mention" | "need" | "confirmation" | "update" | "governance"; projectId?: string; tensionId?: string; actionId?: string; requestId?: string; signalId?: string; commentId?: string; proposalId?: string; label: string };
 export type SpatialUnreadActivity = {
   kind: "project" | "tension" | "action";
   sourceId: string;
@@ -235,6 +235,6 @@ export async function loadGovernanceResponseAttention(workspace: WorkspaceData, 
   if (person.data?.governance_available === false) return [];
   return (rounds.data ?? []).filter(r => !responses.data?.some(response => response.proposal_id === r.proposal_id)).map(r => {
     const proposal = workspace.governanceProposals.find(p => p.id === r.proposal_id)!;
-    return { id: `consent-${r.proposal_id}`, kind: "governance", tensionId: proposal.tensionId, projectId: workspace.tensions.find(t => t.id === proposal.tensionId)?.linkedProjectId, label: `Your Quick Consent response is needed · ${proposal.title}` };
+    return { id: `consent-${r.proposal_id}`, kind: "governance", proposalId: proposal.id, tensionId: proposal.tensionId, projectId: workspace.tensions.find(t => t.id === proposal.tensionId)?.linkedProjectId, label: `Your Quick Consent response is needed · ${proposal.title}` };
   });
 }
