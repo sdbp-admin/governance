@@ -71,22 +71,34 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
   const [viewport, setViewport] = useState({ width: 1440, height: 900 });
   const field = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
+  const refreshSequence = useRef(0);
 
   const refresh = useCallback(async (quiet = false) => {
+    const sequence = ++refreshSequence.current;
     if (!quiet) setLoading(true);
     try {
       const [next, nextRequests, urgent] = await Promise.all([loadWorkspace(), loadTensionRequests(), loadUrgentTensionIds()]);
-      setWorkspace(next);
-      setRequests(nextRequests);
-      setUrgentIds(urgent);
-      setError("");
+      if (sequence !== refreshSequence.current) return;
       try {
         const [nextMentions, nextGovernance] = await Promise.all([loadSpatialMentions(next, profile.id), loadGovernanceResponseAttention(next, profile.id)]);
         const nextUnread = await loadSpatialUnreadActivity(next, profile.id, nextMentions);
+        if (sequence !== refreshSequence.current) return;
+        setWorkspace(next); setRequests(nextRequests); setUrgentIds(urgent); setError("");
         setMentions(nextMentions); setGovernanceAttention(nextGovernance); setUnreadActivity(nextUnread); setAttentionError("");
-      } catch (reason) { setAttentionError(`Personal attention could not be fully refreshed: ${readError(reason)}`); }
-    } catch (reason) { setError(readError(reason)); }
-    finally { if (!quiet) setLoading(false); }
+      } catch (reason) {
+        if (sequence !== refreshSequence.current) return;
+        setWorkspace(next); setRequests(nextRequests); setUrgentIds(urgent); setError("");
+        setMentions([]); setGovernanceAttention([]); setUnreadActivity([]);
+        setAttentionError(`Personal attention could not be fully refreshed: ${readError(reason)}`);
+      }
+    } catch (reason) {
+      if (sequence === refreshSequence.current) {
+        setWorkspace(EMPTY_WORKSPACE); setRequests([]); setUrgentIds(new Set());
+        setMentions([]); setGovernanceAttention([]); setUnreadActivity([]);
+        setError(readError(reason));
+      }
+    }
+    finally { if (sequence === refreshSequence.current) setLoading(false); }
   }, [profile.id]);
 
   useEffect(() => {
@@ -499,7 +511,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
           onInteracting={setResizing} onTooltip={setProjectTooltip} />;
       })}
       {depth.kind === "project" && selectedProject && <ProjectContext key={selectedProject.id} project={selectedProject} workspace={workspace} peopleById={peopleById}
-        surface={surface} onSurface={setSurface} tensionCount={linked.length} userId={profile.id} run={run} onCapture={() => setCapture("tension")} attention={attention.filter(a => a.projectId === selectedProject.id)} requests={requests}
+        surface={surface} onSurface={setSurface} tensionCount={linked.length} userId={profile.id} run={run} onCapture={() => setCapture("tension")} attention={attention.filter(a => signalTrails.some(trail => trail.id === `attention:${a.id}` && trail.projectId === selectedProject.id))} requests={requests}
         trails={signalTrails.filter(trail => trail.projectId === selectedProject.id)} onPersonal={openPersonal} />}
       {depth.kind === "project" && selectedProject && surface && <div className={styles.projectReading} ref={surfaceRef} tabIndex={-1} aria-label={surface === "conversation" ? "Project conversation" : "Project commitments"}>
         <button className={styles.closeReading} onClick={() => setSurface(null)}>← Back to project</button>
@@ -642,6 +654,7 @@ function ProjectContext({ project, workspace, peopleById, surface, onSurface, te
 }) {
   const [summary, setSummary] = useState({ totalCount: 0, unreadCount: 0 });
   const [summaryError, setSummaryError] = useState("");
+  const [updateRequest, setUpdateRequest] = useState(0);
   useEffect(() => {
     let active = true;
     void loadCommentThreadSummary("project", project.id).then((next) => { if (active) setSummary(next); })
@@ -658,6 +671,17 @@ function ProjectContext({ project, workspace, peopleById, surface, onSurface, te
   const updateNeedsAttention = trails.some(trail => trail.endpoint === "project_update" && trail.needsAttention);
   return <div className={styles.projectContext} data-reading={Boolean(surface)}>
     <header><span className={styles.eyebrow}>Project</span><h1>{project.title}</h1></header>
+    {attention.length > 0 && <div className={styles.projectAttention} aria-label="Your attention in this project">
+      <strong>{attention.length} {attention.length === 1 ? "item needs" : "items need"} you here</strong>
+      <div>{attention.map(item => {
+        const subject = item.actionId ? workspace.actions.find(action => action.id === item.actionId)?.title
+          : item.tensionId ? workspace.tensions.find(tension => tension.id === item.tensionId)?.title : undefined;
+        return <button key={item.id} type="button" onClick={() => item.kind === "update" ? setUpdateRequest(current => current + 1) : onPersonal(item)}>
+          <span>{subject ?? (item.kind === "update" ? "Update current state" : item.label)}</span>
+          {subject && <small>{item.label}</small>}
+        </button>;
+      })}</div>
+    </div>}
     <div className={styles.projectFacts}>
       <p className={styles.currentState}>{project.summary || "No current state has been recorded."}</p>
       <div className={styles.owner}><span aria-hidden="true">{initials(peopleById.get(project.ownerId) ?? "?")}</span><div><strong>{peopleById.get(project.ownerId) ?? "Unknown"}</strong><small>Project owner</small></div></div>
@@ -671,7 +695,7 @@ function ProjectContext({ project, workspace, peopleById, surface, onSurface, te
       <button data-personal={surface !== "commitments" && Boolean(personalCommitment) || undefined} onClick={() => surface === "commitments" ? onSurface(null) : personalCommitment ? onPersonal(personalCommitment) : onSurface("commitments")} aria-expanded={surface === "commitments"}><span>Commitments <i aria-hidden="true">↗</i></span><strong>{actions.length} open</strong></button>
     </div>
     <button className={styles.captureInline} onClick={onCapture}>+ Bring something up</button>
-    <ProjectTools project={project} workspace={workspace} userId={userId} run={run} needsUpdate={updateNeedsAttention} />
+    <ProjectTools project={project} workspace={workspace} userId={userId} run={run} needsUpdate={updateNeedsAttention} updateRequest={updateRequest} />
     {attention.some(a => a.tensionId && !workspace.tensions.some(t => t.id === a.tensionId && t.status !== "resolved")) && <details><summary>Outstanding work from resolved objects</summary>{attention.filter(a => a.tensionId && workspace.tensions.some(t => t.id === a.tensionId && t.status === "resolved")).map(a => <button key={a.id} onClick={() => onPersonal(a)}>{a.label} · {workspace.actions.find(action => action.id === a.actionId)?.title}</button>)}</details>}
     <WaitingContext projectId={project.id} workspace={workspace} requests={requests} userId={userId} onOpen={onPersonal} />
     {!tensionCount && <p className={styles.quietEmpty}>No unresolved objects are linked to this project.</p>}
