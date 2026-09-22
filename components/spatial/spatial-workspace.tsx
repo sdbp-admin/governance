@@ -54,6 +54,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
   const [capture, setCapture] = useState<"project" | "tension" | null>(null);
   const [mentions, setMentions] = useState<PersonalAttention[]>([]);
   const [governanceAttention, setGovernanceAttention] = useState<PersonalAttention[]>([]);
+  const [governanceTargetProposalId, setGovernanceTargetProposalId] = useState<string | null>(null);
   const [unreadActivity, setUnreadActivity] = useState<SpatialUnreadActivity[]>([]);
   const [attentionError, setAttentionError] = useState("");
   const [tensionTab, setTensionTab] = useState<"conversation" | "requests" | "commitments">("conversation");
@@ -310,7 +311,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
     setAttentionTarget({ kind: "action", id: action.id });
   }
   function openPersonal(item: PersonalAttention) {
-    if (item.kind === "governance") { setMainSurface("governance"); return; }
+    if (item.kind === "governance") { setGovernanceTargetProposalId(item.proposalId ?? null); setMainSurface("governance"); return; }
     if (item.actionId) {
       const action = workspace.actions.find(a => a.id === item.actionId);
       const actionProjectId = action?.projectId ?? workspace.tensions.find(tension => tension.id === action?.sourceTensionId)?.linkedProjectId;
@@ -527,7 +528,9 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
     </div>
     {depth.kind === "organisation" && projectTooltip && !mainSurface && <div className={styles.projectTooltip} data-side={projectTooltip.side}
       style={{ left: projectTooltip.x, top: projectTooltip.y }} role="tooltip"><strong>{projectTooltip.title}</strong><small>{projectTooltip.summary}</small></div>}
-    <SpatialSurfaces surface={mainSurface} workspace={workspace} profile={profile} run={run} onClose={() => setMainSurface(null)} onSurface={setMainSurface} onProject={id => navigate({ kind: "project", projectId: id })} onAction={openAction} onCapture={() => { navigate({ kind: "organisation" }); setCapture("tension"); }} onSignOut={onSignOut} />
+    <SpatialSurfaces surface={mainSurface} workspace={workspace} profile={profile} run={run} governanceTargetProposalId={governanceTargetProposalId}
+      onClose={() => { setMainSurface(null); setGovernanceTargetProposalId(null); }} onSurface={surface => { setMainSurface(surface); if (surface !== "governance") setGovernanceTargetProposalId(null); }}
+      onProject={id => navigate({ kind: "project", projectId: id })} onAction={openAction} onCapture={() => { navigate({ kind: "organisation" }); setCapture("tension"); }} onSignOut={onSignOut} />
     {capture && <Capture kind={capture} projectId={depth.kind === "project" ? projectId : undefined} userId={profile.id} run={run}
       onCreated={id => {
         if (capture === "project") setNewlyCreatedProjectId(id);
