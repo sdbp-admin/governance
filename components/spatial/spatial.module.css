@@ -33,13 +33,6 @@
 .projectTools summary, .objectTools summary, .waiting summary { cursor: pointer; padding: 9px 0; }
 .toolLinks { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; padding: 10px 0; }
 .toolLinks button { border: 0; border-bottom: 1px solid #2b374622; background: none; padding: 6px 0; color: #2b3746; }
-.pulseTimer { margin: 16px 0 7px; }
-.pulseTimer > button { border: 1px solid #2596be55; border-radius: 6px; padding: 7px 11px; background: #2596be0b; color: #16617b; font-size: 13px; }
-.pulseTimer > button:hover, .pulseTimer > button:focus-visible { background: #2596be19; }
-.pulsePauseChoices { display: flex; flex-basis: 100%; align-items: center; flex-wrap: wrap; gap: 10px 14px; padding: 7px 0 12px; }
-.pulsePauseChoices button { border: 1px solid #2b374625; border-radius: 5px; background: #ffffff9c; padding: 6px 10px; color: var(--ink); font-size: 13px; }
-.pulsePauseChoices span, .pulsePauseChoices small { color: #64717b; font-size: 13px; }
-.pulsePauseChoices small { flex-basis: 100%; }
 .pulseHandle { position: absolute; z-index: 12; transform: translate(-50%, -50%); border: 1px solid #2596be80; border-radius: 999px; padding: 5px 9px; background: #f9fcfdee; color: #16617b; box-shadow: 0 3px 12px #2b374625; font-size: 12px !important; line-height: 1; opacity: 0; pointer-events: none; transition: opacity 150ms ease; }
 .tensionObject:hover + .pulseHandle, .tensionObject:focus-visible + .pulseHandle, .pulseHandle:hover, .pulseHandle:focus-visible { opacity: 1; pointer-events: auto; }
 .pulseMenuBackdrop { position: fixed; inset: 0; z-index: 500; background: transparent; }

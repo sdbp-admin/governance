@@ -563,7 +563,6 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
         targetActionId={attentionTarget?.kind === "action" ? attentionTarget.id : undefined} targetRequestId={attentionTarget?.kind === "request" ? attentionTarget.id : undefined}
         targetResolution={attentionTarget?.kind === "resolution" && attentionTarget.id === selectedTension.id}
         pulsePausedUntil={(pulsePauses[selectedTension.id] ?? 0) > pulseNow ? pulsePauses[selectedTension.id] : undefined}
-        onPulsePause={hours => pauseTensionPulse(selectedTension.id, hours)}
         onGovernance={() => setMainSurface("governance")} />}
       {((depth.kind === "project" && !selectedProject) || (depth.kind === "tension" && !selectedTension)) &&
         <div className={styles.missing}><h1>This context is no longer active.</h1><button onClick={up}>Return to the landscape</button></div>}
@@ -741,13 +740,12 @@ function ProjectContext({ project, workspace, peopleById, surface, onSurface, te
   </div>;
 }
 
-function TensionContext({ tension, workspace, requests, currentUserId, peopleById, urgent, run, initialTab, attention, trails, targetCommentId, targetActionId, targetRequestId, targetResolution, pulsePausedUntil, onPulsePause, onGovernance }: {
+function TensionContext({ tension, workspace, requests, currentUserId, peopleById, urgent, run, initialTab, attention, trails, targetCommentId, targetActionId, targetRequestId, targetResolution, pulsePausedUntil, onGovernance }: {
   tension: Tension; workspace: WorkspaceData; requests: TensionRequest[]; currentUserId: string;
-  peopleById: Map<string, string>; urgent: boolean; run: Run; initialTab: "conversation" | "requests" | "commitments"; attention: PersonalAttention[]; trails: SpatialSignalTrail[]; targetCommentId?: string; targetActionId?: string; targetRequestId?: string; targetResolution?: boolean; pulsePausedUntil?: number; onPulsePause: (hours: number) => void; onGovernance: () => void;
+  peopleById: Map<string, string>; urgent: boolean; run: Run; initialTab: "conversation" | "requests" | "commitments"; attention: PersonalAttention[]; trails: SpatialSignalTrail[]; targetCommentId?: string; targetActionId?: string; targetRequestId?: string; targetResolution?: boolean; pulsePausedUntil?: number; onGovernance: () => void;
 }) {
   const [tab, setTab] = useState<"conversation" | "requests" | "commitments">(initialTab);
   const [requestOpen, setRequestOpen] = useState(false);
-  const [pulseMenuOpen, setPulseMenuOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const resolutionCheck = useRef<HTMLElement>(null);
   const mine = tension.raiserId === currentUserId;
@@ -795,8 +793,6 @@ function TensionContext({ tension, workspace, requests, currentUserId, peopleByI
   }
   return <article className={styles.tensionContext} aria-label="Tension working context">
     <header className={styles.tensionIdentity}><div className={styles.tensionMeta}><span className={styles.eyebrow}>Tension</span><span>Raised {elapsed(tension.createdAt)} · {personName(tension.raiserId)}</span><span>{tensionState(tension)}{urgent ? " · explicitly urgent" : ""}</span></div><h1 data-prose={tension.title.length > 180 || undefined}>{tension.title}</h1>
-      <div className={styles.pulseTimer}><button type="button" aria-expanded={pulseMenuOpen} onClick={() => setPulseMenuOpen(!pulseMenuOpen)}>{pulsePausedUntil ? `Pulse paused until ${new Date(pulsePausedUntil).toLocaleString()} · change` : "Pause pulse"}</button>
-        {pulseMenuOpen && <div className={styles.pulsePauseChoices}><span>Pause this tension’s pulse for</span>{([24, 48, 72, 168] as const).map(hours => <button type="button" key={hours} onClick={() => { onPulsePause(hours); setPulseMenuOpen(false); }}>{hours === 168 ? "1 week" : `${hours} hours`}</button>)}{pulsePausedUntil && <button type="button" onClick={() => { onPulsePause(0); setPulseMenuOpen(false); }}>Resume now</button>}<small>Unread badges and the underlying work remain visible.</small></div>}</div>
       {tension.latestNote && <details className={styles.needContext} open><summary>Recorded need / context</summary><p>{tension.latestNote}</p></details>}
     </header>
     {requestGroups.length > 0 && <div className={styles.dependencyStrip}>{requestGroups.map((group) => {
