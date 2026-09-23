@@ -121,6 +121,7 @@ export function BoardAttention({ userId, active, onCount, onOpenChat }: {
   useEffect(() => {
     if (!active) return;
     const refresh = () => void load().catch(reason => setError(readError(reason)));
+    refresh();
     window.addEventListener("focus", refresh);
     return () => window.removeEventListener("focus", refresh);
   }, [active, load]);

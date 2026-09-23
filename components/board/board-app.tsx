@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { addBoardPostComment, createBoardPost, editBoardPost, editBoardPostComment, loadBoardFeed, setBoardPostPinned, type BoardFeedPost, type BoardFeedComment } from "@/lib/supabase/board-feed";
+import { boardPushEnabled, disableBoardPush, enableBoardPush, loadBoardCounts, markBoardChatSeen, registerBoardWorker, showBoardBadge } from "@/lib/supabase/board-app";
 import { BoardAttention } from "./board-attention";
 import styles from "./board.module.css";
 
@@ -55,6 +56,7 @@ export function BoardApp() {
   }
 
   async function signOut() {
+    try { await disableBoardPush(); } catch (reason) { setError(`Could not disconnect this device: ${errorText(reason)}`); return; }
     const result = await supabase.auth.signOut({ scope: "local" });
     if (result.error) setError(result.error.message);
     else { setMember(null); setHasSession(false); setError(""); }
@@ -77,8 +79,13 @@ export function BoardApp() {
 }
 
 function BoardChat({ member, onSignOut, authError }: { member: Person; onSignOut: () => Promise<void>; authError: string }) {
-  const [tab, setTab] = useState<"chat" | "attention">("chat");
+  const [tab, setTab] = useState<"chat" | "attention">(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tab") === "attention" ? "attention" : "chat");
+  const [chatCount, setChatCount] = useState(0);
+  const [chatEngaged, setChatEngaged] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).has("post"));
   const [attentionCount, setAttentionCount] = useState(0);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState("");
   const [openPostId, setOpenPostId] = useState<string | null>(null);
   const [posts, setPosts] = useState<BoardFeedPost[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
@@ -98,6 +105,25 @@ function BoardChat({ member, onSignOut, authError }: { member: Person; onSignOut
   const followBottom = useRef(true);
   const inFlight = useRef(false);
   const initialLoad = useRef(true);
+  const lastMarkedAt = useRef("");
+
+  const refreshCounts = useCallback(async () => {
+    const counts = await loadBoardCounts();
+    setChatCount(counts.chat);
+    setAttentionCount(counts.forMe);
+  }, []);
+
+  useEffect(() => {
+    void registerBoardWorker().catch(reason => setPushError(errorText(reason)));
+    void boardPushEnabled().then(setPushEnabled).catch(reason => setPushError(errorText(reason)));
+    void refreshCounts().catch(reason => setError(errorText(reason)));
+    const timer = window.setInterval(() => { if (!document.hidden) void refreshCounts().catch(reason => setError(errorText(reason))); }, 15000);
+    const onPush = (event: MessageEvent) => { if (event.data?.type === "BOARD_REFRESH") void refreshCounts().catch(reason => setError(errorText(reason))); };
+    navigator.serviceWorker?.addEventListener("message", onPush);
+    return () => { window.clearInterval(timer); navigator.serviceWorker?.removeEventListener("message", onPush); };
+  }, [refreshCounts]);
+
+  useEffect(() => { showBoardBadge(chatCount + attentionCount); }, [chatCount, attentionCount]);
 
   const refresh = useCallback(async () => {
     const [feed, members] = await Promise.all([loadBoardFeed(), supabase.from("people").select("id,name,active").order("name")]);
@@ -127,6 +153,14 @@ function BoardChat({ member, onSignOut, authError }: { member: Person; onSignOut
       followBottom.current = false;
     } else if (followBottom.current && scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight;
   }, [posts, loading]);
+
+  useEffect(() => {
+    if (loading || tab !== "chat" || !chatEngaged) return;
+    const newest = posts.flatMap(post => [post.createdAt, ...post.comments.map(comment => comment.createdAt)]).sort().at(-1);
+    if (!newest || newest <= lastMarkedAt.current) return;
+    lastMarkedAt.current = newest;
+    void markBoardChatSeen(newest).then(refreshCounts).catch(reason => { lastMarkedAt.current = ""; setError(errorText(reason)); });
+  }, [posts, loading, tab, chatEngaged, refreshCounts]);
 
   useEffect(() => {
     if (tab !== "chat" || !openPostId || loading) return;
@@ -168,6 +202,7 @@ function BoardChat({ member, onSignOut, authError }: { member: Person; onSignOut
   async function send(event: FormEvent) {
     event.preventDefault();
     if (!body.trim() || inFlight.current) return;
+    setChatEngaged(true);
     inFlight.current = true; setSaving(true); setError("");
     try {
       if (editing) {
@@ -194,6 +229,17 @@ function BoardChat({ member, onSignOut, authError }: { member: Person; onSignOut
     finally { setPinning(false); }
   }
 
+  async function changePush() {
+    if (pushBusy) return;
+    setPushBusy(true); setPushError("");
+    try {
+      if (pushEnabled) await disableBoardPush(); else await enableBoardPush();
+      setPushEnabled(!pushEnabled);
+      await refreshCounts();
+    } catch (reason) { setPushError(errorText(reason)); }
+    finally { setPushBusy(false); }
+  }
+
   function beginEdit(message: Message) {
     if (body.trim() && !window.confirm("Replace the current draft with this message to edit?")) return;
     setEditing(message); setReplyTo(null); setMentions([]); setAllSelected(false); setBody(message.body); input.current?.focus();
@@ -201,9 +247,9 @@ function BoardChat({ member, onSignOut, authError }: { member: Person; onSignOut
 
   return <main className={styles.shell}>
     <header className={styles.header}><div><span className={styles.brand}>SDBP Board</span><p>{tab === "chat" ? "General conversation" : "What currently needs you"}</p></div>
-      <details className={styles.account}><summary aria-label="Account settings">{member.name.slice(0, 1)}</summary><div className={styles.accountMenu}><strong>{member.name}</strong><button type="button" onClick={() => void onSignOut()}>Sign out</button></div></details>
+      <details className={styles.account}><summary aria-label="Account settings">{member.name.slice(0, 1)}</summary><div className={styles.accountMenu}><strong>{member.name}</strong><button type="button" disabled={pushBusy} onClick={() => void changePush()}>{pushBusy ? "Please wait…" : pushEnabled ? "Turn off phone notifications" : "Turn on phone notifications"}</button>{pushError && <span role="alert" className={styles.pushError}>{pushError}</span>}<button type="button" onClick={() => void onSignOut()}>Sign out</button></div></details>
     </header>
-    <nav className={styles.tabs} aria-label="Board sections"><button type="button" aria-current={tab === "chat" ? "page" : undefined} onClick={() => setTab("chat")}>Chat</button><button type="button" aria-current={tab === "attention" ? "page" : undefined} onClick={() => setTab("attention")}>For me{attentionCount > 0 && <span>{attentionCount}</span>}</button></nav>
+    <nav className={styles.tabs} aria-label="Board sections"><button type="button" aria-current={tab === "chat" ? "page" : undefined} onClick={() => { setTab("chat"); setChatEngaged(true); }}>Chat{chatCount > 0 && <span>{chatCount}</span>}</button><button type="button" aria-current={tab === "attention" ? "page" : undefined} onClick={() => setTab("attention")}>For me{attentionCount > 0 && <span>{attentionCount}</span>}</button></nav>
     {tab === "chat" && <>
     <nav className={styles.toolbar} aria-label="Conversation tools">
       <button type="button" aria-expanded={pinsOpen} onClick={() => setPinsOpen(!pinsOpen)}>Pinned · {pins.length}</button>
@@ -214,7 +260,7 @@ function BoardChat({ member, onSignOut, authError }: { member: Person; onSignOut
     <div className={styles.messages} ref={scroller} aria-label="Board conversation" aria-busy={loading} onScroll={() => {
       const node = scroller.current;
       if (node) followBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 90;
-    }}>
+    }} onPointerDown={() => setChatEngaged(true)} onTouchMove={() => setChatEngaged(true)} onWheel={() => setChatEngaged(true)}>
       {loading ? <p role="status" className={styles.empty}>Loading board conversation…</p> : !messages.length && <p className={styles.empty}>Start the board conversation.</p>}
       {messages.map((message, index) => {
         const day = new Date(message.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });

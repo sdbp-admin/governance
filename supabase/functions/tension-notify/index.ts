@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.111.0";
+import { sendBoardPush } from "../_shared/board-push.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -62,8 +63,6 @@ Deno.serve(async (req) => {
 
     const supabaseUrl = requiredEnv("SUPABASE_URL");
     const supabaseAnonKey = requiredEnv("SUPABASE_ANON_KEY");
-    const smtpUser = requiredEnv("SMTP_USER");
-    const smtpPassword = requiredEnv("SMTP_APP_PASSWORD");
     const smtpFromName = Deno.env.get("SMTP_FROM_NAME")?.trim() || "SDBP Workspace";
     const appUrl = spatialAppUrl(Deno.env.get("APP_URL")?.trim() || "https://sdbp-admin.github.io/governance/");
 
@@ -96,6 +95,15 @@ Deno.serve(async (req) => {
     }
 
     const unique = dedupeDeliveries(deliveries).filter((delivery) => delivery.recipient.id !== actor.id);
+    let pushed = 0;
+    try {
+      const result = await sendBoardPush(supabase, actor as PersonRow, payload, unique.map(item => item.recipient));
+      pushed = result.delivered;
+    } catch (pushError) {
+      console.error("Board push delivery failed", pushError instanceof Error ? pushError.message : pushError);
+    }
+    const smtpUser = unique.length ? requiredEnv("SMTP_USER") : "";
+    const smtpPassword = unique.length ? requiredEnv("SMTP_APP_PASSWORD") : "";
     for (const delivery of unique) {
       await sendMail({
         smtpUser,
@@ -107,7 +115,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    return json({ sent: unique.length });
+    return json({ sent: unique.length, pushed });
   } catch (error) {
     console.error("attention notification failed", error);
     return json({ error: error instanceof Error ? error.message : "Notification failed." }, 500);
