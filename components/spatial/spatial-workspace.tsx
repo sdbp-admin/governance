@@ -1,6 +1,6 @@
 "use client";
 
-import { CSSProperties, Fragment, PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Action, Project, Tension, TensionRequest } from "@/lib/domain";
 import { projectToneClass } from "@/lib/project-tone";
 import { loadCommentThreadSummary } from "@/lib/supabase/comment-thread-state";
@@ -64,7 +64,6 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
   const [attentionTarget, setAttentionTarget] = useState<AttentionTarget | null>(null);
   const [focusedActionId, setFocusedActionId] = useState<string | null>(null);
   const [projectTooltip, setProjectTooltip] = useState<ProjectTooltip | null>(null);
-  const [pulseMenuTarget, setPulseMenuTarget] = useState<{ tensionId: string; title: string; x: number; y: number } | null>(null);
   const [orphanAction, setOrphanAction] = useState<Action | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -129,16 +128,6 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
       else delete next[tensionId];
       savePulsePauses(pulsePauseStorageKey, next);
       return next;
-    });
-  }
-
-  function openPulseMenu(event: React.MouseEvent<HTMLButtonElement>, tension: Tension) {
-    const rect = event.currentTarget.getBoundingClientRect();
-    setPulseMenuTarget({
-      tensionId: tension.id,
-      title: tension.title,
-      x: Math.max(12, Math.min(rect.left, window.innerWidth - 252)),
-      y: rect.bottom + 180 < window.innerHeight ? rect.bottom + 8 : Math.max(12, rect.top - 180),
     });
   }
 
@@ -468,7 +457,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
           const personalAttention = attention.find((item) => item.tensionId === tension.id && !item.actionId);
           const personal = needsTension(tension.id);
           const expanded = depth.kind === "project" && inProject;
-          return <Fragment key={tension.id}><button className={styles.tensionObject} data-tension-id={tension.id} data-preview-project-id={!zoomed ? node.project.id : undefined}
+          return <button key={tension.id} className={styles.tensionObject} data-tension-id={tension.id} data-preview-project-id={!zoomed ? node.project.id : undefined}
             data-mode={isSelected ? "focal" : expanded ? "named" : !zoomed ? "seed" : "receded"}
             data-needs-me={personal || undefined} data-urgent={urgentIds.has(tension.id) || undefined}
             data-governance={tension.status === "governance" || undefined} data-historical={tension.status === "resolved" || undefined}
@@ -480,9 +469,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
               <small>{personal ? "Needs you" : tension.status === "resolved" ? "Resolved · conversation" : tension.status === "awaiting_confirmation" ? "Awaiting confirmation" : `Raised by ${personName(tension.raiserId)}`}</small>
             </span>
             {expanded && unreadForTension(tension.id) > 0 && <ActivityBadge count={unreadForTension(tension.id)} />}
-          </button>{expanded && (personal || (pulsePauses[tension.id] ?? 0) > pulseNow) && <button type="button" className={styles.pulseHandle}
-            style={{ left: geometry.x + geometry.r * .48, top: geometry.y + geometry.r * .52 }}
-            aria-label={`Pause pulse for ${tension.title}`} onClick={event => openPulseMenu(event, tension)}>{personal ? "Pause" : "Paused"}</button>}</Fragment>;
+          </button>;
         });
       })}
 
@@ -528,7 +515,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
         const geometry = selected ? tensionCircle : zoomed ? { ...origin, r: origin.r * .72 } : origin;
         const visibleMaximum = !zoomed ? clamp(Math.min((geometry.x - 12) / view.scale, (w - geometry.x - 12) / view.scale,
           (geometry.y - 12) / view.scale, (h - geometry.y - 12) / view.scale), MIN_RADIUS, MAX_RADIUS) : MAX_RADIUS;
-        return <Fragment key={tension.id}><InteractiveProjectCircle id={tension.id} domId={`spatial-tension-${tension.id}`} kind="tension"
+        return <InteractiveProjectCircle key={tension.id} id={tension.id} domId={`spatial-tension-${tension.id}`} kind="tension"
           title={tension.title} summary="Not linked to a project" geometry={geometry} logicalPosition={{ x: node.x, y: node.y }}
           radius={node.r} scale={view.scale} mode={!zoomed ? "overview" : selected ? "focal" : "receded"}
           needsAttention={needsTension(tension.id)} unreadCount={!zoomed ? unreadForTension(tension.id) : 0} newlyCreated={tension.id === newlyCreatedTensionId} colour={COLOURS.orange}
@@ -543,10 +530,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
             });
           }}
           onMove={(x, y) => moveProject(node.storageId, x, y, node.r)} onResize={radius => resizeProject(node.storageId, radius)}
-          onInteracting={setResizing} onTooltip={setProjectTooltip} />
-          {!zoomed && (needsTension(tension.id) || (pulsePauses[tension.id] ?? 0) > pulseNow) && <button type="button" className={styles.pulseHandle}
-            style={{ left: geometry.x + geometry.r * .48, top: geometry.y + geometry.r * .52 }}
-            aria-label={`Pause pulse for ${tension.title}`} onClick={event => openPulseMenu(event, tension)}>{needsTension(tension.id) ? "Pause" : "Paused"}</button>}</Fragment>;
+          onInteracting={setResizing} onTooltip={setProjectTooltip} />;
       })}
       {depth.kind === "project" && selectedProject && <ProjectContext key={selectedProject.id} project={selectedProject} workspace={workspace} peopleById={peopleById}
         surface={surface} onSurface={setSurface} tensionCount={linked.length} userId={profile.id} run={run} onCapture={() => setCapture("tension")} attention={attention.filter(a => signalTrails.some(trail => trail.id === `attention:${a.id}` && trail.projectId === selectedProject.id))} requests={requests}
@@ -563,6 +547,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
         targetActionId={attentionTarget?.kind === "action" ? attentionTarget.id : undefined} targetRequestId={attentionTarget?.kind === "request" ? attentionTarget.id : undefined}
         targetResolution={attentionTarget?.kind === "resolution" && attentionTarget.id === selectedTension.id}
         pulsePausedUntil={(pulsePauses[selectedTension.id] ?? 0) > pulseNow ? pulsePauses[selectedTension.id] : undefined}
+        onPulsePause={hours => pauseTensionPulse(selectedTension.id, hours)}
         onGovernance={() => setMainSurface("governance")} />}
       {((depth.kind === "project" && !selectedProject) || (depth.kind === "tension" && !selectedTension)) &&
         <div className={styles.missing}><h1>This context is no longer active.</h1><button onClick={up}>Return to the landscape</button></div>}
@@ -579,17 +564,6 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
     </div>
     {depth.kind === "organisation" && projectTooltip && !mainSurface && <div className={styles.projectTooltip} data-side={projectTooltip.side}
       style={{ left: projectTooltip.x, top: projectTooltip.y }} role="tooltip"><strong>{projectTooltip.title}</strong><small>{projectTooltip.summary}</small></div>}
-    {pulseMenuTarget && <div className={styles.pulseMenuBackdrop} onClick={() => setPulseMenuTarget(null)}>
-      <div className={styles.pulseMenu} role="dialog" aria-modal="true" aria-label={`Pause pulse for ${pulseMenuTarget.title}`}
-        style={{ left: pulseMenuTarget.x, top: pulseMenuTarget.y }} onClick={event => event.stopPropagation()}
-        onKeyDown={event => { if (event.key === "Escape") setPulseMenuTarget(null); }}>
-        <strong>Pause this tension’s pulse</strong>
-        <div>{([24, 48, 72, 168] as const).map(hours => <button type="button" key={hours} autoFocus={hours === 24}
-          onClick={() => { pauseTensionPulse(pulseMenuTarget.tensionId, hours); setPulseMenuTarget(null); }}>{hours === 168 ? "1 week" : `${hours} hours`}</button>)}</div>
-        {(pulsePauses[pulseMenuTarget.tensionId] ?? 0) > pulseNow && <button type="button" onClick={() => { pauseTensionPulse(pulseMenuTarget.tensionId, 0); setPulseMenuTarget(null); }}>Resume now</button>}
-        <small>Unread badges and the underlying work stay visible.</small>
-      </div>
-    </div>}
     <SpatialSurfaces surface={mainSurface} workspace={workspace} profile={profile} run={run} governanceTargetProposalId={governanceTargetProposalId}
       onClose={() => { setMainSurface(null); setGovernanceTargetProposalId(null); }} onSurface={surface => { setMainSurface(surface); if (surface !== "governance") setGovernanceTargetProposalId(null); }}
       onProject={id => navigate({ kind: "project", projectId: id })} onAction={openAction} onCapture={() => { navigate({ kind: "organisation" }); setCapture("tension"); }} onSignOut={onSignOut} />
@@ -740,12 +714,13 @@ function ProjectContext({ project, workspace, peopleById, surface, onSurface, te
   </div>;
 }
 
-function TensionContext({ tension, workspace, requests, currentUserId, peopleById, urgent, run, initialTab, attention, trails, targetCommentId, targetActionId, targetRequestId, targetResolution, pulsePausedUntil, onGovernance }: {
+function TensionContext({ tension, workspace, requests, currentUserId, peopleById, urgent, run, initialTab, attention, trails, targetCommentId, targetActionId, targetRequestId, targetResolution, pulsePausedUntil, onPulsePause, onGovernance }: {
   tension: Tension; workspace: WorkspaceData; requests: TensionRequest[]; currentUserId: string;
-  peopleById: Map<string, string>; urgent: boolean; run: Run; initialTab: "conversation" | "requests" | "commitments"; attention: PersonalAttention[]; trails: SpatialSignalTrail[]; targetCommentId?: string; targetActionId?: string; targetRequestId?: string; targetResolution?: boolean; pulsePausedUntil?: number; onGovernance: () => void;
+  peopleById: Map<string, string>; urgent: boolean; run: Run; initialTab: "conversation" | "requests" | "commitments"; attention: PersonalAttention[]; trails: SpatialSignalTrail[]; targetCommentId?: string; targetActionId?: string; targetRequestId?: string; targetResolution?: boolean; pulsePausedUntil?: number; onPulsePause: (hours: number) => void; onGovernance: () => void;
 }) {
   const [tab, setTab] = useState<"conversation" | "requests" | "commitments">(initialTab);
   const [requestOpen, setRequestOpen] = useState(false);
+  const [pulseMenuOpenId, setPulseMenuOpenId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const resolutionCheck = useRef<HTMLElement>(null);
   const mine = tension.raiserId === currentUserId;
@@ -804,7 +779,19 @@ function TensionContext({ tension, workspace, requests, currentUserId, peopleByI
       </button>;
     })}</div>}
     <TensionTools tension={tension} workspace={workspace} userId={currentUserId} urgent={urgent} run={run} onGovernance={onGovernance} hasDurable={activeRequests.length > 0} />
-    {attention.filter(a => a.kind === "need" || a.kind === "confirmation" || a.kind === "governance").map(a => <p className={styles.exactAttention} data-personal={!pulsePausedUntil || undefined} key={a.id}>{a.label}{a.kind === "governance" && <button onClick={onGovernance}>Open Governance</button>}</p>)}
+    {attention.filter(a => a.kind === "need" || a.kind === "confirmation" || a.kind === "governance").map(a => <div className={styles.exactAttention} data-personal={!pulsePausedUntil || undefined} key={a.id}
+      role="button" tabIndex={0} aria-label={`${a.label}. Open pulse pause menu`} aria-expanded={pulseMenuOpenId === a.id}
+      onMouseEnter={() => setPulseMenuOpenId(a.id)} onMouseLeave={() => setPulseMenuOpenId(null)}
+      onFocus={() => setPulseMenuOpenId(a.id)} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setPulseMenuOpenId(null); }}
+      onClick={() => setPulseMenuOpenId(a.id)} onKeyDown={event => { if (event.key === "Escape") setPulseMenuOpenId(null); else if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setPulseMenuOpenId(a.id); } }}>
+      {a.label}{a.kind === "governance" && <button onClick={event => { event.stopPropagation(); onGovernance(); }}>Open Governance</button>}
+      {pulseMenuOpenId === a.id && <div className={styles.attentionPauseMenu} onClick={event => event.stopPropagation()}>
+        <strong>{pulsePausedUntil ? `Pulse paused until ${new Date(pulsePausedUntil).toLocaleString()}` : "Pause this pulse"}</strong>
+        <div>{([24, 48, 72, 168] as const).map(hours => <button type="button" key={hours} onClick={() => { onPulsePause(hours); setPulseMenuOpenId(null); }}>{hours === 168 ? "1 week" : `${hours} hours`}</button>)}</div>
+        {pulsePausedUntil && <button type="button" onClick={() => { onPulsePause(0); setPulseMenuOpenId(null); }}>Resume now</button>}
+        <small>Unread badges and the underlying work stay visible.</small>
+      </div>}
+    </div>)}
     <div className={styles.tensionTabs} role="tablist" aria-label="Tension information">
       {(["conversation", "requests", "commitments"] as const).map((name) => {
         const needsAttention = name === "conversation" ? conversationNeedsAttention : name === "requests" ? requestsNeedAttention : commitmentsNeedAttention;

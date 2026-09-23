@@ -33,24 +33,21 @@
 .projectTools summary, .objectTools summary, .waiting summary { cursor: pointer; padding: 9px 0; }
 .toolLinks { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; padding: 10px 0; }
 .toolLinks button { border: 0; border-bottom: 1px solid #2b374622; background: none; padding: 6px 0; color: #2b3746; }
-.pulseHandle { position: absolute; z-index: 12; transform: translate(-50%, -50%); border: 1px solid #2596be80; border-radius: 999px; padding: 5px 9px; background: #f9fcfdee; color: #16617b; box-shadow: 0 3px 12px #2b374625; font-size: 12px !important; line-height: 1; opacity: 0; pointer-events: none; transition: opacity 150ms ease; }
-.tensionObject:hover + .pulseHandle, .tensionObject:focus-visible + .pulseHandle, .pulseHandle:hover, .pulseHandle:focus-visible { opacity: 1; pointer-events: auto; }
-.pulseMenuBackdrop { position: fixed; inset: 0; z-index: 500; background: transparent; }
-.pulseMenu { position: fixed; width: min(280px, calc(100vw - 24px)); padding: 16px; border: 1px solid #2b374625; border-radius: 9px; background: #fafaf6; box-shadow: 0 12px 38px #2b37462a; color: var(--ink); }
-.pulseMenu strong, .pulseMenu small { display: block; }
-.pulseMenu strong { margin-bottom: 4px; font-size: 14px; }
-.pulseMenu small { margin-top: 11px; color: var(--muted); font-size: 12px; line-height: 1.4; }
-.pulseMenu > div { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; margin-top: 12px; }
-.pulseMenu button { border: 1px solid #2b37462b; border-radius: 5px; padding: 7px 9px; background: #fff; color: var(--ink); font-size: 13px; }
-.pulseMenu button:hover, .pulseMenu button:focus-visible { border-color: var(--blue); background: #2596be12; }
-.pulseMenu > button { margin-top: 10px; }
-@media (hover: none) { .pulseHandle { opacity: 1; pointer-events: auto; } }
 .waiting { margin: 12px 0; font-size: 13px; }
 .waiting button { display: block; background: none; border: 0; text-align: left; padding: 12px 0; width: 100%; color: var(--ink); border-bottom: 1px solid var(--line); }
 .waiting small { display: block; color: var(--muted); margin-top: 5px; }
 .objectTools { margin: 12px 0; }
 .objectTools > details > .toolLinks { padding: 14px 0 24px; }
-.exactAttention { font-size: 14px; padding: 12px 16px; }
+.exactAttention { position: relative; font-size: 14px; padding: 12px 16px; cursor: pointer; }
+.exactAttention:hover, .exactAttention:focus-visible { z-index: 10; }
+.attentionPauseMenu { position: absolute; z-index: 11; top: 100%; left: 0; width: min(290px, 90vw); padding: 15px; border: 1px solid #2b374625; border-radius: 8px; background: #fafaf6; box-shadow: 0 12px 32px #2b37462b; color: var(--ink); cursor: default; }
+.attentionPauseMenu strong, .attentionPauseMenu small { display: block; }
+.attentionPauseMenu strong { margin-bottom: 10px; font-size: 13px; }
+.attentionPauseMenu small { margin-top: 10px; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.attentionPauseMenu > div { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; }
+.attentionPauseMenu button { border: 1px solid #2b37462b; border-radius: 5px; padding: 7px 9px; background: #fff; color: var(--ink); font-size: 13px; }
+.attentionPauseMenu button:hover, .attentionPauseMenu button:focus-visible { border-color: var(--blue); background: #2596be12; }
+.attentionPauseMenu > button { margin-top: 8px; }
 .shell [data-personal="true"], .adapted [data-personal="true"] { border-left: 2px solid #2596be; padding-left: 12px; background: #2596be09; }
 .shell .mainNavigation [data-personal] { border-left: 0; border-bottom: 2px solid #2596be; }
 .projectObject::after, .tensionObject::after {
