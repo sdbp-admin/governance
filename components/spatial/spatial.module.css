@@ -38,8 +38,9 @@
 .waiting small { display: block; color: var(--muted); margin-top: 5px; }
 .objectTools { margin: 12px 0; }
 .objectTools > details > .toolLinks { padding: 14px 0 24px; }
-.exactAttention { position: relative; font-size: 14px; padding: 12px 16px; cursor: pointer; }
-.exactAttention:hover, .exactAttention:focus-visible { z-index: 10; }
+.exactAttention { position: relative; font-size: 14px; padding: 12px 16px; }
+.exactAttention[data-pausable] { margin: 1em 0; cursor: pointer; }
+.exactAttention[data-pausable]:hover, .exactAttention[data-pausable]:focus-visible { z-index: 10; }
 .attentionPauseMenu { position: absolute; z-index: 11; top: 100%; left: 0; width: min(290px, 90vw); padding: 15px; border: 1px solid #2b374625; border-radius: 8px; background: #fafaf6; box-shadow: 0 12px 32px #2b37462b; color: var(--ink); cursor: default; }
 .attentionPauseMenu strong, .attentionPauseMenu small { display: block; }
 .attentionPauseMenu strong { margin-bottom: 10px; font-size: 13px; }

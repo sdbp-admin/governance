@@ -190,7 +190,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
     return () => window.clearTimeout(timer);
   }, [depth.kind, newlyCreatedTensionId, newlyCreatedIsVisible]);
   const signalTrails = buildSpatialSignalTrails(workspace, attention, unreadActivity).map(trail =>
-    trail.needsAttention && trail.tensionId && !trail.actionId && (pulsePauses[trail.tensionId] ?? 0) > pulseNow
+    trail.needsAttention && trail.tensionId && trail.id === `attention:tension-${trail.tensionId}` && (pulsePauses[trail.tensionId] ?? 0) > pulseNow
       ? { ...trail, needsAttention: false } : trail);
   const needsProject = (id: string) => signalTrails.some(trail => trail.projectId === id && trail.needsAttention);
   const needsTension = (id: string) => signalTrails.some(trail => trail.tensionId === id && !trail.actionId && trail.needsAttention);
@@ -779,7 +779,7 @@ function TensionContext({ tension, workspace, requests, currentUserId, peopleByI
       </button>;
     })}</div>}
     <TensionTools tension={tension} workspace={workspace} userId={currentUserId} urgent={urgent} run={run} onGovernance={onGovernance} hasDurable={activeRequests.length > 0} />
-    {attention.filter(a => a.kind === "need" || a.kind === "confirmation" || a.kind === "governance").map(a => <div className={styles.exactAttention} data-personal={!pulsePausedUntil || undefined} key={a.id}
+    {attention.filter(a => a.kind === "need" || a.kind === "confirmation" || a.kind === "governance").map(a => a.id === `tension-${tension.id}` ? <div className={styles.exactAttention} data-personal={!pulsePausedUntil || undefined} data-pausable key={a.id}
       role="button" tabIndex={0} aria-label={`${a.label}. Open pulse pause menu`} aria-expanded={pulseMenuOpenId === a.id}
       onMouseEnter={() => setPulseMenuOpenId(a.id)} onMouseLeave={() => setPulseMenuOpenId(null)}
       onFocus={() => setPulseMenuOpenId(a.id)} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setPulseMenuOpenId(null); }}
@@ -791,7 +791,7 @@ function TensionContext({ tension, workspace, requests, currentUserId, peopleByI
         {pulsePausedUntil && <button type="button" onClick={() => { onPulsePause(0); setPulseMenuOpenId(null); }}>Resume now</button>}
         <small>Unread badges and the underlying work stay visible.</small>
       </div>}
-    </div>)}
+    </div> : <p className={styles.exactAttention} data-personal key={a.id}>{a.label}{a.kind === "governance" && <button onClick={onGovernance}>Open Governance</button>}</p>)}
     <div className={styles.tensionTabs} role="tablist" aria-label="Tension information">
       {(["conversation", "requests", "commitments"] as const).map((name) => {
         const needsAttention = name === "conversation" ? conversationNeedsAttention : name === "requests" ? requestsNeedAttention : commitmentsNeedAttention;
@@ -813,7 +813,7 @@ function TensionContext({ tension, workspace, requests, currentUserId, peopleByI
           const mine = group.find(request => request.status === "open" && request.recipientId === currentUserId);
           const recipientNames = group.map(request => personName(request.recipientId));
           return <article className={styles.requestRow} id={targeted && targetRequestId ? `spatial-request-${targetRequestId}` : undefined} tabIndex={targeted ? -1 : undefined}
-            data-target={targeted || undefined} key={first.batchId || first.id} data-open={open.length > 0 || undefined} data-personal={Boolean(mine) && !pulsePausedUntil || undefined}>
+            data-target={targeted || undefined} key={first.batchId || first.id} data-open={open.length > 0 || undefined} data-personal={Boolean(mine) || undefined}>
             <div><strong>{open.length ? `Waiting for ${open.map(request => personName(request.recipientId)).join(", ")}` : `Responses received from ${recipientNames.join(", ")}`}</strong>
               <small>{personName(first.requesterId)} → {recipientNames.join(", ")} · {first.kind === "conversation" ? "Real conversation" : "Input / help"} · requested {elapsed(first.requestedAt)}</small></div>
             {first.detail && <p>{first.detail}</p>}
