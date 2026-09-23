@@ -9,11 +9,13 @@ import { GovernanceEffectEditor, governanceEffectIsComplete, governanceEffectSum
 import { ValidatedQuickConsentPanel } from "@/components/governance-quick-consent";
 import { useLocalDraft } from "@/lib/local-draft";
 
-export function GovernanceWorkspaceView({ workspace, currentUserId, personName, focusProposalId, onCreateProposal, onStartMeeting, onGoTensions, onGoRecords }: {
+export function GovernanceWorkspaceView({ workspace, currentUserId, personName, focusProposalId, consentProposalIds = [], onResponseRecorded, onCreateProposal, onStartMeeting, onGoTensions, onGoRecords }: {
   workspace: WorkspaceData;
   currentUserId: string;
   personName: (id: string) => string;
   focusProposalId?: string | null;
+  consentProposalIds?: string[];
+  onResponseRecorded?: () => void;
   onCreateProposal: (input: { tensionId: string; title: string; proposal: string; governanceEffect: GovernanceEffect }) => Promise<boolean>;
   onStartMeeting: (proposal: GovernanceProposal) => Promise<void>;
   onGoTensions: () => void;
@@ -26,23 +28,24 @@ export function GovernanceWorkspaceView({ workspace, currentUserId, personName, 
   const boardRoles = workspace.roles.filter((role) => role.category === "board");
   const operatingRoles = workspace.roles.filter((role) => role.category === "operating");
   const currentAgreements = workspace.standingAgreements.filter((agreement) => agreement.status === "current");
+  const focusConsent = Boolean(focusProposalId && consentProposalIds.includes(focusProposalId));
 
   useEffect(() => {
     if (!focusProposalId) return;
     const timer = window.setTimeout(() => {
-      const target = document.getElementById(`governance-proposal-${focusProposalId}`);
+      const target = document.getElementById(`${focusConsent ? "governance-consent" : "governance-proposal"}-${focusProposalId}`);
       target?.scrollIntoView({ behavior: "smooth", block: "center" });
       target?.focus({ preventScroll: true });
     }, 60);
     return () => window.clearTimeout(timer);
-  }, [focusProposalId]);
+  }, [focusProposalId, focusConsent]);
 
   return <>
     <div className="governance-lean-intro"><strong>Current Governance shows what is true now.</strong><HelpTip label="What belongs in Governance?">Use Governance for changes that remain true after today: roles, responsibilities, authority or standing ways of working. Decision History explains how Current Governance got here; the activity ledger only shows who changed what and when.</HelpTip></div>
     <MeetingPlanning people={workspace.people} currentUserId={currentUserId} personName={personName} />
     <section className="section current-governance-section"><div className="section-head"><div><span className="section-kicker">Present structure</span><h2>Current Governance</h2></div></div><div className="current-governance-grid"><article className="current-governance-card foundation-card"><span className="kind">Foundation</span><h3>SDBP Statutes</h3><p>The statutes remain the legal foundation. The Workspace does not rewrite them through ordinary governance.</p><button className="secondary small" onClick={onGoRecords}>Open in Records</button></article><RoleGroup title="Board roles" roles={boardRoles} personName={personName} /><RoleGroup title="Operating roles" roles={operatingRoles} personName={personName} /></div><div className="standing-agreements-block"><div className="section-head compact-section-head"><div><span className="section-kicker">Standing agreements</span><h3>Ongoing ways of working</h3></div></div>{currentAgreements.length ? <div className="agreement-groups">{AGREEMENT_CATEGORIES.map((category) => { const items = currentAgreements.filter((agreement) => agreement.category === category.value); if (!items.length) return null; return <section className="agreement-group" key={category.value}><h4>{category.label}</h4><div className="agreement-list">{items.map((agreement) => <details className="governance-detail" key={agreement.id}><summary><strong>{agreement.title}</strong></summary><p>{agreement.body}</p></details>)}</div></section>; })}</div> : <div className="calm-empty compact-empty governance-empty"><span>○</span><h3>No standing agreements recorded yet</h3><p>They appear here when a governance proposal explicitly creates one.</p></div>}</div></section>
     {ready.length > 0 && <section className="section"><div className="section-head"><div><span className="section-kicker">Needs a proposal</span><h2>Structural tensions</h2></div></div><div className="governance-ready-list">{ready.map((tension) => <ProposalStarter key={tension.id} tension={tension} mine={tension.raiserId === currentUserId} personName={personName} workspace={workspace} currentUserId={currentUserId} onCreate={onCreateProposal} />)}</div></section>}
-    {open.length > 0 && <section className="section"><div className="section-head"><div><span className="section-kicker">Prepared</span><h2>Ready to process</h2></div></div><div className="governance-proposal-stack">{open.map((proposal) => <article id={`governance-proposal-${proposal.id}`} tabIndex={proposal.id === focusProposalId ? -1 : undefined} className="governance-proposal-card" key={proposal.id}><div className="governance-proposal-head"><div><span className="kind">Proposed by {personName(proposal.proposerId)}</span><h3>{proposal.title}</h3></div><span className="governance-stage-badge">{stageName(proposal.stage)}</span></div><div className="governance-proposal-text"><strong>Proposal</strong><p>{proposal.proposal}</p></div><div className="effect-summary-line">{governanceEffectSummary(proposal.governanceEffect, workspace.roles, workspace.standingAgreements)}</div><ValidatedQuickConsentPanel proposal={proposal} people={workspace.people} currentUserId={currentUserId} personName={personName} onStartMeeting={onStartMeeting} onGoTensions={onGoTensions} /></article>)}</div></section>}
+    {open.length > 0 && <section className="section"><div className="section-head"><div><span className="section-kicker">Prepared</span><h2>Ready to process</h2></div></div><div className="governance-proposal-stack">{open.map((proposal) => <article id={`governance-proposal-${proposal.id}`} tabIndex={-1} className="governance-proposal-card" key={proposal.id}><div className="governance-proposal-head"><div><span className="kind">Proposed by {personName(proposal.proposerId)}</span><h3>{proposal.title}</h3></div><span className="governance-stage-badge">{stageName(proposal.stage)}</span></div><div className="governance-proposal-text"><strong>Proposal</strong><p>{proposal.proposal}</p></div><div className="effect-summary-line">{governanceEffectSummary(proposal.governanceEffect, workspace.roles, workspace.standingAgreements)}</div><div id={`governance-consent-${proposal.id}`} tabIndex={-1}><ValidatedQuickConsentPanel proposal={proposal} people={workspace.people} currentUserId={currentUserId} personName={personName} onStartMeeting={onStartMeeting} onGoTensions={onGoTensions} onResponseRecorded={onResponseRecorded} /></div></article>)}</div></section>}
     {!ready.length && !open.length && <div className="governance-no-waiting"><span>✓</span><div><strong>No governance item is waiting.</strong><p>If something structural needs to change, raise the tension first.</p></div><button className="secondary small" onClick={onGoTensions}>Go to Tensions</button></div>}
     <details className="governance-history section"><summary><div><span className="section-kicker">Institutional memory</span><h2>Decision History</h2><p>{accepted.length} accepted {accepted.length === 1 ? "decision" : "decisions"}</p></div><span className="history-chevron">⌄</span></summary>{accepted.length ? <div className="decision-history-list">{accepted.map((proposal) => <article className="decision-history-row" key={proposal.id}><div><span className="kind">{proposal.acceptedAt ? formatDate(proposal.acceptedAt) : "Accepted"} · {personName(proposal.proposerId)}</span><h3>{proposal.title}</h3><p>{governanceEffectSummary(proposal.governanceEffect, workspace.roles, workspace.standingAgreements)}</p></div><details><summary>Read decision</summary><p className="decision-text">{proposal.proposal}</p></details></article>)}</div> : <div className="calm-empty compact-empty"><span>○</span><h3>No accepted governance yet</h3></div>}</details>
   </>;

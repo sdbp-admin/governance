@@ -44,13 +44,14 @@ const INVALID_REASONS = [
   "Other",
 ] as const;
 
-export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, personName, onStartMeeting, onGoTensions }: {
+export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, personName, onStartMeeting, onGoTensions, onResponseRecorded }: {
   proposal: GovernanceProposal;
   people: WorkspacePerson[];
   currentUserId: string;
   personName: (id: string) => string;
   onStartMeeting: (proposal: GovernanceProposal) => Promise<void>;
   onGoTensions: () => void;
+  onResponseRecorded?: () => void;
 }) {
   const [round, setRound] = useState<ConsentRound | null>(null);
   const [responses, setResponses] = useState<ConsentResponse[]>([]);
@@ -148,6 +149,7 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
       if (result.error) throw result.error;
       setObjectionOpen(false);
       clearObjection();
+      onResponseRecorded?.();
       await load();
       if (result.data === "accepted") window.dispatchEvent(new Event("focus"));
     } catch (err) {

@@ -21,6 +21,8 @@
 .mainNavigation { display: flex; gap: 18px; font-size: 13px; }
 .mainNavigation button { border: 0; background: none; color: var(--muted); padding: 8px 0; }
 .mainNavigation button[aria-current] { color: var(--ink); border-bottom: 1px solid var(--blue); }
+.mainNavigation button[data-consent-due="true"] { display: inline-flex; align-items: center; gap: 6px; border-radius: 5px; padding-inline: 7px; animation: tabAttentionPulse 1.6s ease-in-out infinite; }
+.governanceCount { display: inline-grid; place-items: center; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--blue); color: white; font-size: 10px; font-weight: 700; line-height: 1; }
 .utilities { position: relative; font-size: 13px; }
 .utilities summary { cursor: pointer; }
 .utilities > div { position: absolute; right: 0; top: 30px; width: 220px; padding: 14px; background: var(--paper); box-shadow: 0 12px 40px #2b374622; border-radius: 8px; }
@@ -49,6 +51,11 @@
 .attentionPauseMenu button { border: 1px solid #2b37462b; border-radius: 5px; padding: 7px 9px; background: #fff; color: var(--ink); font-size: 13px; }
 .attentionPauseMenu button:hover, .attentionPauseMenu button:focus-visible { border-color: var(--blue); background: #2596be12; }
 .attentionPauseMenu > button { margin-top: 8px; }
+.governanceSourceLinks { display: grid; gap: 5px; margin: 12px 0; }
+.governanceSourceLinks button { width: 100%; border: 0; border-bottom: 1px solid var(--line); padding: 7px 0; background: none; color: var(--ink); text-align: left; }
+.governanceSourceLinks button span { display: block; color: var(--blue); font-size: 12px; }
+.governanceSourceLinks button strong { display: block; margin-top: 3px; font-size: 14px; font-weight: 550; }
+.governanceSourceLinks button:hover strong, .governanceSourceLinks button:focus-visible strong { text-decoration: underline; text-underline-offset: 3px; }
 .shell [data-personal="true"], .adapted [data-personal="true"] { border-left: 2px solid #2596be; padding-left: 12px; background: #2596be09; }
 .shell .mainNavigation [data-personal] { border-left: 0; border-bottom: 2px solid #2596be; }
 .projectObject::after, .tensionObject::after {
@@ -75,6 +82,11 @@
 .surfaceHeading { display: flex; justify-content: space-between; align-items: center; margin: 0 0 42px; }
 .surfaceHeading h1 { font-size: 38px; font-weight: 550; letter-spacing: -.04em; margin: 8px 0; }
 .surfaceHeading button { background: none; border: 0; color: #64717b; }
+.governanceDue { border-left: 2px solid var(--blue); padding: 12px 16px; background: #2596be0c; }
+.governanceDue > strong { display: block; font-size: 14px; margin-bottom: 7px; }
+.governanceDue > div { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.governanceDue button { border: 0; border-bottom: 1px solid #2596be55; padding: 4px 0; background: none; color: #16617b; text-align: left; font-size: 13px; }
+.governanceDue button:hover, .governanceDue button:focus-visible { border-bottom-color: var(--blue); color: var(--ink); }
 .secondarySection { border-top: 1px solid #2b374625; margin-top: 36px; padding: 26px 0; }
 .secondarySection > summary { font-size: 22px; cursor: pointer; margin-bottom: 24px; }
 .secondarySection > h2 { font-size: 22px; margin: 0 0 24px; }
@@ -138,6 +150,7 @@
 :global(body):has(.shell) :global(.workflow-editor) h2 { font-size: 26px; letter-spacing: -.03em; }
 :global(body):has(.shell) :global(.workflow-editor) :global(.field) { font-size: 14px; }
 @media (prefers-reduced-motion: reduce) {
+  .mainNavigation button[data-consent-due="true"] { animation: none; background: #2596be20; }
   .projectObject[data-needs-me="true"][data-mode="overview"]::after,
   .tensionObject[data-needs-me="true"][data-mode="named"]::after,
   .tensionObject[data-needs-me="true"][data-mode="overview"]::after {
