@@ -33,6 +33,9 @@
 .projectTools summary, .objectTools summary, .waiting summary { cursor: pointer; padding: 9px 0; }
 .toolLinks { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; padding: 10px 0; }
 .toolLinks button { border: 0; border-bottom: 1px solid #2b374622; background: none; padding: 6px 0; color: #2b3746; }
+.pulsePauseChoices { display: flex; flex-basis: 100%; align-items: center; flex-wrap: wrap; gap: 10px 14px; padding: 7px 0 12px; }
+.pulsePauseChoices span, .pulsePauseChoices small { color: #64717b; font-size: 13px; }
+.pulsePauseChoices small { flex-basis: 100%; }
 .waiting { margin: 12px 0; font-size: 13px; }
 .waiting button { display: block; background: none; border: 0; text-align: left; padding: 12px 0; width: 100%; color: var(--ink); border-bottom: 1px solid var(--line); }
 .waiting small { display: block; color: var(--muted); margin-top: 5px; }

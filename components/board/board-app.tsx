@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { addBoardPostComment, createBoardPost, editBoardPost, editBoardPostComment, loadBoardFeed, setBoardPostPinned, type BoardFeedPost, type BoardFeedComment } from "@/lib/supabase/board-feed";
 import { boardPushEnabled, disableBoardPush, enableBoardPush, loadBoardCounts, markBoardChatSeen, registerBoardWorker, showBoardBadge } from "@/lib/supabase/board-app";
@@ -144,15 +144,15 @@ function BoardChat({ member, onSignOut, authError }: { member: Person; onSignOut
     return () => { alive = false; window.clearInterval(timer); window.removeEventListener("focus", update); };
   }, [refresh]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (loading || tab !== "chat" || !scroller.current) return;
     const target = initialLoad.current ? new URLSearchParams(window.location.search).get("post") : null;
-    if (loading) return;
     initialLoad.current = false;
     if (target && document.getElementById(`board-${target}`)) {
       document.getElementById(`board-${target}`)?.scrollIntoView({ block: "center" });
       followBottom.current = false;
-    } else if (followBottom.current && scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight;
-  }, [posts, loading]);
+    } else if (followBottom.current) scroller.current.scrollTop = scroller.current.scrollHeight;
+  }, [posts, loading, tab]);
 
   useEffect(() => {
     if (loading || tab !== "chat" || !chatEngaged) return;
@@ -249,7 +249,7 @@ function BoardChat({ member, onSignOut, authError }: { member: Person; onSignOut
     <header className={styles.header}><div><span className={styles.brand}>SDBP Board</span><p>{tab === "chat" ? "General conversation" : "What currently needs you"}</p></div>
       <details className={styles.account}><summary aria-label="Account settings">{member.name.slice(0, 1)}</summary><div className={styles.accountMenu}><strong>{member.name}</strong><button type="button" disabled={pushBusy} onClick={() => void changePush()}>{pushBusy ? "Please wait…" : pushEnabled ? "Turn off phone notifications" : "Turn on phone notifications"}</button>{pushError && <span role="alert" className={styles.pushError}>{pushError}</span>}<button type="button" onClick={() => void onSignOut()}>Sign out</button></div></details>
     </header>
-    <nav className={styles.tabs} aria-label="Board sections"><button type="button" aria-current={tab === "chat" ? "page" : undefined} onClick={() => { setTab("chat"); setChatEngaged(true); }}>Chat{chatCount > 0 && <span>{chatCount}</span>}</button><button type="button" aria-current={tab === "attention" ? "page" : undefined} onClick={() => setTab("attention")}>For me{attentionCount > 0 && <span>{attentionCount}</span>}</button></nav>
+    <nav className={styles.tabs} aria-label="Board sections"><button type="button" aria-current={tab === "chat" ? "page" : undefined} onClick={() => { followBottom.current = true; setTab("chat"); setChatEngaged(true); }}>Chat{chatCount > 0 && <span>{chatCount}</span>}</button><button type="button" aria-current={tab === "attention" ? "page" : undefined} onClick={() => setTab("attention")}>For me{attentionCount > 0 && <span>{attentionCount}</span>}</button></nav>
     {tab === "chat" && <>
     <nav className={styles.toolbar} aria-label="Conversation tools">
       <button type="button" aria-expanded={pinsOpen} onClick={() => setPinsOpen(!pinsOpen)}>Pinned · {pins.length}</button>
@@ -273,11 +273,13 @@ function BoardChat({ member, onSignOut, authError }: { member: Person; onSignOut
             {message.reply && <button type="button" className={styles.quote} onClick={() => jump(message.parent.id)}><span>Reply to {personName(message.parent.authorId)}</span><span>{message.parent.body}</span></button>}
             <div className={styles.body}>{message.body.split(/(https?:\/\/[^\s]+)/g).map((part, i) => /^https?:\/\//.test(part) ? <a key={i} href={part} target="_blank" rel="noopener noreferrer">{part}</a> : part)}</div>
             {!!message.mentionedIds.length && <div className={styles.mentions}>Mentioned: {message.mentionedIds.map(personName).join(", ")}</div>}
-            <div className={styles.meta}><time dateTime={message.createdAt} title={new Date(message.createdAt).toLocaleString()}>{new Date(message.createdAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</time>{message.editedAt && <span title={new Date(message.editedAt).toLocaleString()}>Edited</span>}{!message.reply && message.parent.pinned && <span>Pinned</span>}</div>
-            <div className={styles.actions}>
-              <button type="button" disabled={saving || !!editing} onClick={() => { setReplyTo(message.parent); input.current?.focus(); }}>Reply</button>
-              {mine && <button type="button" disabled={saving} onClick={() => beginEdit(message)}>Edit</button>}
-              {!message.reply && <button type="button" disabled={pinning} onClick={() => void pin(message.parent)}>{message.parent.pinned ? "Unpin" : "Pin"}</button>}
+            <div className={styles.messageFoot}>
+              <div className={styles.meta}><time dateTime={message.createdAt} title={new Date(message.createdAt).toLocaleString()}>{new Date(message.createdAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</time>{message.editedAt && <span title={new Date(message.editedAt).toLocaleString()}>Edited</span>}{!message.reply && message.parent.pinned && <span>Pinned</span>}</div>
+              <details className={styles.actions}><summary aria-label="Message actions">⋯</summary><div>
+                <button type="button" disabled={saving || !!editing} onClick={() => { setReplyTo(message.parent); input.current?.focus(); }}>Reply</button>
+                {mine && <button type="button" disabled={saving} onClick={() => beginEdit(message)}>Edit</button>}
+                {!message.reply && <button type="button" disabled={pinning} onClick={() => void pin(message.parent)}>{message.parent.pinned ? "Unpin" : "Pin"}</button>}
+              </div></details>
             </div>
           </article>
         </div>;

@@ -41,12 +41,15 @@ export const SPATIAL_INTERNAL_DEPTH_STATE = "sdbpSpatialInternalDepth";
 export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfile; onSignOut: () => void }) {
   const sizeStorageKey = `sdbp:spatial:project-sizes:${profile.id}`;
   const positionStorageKey = `sdbp:spatial:project-positions:${profile.id}`;
+  const pulsePauseStorageKey = `sdbp:spatial:tension-pulse-pauses:${profile.id}`;
   const [workspace, setWorkspace] = useState<WorkspaceData>(EMPTY_WORKSPACE);
   const [requests, setRequests] = useState<TensionRequest[]>([]);
   const [urgentIds, setUrgentIds] = useState<Set<string>>(new Set());
   const [depth, setDepth] = useState<Depth>({ kind: "organisation" });
   const [radii, setRadii] = useState<Record<string, number>>(() => loadSavedRadii(sizeStorageKey));
   const [positions, setPositions] = useState<Record<string, ProjectPosition>>(() => loadSavedPositions(positionStorageKey));
+  const [pulsePauses, setPulsePauses] = useState<Record<string, number>>(() => loadSavedPulsePauses(pulsePauseStorageKey));
+  const [pulseNow, setPulseNow] = useState(() => Date.now());
   const [initialRadii, setInitialRadii] = useState(radii);
   const [initialPositions] = useState(positions);
   const [surface, setSurface] = useState<ProjectSurface>(null);
@@ -110,6 +113,25 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
   }, [refresh]);
 
   useEffect(() => {
+    const next = Math.min(...Object.values(pulsePauses).filter(until => until > pulseNow));
+    if (!Number.isFinite(next)) return;
+    const timer = window.setTimeout(() => setPulseNow(Date.now()), Math.max(0, next - Date.now()) + 20);
+    return () => window.clearTimeout(timer);
+  }, [pulsePauses, pulseNow]);
+
+  function pauseTensionPulse(tensionId: string, hours: number) {
+    const now = Date.now();
+    setPulseNow(now);
+    setPulsePauses(current => {
+      const next = { ...current };
+      if (hours > 0) next[tensionId] = now + hours * 60 * 60 * 1000;
+      else delete next[tensionId];
+      savePulsePauses(pulsePauseStorageKey, next);
+      return next;
+    });
+  }
+
+  useEffect(() => {
     const sync = () => {
       const next = depthFromUrl();
       if (next.kind !== "organisation") window.history.replaceState({ ...(window.history.state ?? {}), [SPATIAL_INTERNAL_DEPTH_STATE]: true }, "");
@@ -167,7 +189,9 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
     const timer = window.setTimeout(() => document.getElementById(`spatial-tension-${newlyCreatedTensionId}`)?.focus({ preventScroll: true }), 40);
     return () => window.clearTimeout(timer);
   }, [depth.kind, newlyCreatedTensionId, newlyCreatedIsVisible]);
-  const signalTrails = buildSpatialSignalTrails(workspace, attention, unreadActivity);
+  const signalTrails = buildSpatialSignalTrails(workspace, attention, unreadActivity).map(trail =>
+    trail.needsAttention && trail.tensionId && !trail.actionId && (pulsePauses[trail.tensionId] ?? 0) > pulseNow
+      ? { ...trail, needsAttention: false } : trail);
   const needsProject = (id: string) => signalTrails.some(trail => trail.projectId === id && trail.needsAttention);
   const needsTension = (id: string) => signalTrails.some(trail => trail.tensionId === id && !trail.actionId && trail.needsAttention);
   const needsAction = (id: string) => signalTrails.some(trail => trail.actionId === id && trail.needsAttention);
@@ -192,11 +216,9 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
     const units = personalRelevance(project, linkedTensions, actions, relevant, profile.id);
     return { project, defaultRadius: 88 + units * 7 };
   }), [visibleProjects, tensions, requests, workspace.actions, profile.id]);
-  const packed = useMemo(() => packCircles(projectMetrics.map(({ project, defaultRadius }) => ({ project, r: radii[project.id] ?? defaultRadius })))
-    .map(node => positions[node.project.id] ? { ...node, ...positions[node.project.id] } : node), [projectMetrics, radii, positions]);
+  const packed = useMemo(() => packCircles(projectMetrics.map(({ project, defaultRadius }) => ({ project, r: radii[project.id] ?? defaultRadius })), positions), [projectMetrics, radii, positions]);
   // The view basis stays stable while the user manipulates circles, so wheel/pinch resizing is radial around a fixed centre.
-  const viewBasis = useMemo(() => packCircles(projectMetrics.map(({ project, defaultRadius }) => ({ project, r: initialRadii[project.id] ?? defaultRadius })))
-    .map(node => initialPositions[node.project.id] ? { ...node, ...initialPositions[node.project.id] } : node), [projectMetrics, initialRadii, initialPositions]);
+  const viewBasis = useMemo(() => packCircles(projectMetrics.map(({ project, defaultRadius }) => ({ project, r: initialRadii[project.id] ?? defaultRadius })), initialPositions), [projectMetrics, initialRadii, initialPositions]);
   const view = fitLandscape(viewBasis, w, h);
   const unlinkedNodes = useMemo(() => placeUnlinkedTensions(unlinked, packed.map(node => toScreen(node, view)), radii, positions, view, w, h),
     [unlinked, packed, radii, positions, view, w, h]);
@@ -496,7 +518,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
         return <InteractiveProjectCircle key={tension.id} id={tension.id} domId={`spatial-tension-${tension.id}`} kind="tension"
           title={tension.title} summary="Not linked to a project" geometry={geometry} logicalPosition={{ x: node.x, y: node.y }}
           radius={node.r} scale={view.scale} mode={!zoomed ? "overview" : selected ? "focal" : "receded"}
-          needsAttention={Boolean(personalAttention)} unreadCount={!zoomed ? unreadForTension(tension.id) : 0} newlyCreated={tension.id === newlyCreatedTensionId} colour={COLOURS.orange}
+          needsAttention={needsTension(tension.id)} unreadCount={!zoomed ? unreadForTension(tension.id) : 0} newlyCreated={tension.id === newlyCreatedTensionId} colour={COLOURS.orange}
           label={tension.title} small={false} labelSize={clamp(origin.r * .16, 13, 18)} maximumRadius={visibleMaximum}
           onOpen={() => personalAttention ? openPersonal(personalAttention) : navigate({ kind: "tension", tensionId: tension.id })}
           onBegin={() => {
@@ -524,6 +546,8 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
         targetCommentId={attentionTarget?.kind === "tension" && attentionTarget.id === selectedTension.id ? attentionTarget.commentId : undefined}
         targetActionId={attentionTarget?.kind === "action" ? attentionTarget.id : undefined} targetRequestId={attentionTarget?.kind === "request" ? attentionTarget.id : undefined}
         targetResolution={attentionTarget?.kind === "resolution" && attentionTarget.id === selectedTension.id}
+        pulsePausedUntil={(pulsePauses[selectedTension.id] ?? 0) > pulseNow ? pulsePauses[selectedTension.id] : undefined}
+        onPulsePause={hours => pauseTensionPulse(selectedTension.id, hours)}
         onGovernance={() => setMainSurface("governance")} />}
       {((depth.kind === "project" && !selectedProject) || (depth.kind === "tension" && !selectedTension)) &&
         <div className={styles.missing}><h1>This context is no longer active.</h1><button onClick={up}>Return to the landscape</button></div>}
@@ -690,9 +714,9 @@ function ProjectContext({ project, workspace, peopleById, surface, onSurface, te
   </div>;
 }
 
-function TensionContext({ tension, workspace, requests, currentUserId, peopleById, urgent, run, initialTab, attention, trails, targetCommentId, targetActionId, targetRequestId, targetResolution, onGovernance }: {
+function TensionContext({ tension, workspace, requests, currentUserId, peopleById, urgent, run, initialTab, attention, trails, targetCommentId, targetActionId, targetRequestId, targetResolution, pulsePausedUntil, onPulsePause, onGovernance }: {
   tension: Tension; workspace: WorkspaceData; requests: TensionRequest[]; currentUserId: string;
-  peopleById: Map<string, string>; urgent: boolean; run: Run; initialTab: "conversation" | "requests" | "commitments"; attention: PersonalAttention[]; trails: SpatialSignalTrail[]; targetCommentId?: string; targetActionId?: string; targetRequestId?: string; targetResolution?: boolean; onGovernance: () => void;
+  peopleById: Map<string, string>; urgent: boolean; run: Run; initialTab: "conversation" | "requests" | "commitments"; attention: PersonalAttention[]; trails: SpatialSignalTrail[]; targetCommentId?: string; targetActionId?: string; targetRequestId?: string; targetResolution?: boolean; pulsePausedUntil?: number; onPulsePause: (hours: number) => void; onGovernance: () => void;
 }) {
   const [tab, setTab] = useState<"conversation" | "requests" | "commitments">(initialTab);
   const [requestOpen, setRequestOpen] = useState(false);
@@ -753,8 +777,8 @@ function TensionContext({ tension, workspace, requests, currentUserId, peopleByI
         {open.length ? `Waiting for ${names.join(", ")}` : `Responses from ${names.join(", ")}`}<small>{` · ${age(group[0].requestedAt)}`}</small>
       </button>;
     })}</div>}
-    <TensionTools tension={tension} workspace={workspace} userId={currentUserId} urgent={urgent} run={run} onGovernance={onGovernance} hasDurable={activeRequests.length > 0} />
-    {attention.filter(a => a.kind === "need" || a.kind === "confirmation" || a.kind === "governance").map(a => <p className={styles.exactAttention} data-personal key={a.id}>{a.label}{a.kind === "governance" && <button onClick={onGovernance}>Open Governance</button>}</p>)}
+    <TensionTools tension={tension} workspace={workspace} userId={currentUserId} urgent={urgent} run={run} onGovernance={onGovernance} hasDurable={activeRequests.length > 0} pulsePausedUntil={pulsePausedUntil} onPulsePause={onPulsePause} />
+    {attention.filter(a => a.kind === "need" || a.kind === "confirmation" || a.kind === "governance").map(a => <p className={styles.exactAttention} data-personal={!pulsePausedUntil || undefined} key={a.id}>{a.label}{a.kind === "governance" && <button onClick={onGovernance}>Open Governance</button>}</p>)}
     <div className={styles.tensionTabs} role="tablist" aria-label="Tension information">
       {(["conversation", "requests", "commitments"] as const).map((name) => {
         const needsAttention = name === "conversation" ? conversationNeedsAttention : name === "requests" ? requestsNeedAttention : commitmentsNeedAttention;
@@ -776,7 +800,7 @@ function TensionContext({ tension, workspace, requests, currentUserId, peopleByI
           const mine = group.find(request => request.status === "open" && request.recipientId === currentUserId);
           const recipientNames = group.map(request => personName(request.recipientId));
           return <article className={styles.requestRow} id={targeted && targetRequestId ? `spatial-request-${targetRequestId}` : undefined} tabIndex={targeted ? -1 : undefined}
-            data-target={targeted || undefined} key={first.batchId || first.id} data-open={open.length > 0 || undefined} data-personal={Boolean(mine) || undefined}>
+            data-target={targeted || undefined} key={first.batchId || first.id} data-open={open.length > 0 || undefined} data-personal={Boolean(mine) && !pulsePausedUntil || undefined}>
             <div><strong>{open.length ? `Waiting for ${open.map(request => personName(request.recipientId)).join(", ")}` : `Responses received from ${recipientNames.join(", ")}`}</strong>
               <small>{personName(first.requesterId)} → {recipientNames.join(", ")} · {first.kind === "conversation" ? "Real conversation" : "Input / help"} · requested {elapsed(first.requestedAt)}</small></div>
             {first.detail && <p>{first.detail}</p>}
@@ -797,10 +821,17 @@ function TensionContext({ tension, workspace, requests, currentUserId, peopleByI
 }
 
 // A deterministic packing layout. Distance is visual space, never an inferred relationship.
-function packCircles(items: Array<{ project: Project; r: number }>): PositionedProject[] {
-  const placed: PositionedProject[] = [];
+function packCircles(items: Array<{ project: Project; r: number }>, saved: Record<string, ProjectPosition> = {}): PositionedProject[] {
+  const placed: PositionedProject[] = items.flatMap(item => saved[item.project.id] ? [{ ...item, ...saved[item.project.id] }] : []);
+  const byId = new Map(placed.map(node => [node.project.id, node]));
   for (const item of items) {
-    if (!placed.length) { placed.push({ ...item, x: 0, y: 0 }); continue; }
+    if (byId.has(item.project.id)) continue;
+    if (!placed.length) {
+      const node = { ...item, x: 0, y: 0 };
+      placed.push(node);
+      byId.set(item.project.id, node);
+      continue;
+    }
     let best = { x: 0, y: 0, cost: Infinity };
     for (const neighbour of placed) {
       for (let i = 0; i < 64; i++) {
@@ -813,9 +844,15 @@ function packCircles(items: Array<{ project: Project; r: number }>): PositionedP
         if (cost < best.cost) best = { x, y, cost };
       }
     }
-    placed.push({ ...item, x: best.x, y: best.y });
+    if (!Number.isFinite(best.cost)) {
+      const distance = Math.max(...placed.map(node => Math.hypot(node.x, node.y) + node.r)) + item.r + 30;
+      best = { x: distance, y: 0, cost: distance * distance };
+    }
+    const node = { ...item, x: best.x, y: best.y };
+    placed.push(node);
+    byId.set(item.project.id, node);
   }
-  return placed;
+  return items.map(item => byId.get(item.project.id)!);
 }
 
 function placeUnlinkedTensions(tensions: Tension[], projectCircles: Circle[], radii: Record<string, number>, positions: Record<string, ProjectPosition>,
@@ -1052,6 +1089,18 @@ function loadSavedPositions(key: string) {
 
 function savePositions(key: string, positions: Record<string, ProjectPosition>) {
   try { window.localStorage.setItem(key, JSON.stringify(positions)); } catch { /* Personal display state may be unavailable in restricted storage contexts. */ }
+}
+
+function loadSavedPulsePauses(key: string): Record<string, number> {
+  if (typeof window === "undefined") return {};
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(key) ?? "{}") as Record<string, number>;
+    return Object.fromEntries(Object.entries(saved).filter(([, until]) => Number.isFinite(until) && until > Date.now()));
+  } catch { return {}; }
+}
+
+function savePulsePauses(key: string, pauses: Record<string, number>) {
+  try { window.localStorage.setItem(key, JSON.stringify(pauses)); } catch { /* Personal visual state may be unavailable in restricted storage contexts. */ }
 }
 
 function readError(error: unknown) {

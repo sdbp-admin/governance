@@ -72,7 +72,7 @@ function ProjectHistory({ projectId, personName }: { projectId: string; personNa
   return <div className={styles.history}>{state && <p>{state}</p>}{entries.map(entry => <article key={entry.id}><small>{entry.updateKind.replace("_", " ")} · {entry.authorId ? personName(entry.authorId) : "System"} · {new Date(entry.createdAt).toLocaleString()}</small><p>{entry.summary}</p></article>)}</div>;
 }
 
-export function TensionTools({ tension, workspace, userId, urgent, run, onGovernance, hasDurable }: { tension: Tension; workspace: WorkspaceData; userId: string; urgent: boolean; run: SpatialRun; onGovernance: () => void; hasDurable: boolean }) {
+export function TensionTools({ tension, workspace, userId, urgent, run, onGovernance, hasDurable, pulsePausedUntil, onPulsePause }: { tension: Tension; workspace: WorkspaceData; userId: string; urgent: boolean; run: SpatialRun; onGovernance: () => void; hasDurable: boolean; pulsePausedUntil?: number; onPulsePause: (hours: number) => void }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(tension.title);
   const [projectId, setProjectId] = useState(tension.linkedProjectId ?? "");
@@ -80,12 +80,15 @@ export function TensionTools({ tension, workspace, userId, urgent, run, onGovern
   const [needEdit, setNeedEdit] = useState(false);
   const [needDetail, setNeedDetail] = useState("");
   const [governancePrep, setGovernancePrep] = useState(false);
+  const [pulseMenuOpen, setPulseMenuOpen] = useState(false);
   const mine = tension.raiserId === userId;
   const name = (id: string) => workspace.people.find(p => p.id === id)?.name ?? "Unknown";
   return <div className={`${styles.adapted} ${styles.objectTools}`}><details><summary>Object tools</summary><div className={styles.toolLinks}>
     {mine && tension.status !== "resolved" && tension.status !== "governance" && <button onClick={() => { setTitle(tension.title); setEditing(true); }}>Edit original text</button>}
     {mine && !hasDurable && (tension.status === "open" || tension.status === "needs_sync") && /^(Needs input or help from |Needs a real conversation with )/.test(tension.latestNote ?? "") && <button onClick={() => { const note = tension.latestNote ?? ""; setNeedDetail(note.includes(" — ") ? note.slice(note.indexOf(" — ") + 3) : ""); setNeedEdit(true); }}>Edit recorded need</button>}
     {mine && <button disabled={busy} onClick={async () => { setBusy(true); await run(() => setTensionUrgency(tension.id, !urgent)); setBusy(false); }}>{urgent ? "Remove urgent flag" : "Mark urgent"}</button>}
+    <button type="button" aria-expanded={pulseMenuOpen} onClick={() => setPulseMenuOpen(!pulseMenuOpen)}>{pulsePausedUntil ? "Pulse paused · change timer" : "Pause pulse"}</button>
+    {pulseMenuOpen && <div className={styles.pulsePauseChoices}><span>Pause this tension’s pulse for</span>{([24, 48, 72, 168] as const).map(hours => <button type="button" key={hours} onClick={() => { onPulsePause(hours); setPulseMenuOpen(false); }}>{hours === 168 ? "1 week" : `${hours} hours`}</button>)}{pulsePausedUntil && <button type="button" onClick={() => { onPulsePause(0); setPulseMenuOpen(false); }}>Resume now</button>}<small>{pulsePausedUntil ? `Paused until ${new Date(pulsePausedUntil).toLocaleString()}. ` : ""}Unread badges and the underlying work remain visible.</small></div>}
     <WorkAttachmentsButton parentType="tension" parentId={tension.id} parentTitle={tension.title} personName={name} />
     {mine && (tension.status === "open" || tension.status === "needs_sync") && <button disabled={busy} onClick={() => setGovernancePrep(true)}>Prepare for Governance</button>}
     {tension.status === "governance" && <button onClick={onGovernance}>Continue Governance preparation</button>}
