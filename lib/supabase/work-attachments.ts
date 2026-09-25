@@ -1,0 +1,208 @@
+import { supabase } from "@/lib/supabase/client";
+
+export const WORK_FILES_BUCKET = "sdbp-records";
+export type WorkAttachmentParent = "project" | "tension" | "board_post";
+
+export type WorkAttachment = {
+  id: string;
+  parentType: WorkAttachmentParent;
+  parentId: string;
+  kind: "file" | "link";
+  title: string;
+  url?: string;
+  storagePath?: string;
+  mimeType?: string;
+  fileSize?: number;
+  addedBy: string;
+  createdAt: string;
+  updatedAt: string;
+  coiBlocked: boolean;
+  contributorConflicted: boolean;
+};
+
+type AttachmentRow = {
+  id: string;
+  project_id: string | null;
+  tension_id: string | null;
+  board_post_id?: string | null;
+  attachment_kind: "file" | "link";
+  title: string;
+  url: string | null;
+  storage_path: string | null;
+  mime_type: string | null;
+  file_size: number | null;
+  added_by: string;
+  created_at: string;
+  updated_at: string;
+  coi_blocked?: boolean | null;
+  contributor_conflicted?: boolean | null;
+};
+
+const BASE_SELECT = "id,project_id,tension_id,attachment_kind,title,url,storage_path,mime_type,file_size,added_by,created_at,updated_at";
+const FEED_SELECT = "id,project_id,tension_id,board_post_id,attachment_kind,title,url,storage_path,mime_type,file_size,added_by,created_at,updated_at";
+
+export async function loadWorkAttachments(parentType: WorkAttachmentParent, parentId: string): Promise<WorkAttachment[]> {
+  const projected = await supabase.rpc("load_work_attachments", {
+    target_kind: parentType,
+    target_id: parentId,
+  });
+
+  if (!projected.error) {
+    return ((projected.data ?? []) as AttachmentRow[]).map(mapAttachment);
+  }
+
+  if (!isOptionalFunctionError(projected.error)) throw projected.error;
+
+  // Compatibility before migration 0017 is applied.
+  const select = parentType === "board_post" ? FEED_SELECT : BASE_SELECT;
+  let query = supabase.from("work_attachments").select(select).is("removed_at", null).order("created_at", { ascending: false });
+  if (parentType === "project") query = query.eq("project_id", parentId);
+  else if (parentType === "tension") query = query.eq("tension_id", parentId);
+  else query = query.eq("board_post_id", parentId);
+  const { data, error } = await query;
+  if (error) throw error;
+  return ((data ?? []) as unknown as AttachmentRow[]).map(mapAttachment);
+}
+
+export async function addWorkLink(parentType: WorkAttachmentParent, parentId: string, title: string, url: string) {
+  const { error } = await supabase.rpc("add_work_link", {
+    target_kind: parentType,
+    target_id: parentId,
+    link_title: title.trim(),
+    link_url: url.trim(),
+  });
+  if (error) throw error;
+}
+
+export async function editWorkLink(attachmentId: string, title: string, url: string) {
+  const { error } = await supabase.rpc("edit_work_link", {
+    target_attachment_id: attachmentId,
+    link_title: title.trim(),
+    link_url: url.trim(),
+  });
+  if (error) throw error;
+}
+
+export async function uploadWorkFile(parentType: WorkAttachmentParent, parentId: string, file: File) {
+  const storagePath = makeStoragePath(parentType, parentId, file.name);
+  let uploaded = false;
+  try {
+    const { error: uploadError } = await supabase.storage.from(WORK_FILES_BUCKET).upload(storagePath, file, {
+      contentType: file.type || undefined,
+      upsert: false,
+    });
+    if (uploadError) throw uploadError;
+    uploaded = true;
+
+    const { error: registerError } = await supabase.rpc("register_work_file", {
+      target_kind: parentType,
+      target_id: parentId,
+      file_title: file.name,
+      file_storage_path: storagePath,
+      file_mime_type: file.type || null,
+      file_size_bytes: file.size,
+    });
+    if (registerError) throw registerError;
+  } catch (error) {
+    if (uploaded) await supabase.storage.from(WORK_FILES_BUCKET).remove([storagePath]);
+    throw error;
+  }
+}
+
+export async function replaceWorkFile(attachment: WorkAttachment, file: File) {
+  const storagePath = makeStoragePath(attachment.parentType, attachment.parentId, file.name);
+  let uploaded = false;
+  try {
+    const { error: uploadError } = await supabase.storage.from(WORK_FILES_BUCKET).upload(storagePath, file, {
+      contentType: file.type || undefined,
+      upsert: false,
+    });
+    if (uploadError) throw uploadError;
+    uploaded = true;
+
+    const { error: replaceError } = await supabase.rpc("replace_work_file", {
+      target_attachment_id: attachment.id,
+      file_title: file.name,
+      file_storage_path: storagePath,
+      file_mime_type: file.type || null,
+      file_size_bytes: file.size,
+    });
+    if (replaceError) throw replaceError;
+
+    if (attachment.storagePath) await supabase.storage.from(WORK_FILES_BUCKET).remove([attachment.storagePath]);
+  } catch (error) {
+    if (uploaded) await supabase.storage.from(WORK_FILES_BUCKET).remove([storagePath]);
+    throw error;
+  }
+}
+
+export async function removeWorkAttachment(attachment: WorkAttachment | string) {
+  const attachmentId = typeof attachment === "string" ? attachment : attachment.id;
+  const storagePath = typeof attachment === "string" ? undefined : attachment.storagePath;
+
+  // Working files are temporary. Delete the object itself, not only its database row.
+  if (storagePath) {
+    const { error: storageError } = await supabase.storage.from(WORK_FILES_BUCKET).remove([storagePath]);
+    if (storageError) throw storageError;
+  }
+
+  const { error } = await supabase.rpc("remove_work_attachment", { target_attachment_id: attachmentId });
+  if (error) throw error;
+}
+
+export async function cleanupTemporaryWorkFiles(parentType: "project" | "tension", parentId: string) {
+  const attachments = await loadWorkAttachments(parentType, parentId);
+  const files = attachments.filter((item) => item.kind === "file");
+  let firstError: unknown;
+
+  for (const item of files) {
+    // A conflicted viewer cannot receive the storage path. Leave that file for a
+    // non-conflicted board member's automatic cleanup pass rather than bypassing COI.
+    if (item.coiBlocked || !item.storagePath) continue;
+    try {
+      await removeWorkAttachment(item);
+    } catch (error) {
+      firstError ??= error;
+    }
+  }
+
+  if (firstError) throw firstError;
+}
+
+export async function createWorkFileSignedUrl(storagePath: string) {
+  const { data, error } = await supabase.storage.from(WORK_FILES_BUCKET).createSignedUrl(storagePath, 60);
+  if (error) throw error;
+  return data.signedUrl;
+}
+
+function mapAttachment(row: AttachmentRow): WorkAttachment {
+  const parentType: WorkAttachmentParent = row.project_id ? "project" : row.tension_id ? "tension" : "board_post";
+  return {
+    id: row.id,
+    parentType,
+    parentId: row.project_id ?? row.tension_id ?? row.board_post_id ?? "",
+    kind: row.attachment_kind,
+    title: row.title,
+    url: row.url ?? undefined,
+    storagePath: row.storage_path ?? undefined,
+    mimeType: row.mime_type ?? undefined,
+    fileSize: row.file_size ?? undefined,
+    addedBy: row.added_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    coiBlocked: Boolean(row.coi_blocked),
+    contributorConflicted: Boolean(row.contributor_conflicted),
+  };
+}
+
+function makeStoragePath(parentType: WorkAttachmentParent, parentId: string, filename: string) {
+  return `work/${parentType}/${parentId}/${crypto.randomUUID()}-${sanitizeFilename(filename)}`;
+}
+
+function sanitizeFilename(name: string) {
+  return name.trim().replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "file";
+}
+
+function isOptionalFunctionError(error: { code?: string; message?: string }) {
+  return error.code === "PGRST202" || /load_work_attachments|schema cache|does not exist/i.test(error.message ?? "");
+}

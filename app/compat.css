@@ -1,0 +1,18 @@
+/* Cross-browser form-control hardening.
+   Keep native checkboxes from inheriting full-width text-input styles. */
+.tension-process-panel .people-picker label {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.tension-process-panel .people-picker input[type="checkbox"] {
+  -webkit-appearance: checkbox;
+  appearance: auto;
+  flex: 0 0 auto;
+  width: 14px;
+  min-width: 14px;
+  height: 14px;
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+}
