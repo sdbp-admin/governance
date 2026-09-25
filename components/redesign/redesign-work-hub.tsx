@@ -347,6 +347,7 @@ function RedesignProjectDetail({ project, onOpenConversation, ...props }: Props 
             parentTitle={project.title}
             actions={directActions}
             people={props.workspace.people}
+            roles={props.workspace.roles}
             currentUserId={props.currentUserId}
             personName={props.personName}
             onAdd={props.onAddNextStep}
@@ -367,6 +368,7 @@ function RedesignProjectDetail({ project, onOpenConversation, ...props }: Props 
               parentTitle={project.title}
               actions={group.actions}
               people={props.workspace.people}
+              roles={props.workspace.roles}
               currentUserId={props.currentUserId}
               personName={props.personName}
               onAdd={props.onAddNextStep}

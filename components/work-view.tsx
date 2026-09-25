@@ -90,7 +90,7 @@ export function WorkspaceWorkView({
           <span><strong>{formatDate(project.lastUpdate)}</strong><small>last checked</small></span>
           <span><strong>{formatDate(project.nextPrompt)}</strong><small>next prompt</small></span>
         </div>
-        <ContextualNextSteps parentType="project" parentId={project.id} parentTitle={project.title} actions={workspace.actions} people={workspace.people} currentUserId={currentUserId} personName={personName} onAdd={onAddNextStep} onStatus={onActionStatus} />
+        <ContextualNextSteps parentType="project" parentId={project.id} parentTitle={project.title} actions={workspace.actions} people={workspace.people} roles={workspace.roles} currentUserId={currentUserId} personName={personName} onAdd={onAddNextStep} onStatus={onActionStatus} />
         <div className="actions compact-actions project-context-actions">
           {project.ownerId === currentUserId && <button className="secondary small" onClick={() => onUpdateProject(project.id)}>Update</button>}
           <button className="quiet small" onClick={() => setHistoryProject(project)}>History</button>

@@ -4,7 +4,8 @@ import { CSSProperties, PointerEvent as ReactPointerEvent, WheelEvent as ReactWh
 import type { Action, Project, Tension, TensionRequest } from "@/lib/domain";
 import { projectToneClass } from "@/lib/project-tone";
 import { loadCommentThreadSummary } from "@/lib/supabase/comment-thread-state";
-import { defineTensionRequests, loadTensionRequests, markTensionRequestResponded } from "@/lib/supabase/tension-requests";
+import { declineTensionRequest, defineRoleTensionRequest, defineTensionRequests, loadTensionRequests, markTensionRequestResponded } from "@/lib/supabase/tension-requests";
+import { DeclineDecision } from "@/components/decline-decision";
 import { loadUrgentTensionIds } from "@/lib/supabase/tension-urgency";
 import { loadWorkspace, updateTension, type WorkspaceData } from "@/lib/supabase/workspace";
 import { Capture, ProjectTools, TensionTools, SpatialPoll, SpatialNextSteps, SpatialDialog, SpatialCommitmentFocus } from "./spatial-capabilities";
@@ -497,7 +498,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
         });
       })}
       {depth.kind === "project" && focusedAction && focusedActionPosition && selectedProject && <SpatialCommitmentFocus key={focusedAction.id} action={focusedAction}
-        people={workspace.people} currentUserId={profile.id} sourceTension={workspace.tensions.find(tension => tension.id === focusedAction.sourceTensionId)}
+        people={workspace.people} roles={workspace.roles} currentUserId={profile.id} sourceTension={workspace.tensions.find(tension => tension.id === focusedAction.sourceTensionId)}
         position={commitmentFocusPosition(focusedActionPosition, objectLayout.width, objectLayout.height)} run={run}
         signalIds={mentions.filter(item => item.actionId === focusedAction.id && item.signalId).map(item => item.signalId!)}
         targetCommentId={attentionTarget?.kind === "action" && attentionTarget.id === focusedAction.id ? attentionTarget.commentId : undefined}
@@ -721,6 +722,7 @@ function TensionContext({ tension, workspace, requests, currentUserId, peopleByI
 }) {
   const [tab, setTab] = useState<"conversation" | "requests" | "commitments">(initialTab);
   const [requestOpen, setRequestOpen] = useState(false);
+  const [decliningRequestId, setDecliningRequestId] = useState<string | null>(null);
   const [pulseMenuOpenId, setPulseMenuOpenId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const resolutionCheck = useRef<HTMLElement>(null);
@@ -806,8 +808,9 @@ function TensionContext({ tension, workspace, requests, currentUserId, peopleByI
       {tab === "conversation" && <SpatialConversation key={tension.id} kind="tension" id={tension.id} userId={currentUserId} people={workspace.people} signalIds={attention.filter(a => a.kind === "mention" && a.signalId).map(a => a.signalId!)} targetCommentId={targetCommentId} />}
       {tab === "requests" && <section className={styles.requestField}>
         <header><h2>Requests</h2>{mine && (tension.status === "open" || tension.status === "needs_sync") && <button onClick={() => setRequestOpen(!requestOpen)}>Define what would help</button>}</header>
-        {requestOpen && <RequestComposer tension={tension} people={workspace.people.filter((p) => p.id !== currentUserId)} onCancel={() => setRequestOpen(false)} onSave={async (kind, recipientIds, detail) => {
-          if (await run(() => defineTensionRequests({ tensionId: tension.id, kind, recipientIds, detail }), "Request recorded.")) setRequestOpen(false);
+        {requestOpen && <RequestComposer tension={tension} people={workspace.people.filter((p) => p.id !== currentUserId)} roles={workspace.roles} onCancel={() => setRequestOpen(false)} onSave={async (kind, recipientIds, detail, roleId) => {
+          const save = roleId ? () => defineRoleTensionRequest({ tensionId: tension.id, kind, roleId, recipientId: recipientIds[0], detail }) : () => defineTensionRequests({ tensionId: tension.id, kind, recipientIds, detail });
+          if (await run(save, "Request recorded.")) setRequestOpen(false);
         }} />}
         {requestGroups.map((group) => {
           const first = group[0];
@@ -817,11 +820,14 @@ function TensionContext({ tension, workspace, requests, currentUserId, peopleByI
           const recipientNames = group.map(request => personName(request.recipientId));
           return <article className={styles.requestRow} id={targeted && targetRequestId ? `spatial-request-${targetRequestId}` : undefined} tabIndex={targeted ? -1 : undefined}
             data-target={targeted || undefined} key={first.batchId || first.id} data-open={open.length > 0 || undefined} data-personal={Boolean(mine) || undefined}>
-            <div><strong>{open.length ? `Waiting for ${open.map(request => personName(request.recipientId)).join(", ")}` : `Responses received from ${recipientNames.join(", ")}`}</strong>
-              <small>{personName(first.requesterId)} → {recipientNames.join(", ")} · {first.kind === "conversation" ? "Real conversation" : "Input / help"} · requested {elapsed(first.requestedAt)}</small></div>
+            <div><strong>{open.length ? `Waiting for ${open.map(request => personName(request.recipientId)).join(", ")}` : group.some(request => request.status === "declined") ? `Declined by ${group.filter(request => request.status === "declined").map(request => personName(request.recipientId)).join(", ")}` : `Responses received from ${recipientNames.join(", ")}`}</strong>
+              <small>{personName(first.requesterId)} → {recipientNames.join(", ")}{first.roleId ? ` · ${workspace.roles.find(role => role.id === first.roleId)?.title ?? "Role"}` : ""} · {first.kind === "conversation" ? "Real conversation" : "Input / help"} · requested {elapsed(first.requestedAt)}</small></div>
             {first.detail && <p>{first.detail}</p>}
-            <small>{group.map(request => `${personName(request.recipientId)}: ${request.status === "open" ? "waiting" : request.respondedAt ? `responded ${formatDate(request.respondedAt)}` : request.status}`).join(" · ")}</small>
+            <small>{group.map(request => `${personName(request.recipientId)}: ${request.status === "open" ? "waiting" : request.status === "declined" ? `declined — ${request.declineReason === "outside_scope" ? "Outside my role or scope" : request.declineNote}${request.suggestedRoleId ? `; suggested ${workspace.roles.find(role => role.id === request.suggestedRoleId)?.title ?? "role"}` : ""}` : request.respondedAt ? `responded ${formatDate(request.respondedAt)}` : request.status}`).join(" · ")}</small>
             {mine && <button disabled={busy} onClick={async () => { setBusy(true); await run(() => markTensionRequestResponded(mine.id), "Your response is recorded."); setBusy(false); }}>I’ve responded</button>}
+            {mine && <button disabled={busy} onClick={() => setDecliningRequestId(mine.id)}>Decline</button>}
+            {mine && decliningRequestId === mine.id && <DeclineDecision roles={workspace.roles} busy={busy} onCancel={() => setDecliningRequestId(null)} onDecline={async (reason, explanation, suggestedRoleId) => { setBusy(true); const ok = await run(() => declineTensionRequest(mine.id, reason, explanation, suggestedRoleId), "Decline recorded for the requester."); setBusy(false); if (ok) setDecliningRequestId(null); }} />}
+            {group.some(request => request.status === "declined") && first.requesterId === currentUserId && <div className={styles.toolLinks}><button onClick={() => setRequestOpen(true)}>Forward request to another person or role</button><small>For a needed role that does not exist, use Object tools → Prepare for Governance.</small></div>}
           </article>;
         })}
         {!activeRequests.length && <p className={styles.quietEmpty}>No durable requests are recorded. Any legacy need remains in the recorded context above.</p>}
@@ -987,17 +993,26 @@ function ActivityBadge({ count }: { count: number }) {
 function initials(value: string) { return value.split(/[\s&]+/).filter(Boolean).slice(0, 3).map((word) => word[0]).join("").toUpperCase(); }
 function elapsed(value: string) { const label = age(value); return label === "today" ? "today" : `${label} ago`; }
 
-function RequestComposer({ tension, people, onCancel, onSave }: { tension: Tension; people: WorkspaceData["people"]; onCancel: () => void; onSave: (kind: "input" | "conversation", recipientIds: string[], detail: string) => Promise<void> }) {
+function RequestComposer({ tension, people, roles, onCancel, onSave }: { tension: Tension; people: WorkspaceData["people"]; roles: WorkspaceData["roles"]; onCancel: () => void; onSave: (kind: "input" | "conversation", recipientIds: string[], detail: string, roleId?: string) => Promise<void> }) {
   const [kind, setKind] = useState<"input" | "conversation">("input");
   const [ids, setIds] = useState<string[]>([]);
+  const [roleId, setRoleId] = useState("");
+  const [holderId, setHolderId] = useState("");
   const [detail, setDetail] = useState("");
   const [saving, setSaving] = useState(false);
-  return <form className={styles.simpleForm} onSubmit={e => { e.preventDefault(); if (!ids.length || saving) return; setSaving(true); void onSave(kind, ids, detail).finally(() => setSaving(false)); }}>
+  const availableRoles = roles.filter(role => !role.isCircle && role.holderIds.some(id => people.some(person => person.id === id)));
+  const holders = availableRoles.find(role => role.id === roleId)?.holderIds.filter(id => people.some(person => person.id === id)) ?? [];
+  const recipientIds = roleId ? [holderId || holders[0]].filter(Boolean) : ids;
+  return <form className={styles.simpleForm} onSubmit={e => { e.preventDefault(); if (!recipientIds.length || saving) return; setSaving(true); void onSave(kind, recipientIds, detail, roleId || undefined).finally(() => setSaving(false)); }}>
     <label>What would help?<select value={kind} onChange={e => setKind(e.target.value as "input" | "conversation")}><option value="input">Input or help</option><option value="conversation">A real conversation</option></select></label>
-    <fieldset><legend>Who is needed?</legend>{people.map(p => <label className={styles.checkPerson} key={p.id}><input type="checkbox" checked={ids.includes(p.id)} onChange={() => setIds(old => old.includes(p.id) ? old.filter(id => id !== p.id) : [...old, p.id])} />{p.name}</label>)}</fieldset>
+    <label>Address to<select value={roleId ? "role" : "person"} onChange={e => { setRoleId(e.target.value === "role" ? availableRoles[0]?.id ?? "" : ""); setHolderId(""); }}><option value="person">Person</option>{availableRoles.length > 0 && <option value="role">Role</option>}</select></label>
+    {roleId ? <><label>Role<select value={roleId} onChange={e => { setRoleId(e.target.value); setHolderId(""); }}>{availableRoles.map(role => <option key={role.id} value={role.id}>{role.title}</option>)}</select></label>
+      {holders.length > 1 && <label>Which holder?<select value={holderId || holders[0]} onChange={e => setHolderId(e.target.value)}>{holders.map(id => <option key={id} value={id}>{people.find(person => person.id === id)?.name ?? "Unknown"}</option>)}</select></label>}
+      {holders.length === 1 && <p>Request goes to {people.find(person => person.id === holders[0])?.name}.</p>}</> :
+      <fieldset><legend>Who is needed?</legend>{people.map(p => <label className={styles.checkPerson} key={p.id}><input type="checkbox" checked={ids.includes(p.id)} onChange={() => setIds(old => old.includes(p.id) ? old.filter(id => id !== p.id) : [...old, p.id])} />{p.name}</label>)}</fieldset>}
     <label>Useful context<textarea rows={3} value={detail} onChange={e => setDetail(e.target.value)} placeholder={`What would move “${tension.title}” forward?`} /></label>
     <small>Defining a new need supersedes previous requests. Each person responds independently.</small>
-    <div className={styles.toolLinks}><button type="button" onClick={onCancel}>Cancel</button><button disabled={!ids.length || saving}>{saving ? "Saving…" : "Record request"}</button></div>
+    <div className={styles.toolLinks}><button type="button" onClick={onCancel}>Cancel</button><button disabled={!recipientIds.length || saving}>{saving ? "Saving…" : "Record request"}</button></div>
   </form>;
 }
 

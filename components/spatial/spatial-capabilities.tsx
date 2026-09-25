@@ -14,7 +14,8 @@ import { updateTensionTitle } from "@/lib/supabase/tension-title-edit";
 import { setTensionProject } from "@/lib/supabase/tension-project";
 import { setTensionUrgency } from "@/lib/supabase/tension-urgency";
 import { updateTensionNeedNote } from "@/lib/supabase/tension-need-edit";
-import { removeAction, updateActionDetails } from "@/lib/supabase/action-management";
+import { declineProposedAction, removeAction, updateActionDetails } from "@/lib/supabase/action-management";
+import { DeclineDecision } from "@/components/decline-decision";
 import { loadCommentThreadSummary, type CommentThreadSummary } from "@/lib/supabase/comment-thread-state";
 import { SpatialConversation } from "./spatial-conversation";
 import styles from "./spatial.module.css";
@@ -115,18 +116,19 @@ export function SpatialNextSteps({ parent, kind, workspace, userId, run, onOpen,
   }, [attentionActionId]);
   return <div ref={root} className={styles.adapted} data-spatial-commitments={parent.id}>
     <style>{`@keyframes spatialActionAttentionPulse { 0%, 100% { background: #2596be05; box-shadow: inset 3px 0 0 #2596be58, 0 0 2px 0 #2596be08; } 50% { background: #2596be30; box-shadow: inset 3px 0 0 #1689b1, 0 0 28px 5px #2596be4a; } }\n${relevant.filter(a => attentionActionIds.includes(a.id)).map(a => `[data-spatial-commitments="${parent.id}"] [data-action-id="${a.id}"] { border-left-color: #2596be; animation: spatialActionAttentionPulse 1.6s ease-in-out infinite; }`).join("\n")}`}</style>
-    <ContextualNextSteps parentType={kind} parentId={parent.id} parentTitle={parent.title} projectId={kind === "tension" ? (parent as Tension).linkedProjectId : parent.id} actions={workspace.actions} people={workspace.people} currentUserId={userId} personName={id => workspace.people.find(p => p.id === id)?.name ?? "Unknown"}
+    <ContextualNextSteps parentType={kind} parentId={parent.id} parentTitle={parent.title} projectId={kind === "tension" ? (parent as Tension).linkedProjectId : parent.id} actions={workspace.actions} people={workspace.people} roles={workspace.roles} currentUserId={userId} personName={id => workspace.people.find(p => p.id === id)?.name ?? "Unknown"}
     onAdd={input => run(() => createAction({ ...input, status: input.ownerId === userId ? "open" : "proposed" }))} onStatus={async (id, status) => { const { setActionStatus } = await import("@/lib/supabase/workspace"); return run(() => setActionStatus(id, status)); }} />
     <div className={styles.commitmentContext}>{relevant.filter(a => a.status === "open" || a.status === "proposed").map(a => <div key={a.id} data-personal={a.ownerId === userId || undefined}>{a.due && a.due < localToday() && <small>Overdue · {a.title}</small>}{a.sourceTensionId && kind === "project" && <button onClick={() => onOpen?.(a)}>From tension · {workspace.tensions.find(t => t.id === a.sourceTensionId)?.title ?? "Open source"}</button>}</div>)}</div>
     {relevant.some(a => a.status === "done") && <details><summary>Completed commitments</summary>{relevant.filter(a => a.status === "done").map(a => <p key={a.id}>{a.title} · {workspace.people.find(p => p.id === a.ownerId)?.name ?? "Unknown"} · completed</p>)}</details>}
   </div>;
 }
 
-export function SpatialCommitmentFocus({ action, people, currentUserId, sourceTension, position, run, signalIds = [], targetCommentId, needsAttention = false, conversationNeedsAttention = false, unreadCount = 0, onOpenSource, onClose }: {
-  action: Action; people: WorkspaceData["people"]; currentUserId: string; sourceTension?: Tension;
+export function SpatialCommitmentFocus({ action, people, roles, currentUserId, sourceTension, position, run, signalIds = [], targetCommentId, needsAttention = false, conversationNeedsAttention = false, unreadCount = 0, onOpenSource, onClose }: {
+  action: Action; people: WorkspaceData["people"]; roles: WorkspaceData["roles"]; currentUserId: string; sourceTension?: Tension;
   position: { x: number; y: number; side: "left" | "right" }; run: SpatialRun; signalIds?: string[]; targetCommentId?: string; needsAttention?: boolean; conversationNeedsAttention?: boolean; unreadCount?: number; onOpenSource?: () => void; onClose: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [declining, setDeclining] = useState(false);
   const [title, setTitle] = useState(action.title);
   const [ownerId, setOwnerId] = useState(action.ownerId);
   const [due, setDue] = useState(action.due ?? "");
@@ -183,7 +185,14 @@ export function SpatialCommitmentFocus({ action, people, currentUserId, sourceTe
       {conversationOpen && <SpatialConversation kind="action" id={action.id} people={people} userId={currentUserId} signalIds={signalIds} targetCommentId={targetCommentId} compact />}
       <div className={styles.commitmentActions}><button disabled={busy} onClick={() => { setTitle(action.title); setOwnerId(action.ownerId); setDue(action.due ?? ""); setEditing(true); }}>Edit</button>
         {action.ownerId === currentUserId && action.status === "proposed" && <button data-personal={needsAttention || undefined} disabled={busy} onClick={() => void changeStatus("open")}>Accept</button>}
+        {action.ownerId === currentUserId && action.status === "proposed" && <button disabled={busy} onClick={() => setDeclining(true)}>Decline</button>}
         {action.ownerId === currentUserId && action.status === "open" && <button data-personal={needsAttention || undefined} disabled={busy} onClick={() => void changeStatus("done")}>Done</button>}</div>
+      {declining && <DeclineDecision roles={roles} busy={busy} onCancel={() => setDeclining(false)} onDecline={async (reason, explanation, suggestedRoleId) => {
+        setBusy(true);
+        const ok = await run(() => declineProposedAction(action.id, reason, explanation, suggestedRoleId), "Decline recorded for the proposer.");
+        setBusy(false);
+        if (ok) { setDeclining(false); onClose(); }
+      }} />}
     </> : <form onSubmit={event => { event.preventDefault(); void save(); }}>
       <label>Commitment<input autoFocus value={title} onChange={event => setTitle(event.target.value)} /></label>
       <label>Owner<select value={ownerId} onChange={event => setOwnerId(event.target.value)}>{people.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>

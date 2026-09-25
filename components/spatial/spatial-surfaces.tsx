@@ -64,13 +64,14 @@ function SpatialCompass({ onClose, onPassword }: { onClose: () => void; onPasswo
 }
 
 function CommitmentsOverview({ workspace, userId, run, onOpen }: { workspace: WorkspaceData; userId: string; run: SpatialRun; onOpen: (action: Action) => void }) {
-  const [filter, setFilter] = useState<"active" | "done">("active");
+  const [filter, setFilter] = useState<"active" | "done" | "declined">("active");
   const [busy, setBusy] = useState<string | null>(null);
-  const actions = workspace.actions.filter(a => filter === "done" ? a.status === "done" : a.status === "open" || a.status === "proposed");
-  return <><div className={styles.toolLinks}><button aria-pressed={filter === "active"} onClick={() => setFilter("active")}>Open & proposed</button><button aria-pressed={filter === "done"} onClick={() => setFilter("done")}>Completed</button></div>
+  const actions = workspace.actions.filter(a => filter === "done" ? a.status === "done" : filter === "declined" ? a.status === "cancelled" && !!a.declineReason && a.proposedBy === userId : a.status === "open" || a.status === "proposed");
+  return <><div className={styles.toolLinks}><button aria-pressed={filter === "active"} onClick={() => setFilter("active")}>Open & proposed</button><button aria-pressed={filter === "done"} onClick={() => setFilter("done")}>Completed</button><button aria-pressed={filter === "declined"} onClick={() => setFilter("declined")}>Declined proposals</button></div>
     <div className={styles.aggregateList}>{actions.map(a => {
       const source = a.sourceTensionId ? workspace.tensions.find(t => t.id === a.sourceTensionId)?.title : workspace.projects.find(p => p.id === a.projectId)?.title;
       return <article key={a.id} data-personal={a.ownerId === userId && a.status !== "done" || undefined}><button className={styles.sourceTitle} onClick={() => onOpen(a)}><strong>{a.title}</strong><small>{workspace.people.find(p => p.id === a.ownerId)?.name ?? "Unknown"} · {a.status === "open" ? "accepted / open" : a.status}{a.due ? ` · ${a.status !== "done" && a.due < todayISO() ? "overdue · " : "due "}${a.due}` : ""}</small><small>{source ? `${a.sourceTensionId ? "From tension" : "Project"} · ${source}` : "No source project or tension recorded"}</small></button>
+        {a.declineReason && <p>{workspace.people.find(p => p.id === a.ownerId)?.name ?? "Recipient"} declined: {a.declineReason === "outside_scope" ? "Outside my role or scope" : a.declineNote}{a.suggestedRoleId ? ` · Suggested role: ${workspace.roles.find(role => role.id === a.suggestedRoleId)?.title ?? "Unknown"}` : ""}</p>}
         {a.ownerId === userId && a.status !== "done" && <button disabled={busy === a.id} onClick={async () => { setBusy(a.id); await run(() => setActionStatus(a.id, a.status === "proposed" ? "open" : "done")); setBusy(null); }}>{a.status === "proposed" ? "Accept" : "Done"}</button>}
       </article>;
     })}{!actions.length && <p>No commitments in this view.</p>}</div></>;

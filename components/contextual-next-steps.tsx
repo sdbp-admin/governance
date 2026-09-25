@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import type { Action } from "@/lib/domain";
+import type { Action, RoleDefinition } from "@/lib/domain";
 import type { WorkspacePerson } from "@/lib/supabase/workspace";
-import { removeAction, updateActionDetails } from "@/lib/supabase/action-management";
+import { declineProposedAction, removeAction, updateActionDetails } from "@/lib/supabase/action-management";
+import { DeclineDecision } from "@/components/decline-decision";
 import { notifyAttention } from "@/lib/supabase/attention-notifications";
 
 export type ContextualNextStepInput = {
@@ -23,6 +24,7 @@ export function ContextualNextSteps({
   projectId,
   actions,
   people,
+  roles,
   currentUserId,
   personName,
   onAdd,
@@ -34,6 +36,7 @@ export function ContextualNextSteps({
   projectId?: string;
   actions: Action[];
   people: WorkspacePerson[];
+  roles: RoleDefinition[];
   currentUserId: string;
   personName: (id: string) => string;
   onAdd: (input: ContextualNextStepInput) => Promise<boolean>;
@@ -41,10 +44,14 @@ export function ContextualNextSteps({
 }) {
   const [open, setOpen] = useState(false);
   const [editingAction, setEditingAction] = useState<Action | null>(null);
+  const [decliningAction, setDecliningAction] = useState<Action | null>(null);
+  const [declineBusy, setDeclineBusy] = useState(false);
+  const [declineError, setDeclineError] = useState("");
   const relevant = actions.filter((action) => {
     if (action.status !== "open" && action.status !== "proposed") return false;
     return parentType === "project" ? action.projectId === parentId : action.sourceTensionId === parentId;
   });
+  const declined = actions.filter(action => action.proposedBy === currentUserId && action.status === "cancelled" && action.declineReason && (parentType === "project" ? action.projectId === parentId : action.sourceTensionId === parentId));
 
   return <div className="context-next-steps">
     <div className="context-next-steps-head">
@@ -56,9 +63,12 @@ export function ContextualNextSteps({
       <div className="actions compact-actions">
         <button className="quiet small" type="button" onClick={() => setEditingAction(action)}>Edit</button>
         {action.ownerId === currentUserId && action.status === "proposed" && <button className="secondary small" type="button" onClick={() => void onStatus(action.id, "open")}>Accept</button>}
+        {action.ownerId === currentUserId && action.status === "proposed" && <button className="quiet small" type="button" onClick={() => setDecliningAction(action)}>Decline</button>}
         {action.ownerId === currentUserId && action.status === "open" && <button className="quiet small" type="button" onClick={() => void onStatus(action.id, "done")}>Done</button>}
       </div>
     </div>)}</div>}
+    {declined.length > 0 && <div className="context-step-list"><strong>Declined proposals</strong>{declined.map(action => <p key={action.id}>{action.title} · {personName(action.ownerId)} declined: {action.declineReason === "outside_scope" ? "Outside my role or scope" : action.declineNote}{action.suggestedRoleId ? ` · Suggested role: ${roles.find(role => role.id === action.suggestedRoleId)?.title ?? "Unknown"}` : ""}</p>)}</div>}
+    {decliningAction && typeof document !== "undefined" && createPortal(<div className="modal-backdrop"><section className="workflow-editor compact-modal context-step-modal" role="dialog" aria-modal="true" aria-label="Decline proposed commitment"><h2>Decline proposed commitment</h2><p>{decliningAction.title}</p>{declineError && <p role="alert">{declineError}</p>}<DeclineDecision roles={roles} busy={declineBusy} onCancel={() => { setDecliningAction(null); setDeclineError(""); }} onDecline={async (reason, explanation, suggestedRoleId) => { setDeclineBusy(true); setDeclineError(""); try { await declineProposedAction(decliningAction.id, reason, explanation, suggestedRoleId); setDecliningAction(null); window.dispatchEvent(new Event("focus")); } catch (error) { setDeclineError(error instanceof Error ? error.message : "Could not record the decline."); } finally { setDeclineBusy(false); } }} /></section></div>, document.body)}
     {open && typeof document !== "undefined" && createPortal(<NextStepModal
       parentType={parentType}
       parentId={parentId}

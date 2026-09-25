@@ -171,7 +171,7 @@ function TensionCard(props: Props & { tension: Tension; processing: string | nul
         <div className="process-actions"><button className="quiet small" type="button" disabled={savingNeedNote} onClick={() => setEditingNeedNote(false)}>Cancel</button><button className="primary small" type="button" disabled={savingNeedNote} onClick={() => void saveNeedNote()}>{savingNeedNote ? "Saving…" : "Save"}</button></div>
         {needEditError && <small className="tension-project-error">{needEditError}</small>}
       </div>}
-      <ContextualNextSteps parentType="tension" parentId={tension.id} parentTitle={tension.title} projectId={tension.linkedProjectId} actions={props.workspace.actions} people={props.workspace.people} currentUserId={props.currentUserId} personName={props.personName} onAdd={props.onAddNextStep} onStatus={props.onActionStatus} />
+      <ContextualNextSteps parentType="tension" parentId={tension.id} parentTitle={tension.title} projectId={tension.linkedProjectId} actions={props.workspace.actions} people={props.workspace.people} roles={props.workspace.roles} currentUserId={props.currentUserId} personName={props.personName} onAdd={props.onAddNextStep} onStatus={props.onActionStatus} />
 
       {tension.status === "needs_sync" && <TensionAvailabilityPoll tension={tension} currentUserId={props.currentUserId} personName={props.personName} onCreate={props.onCreatePoll} onVote={props.onVotePoll} onChoose={props.onChoosePoll} />}
 

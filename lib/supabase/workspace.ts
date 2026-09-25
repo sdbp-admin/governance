@@ -92,6 +92,11 @@ type ActionRow = {
   project_id: string | null;
   source_label: string | null;
   source_tension_id: string | null;
+  proposed_by: string | null;
+  decline_reason: Action["declineReason"] | null;
+  decline_note: string | null;
+  suggested_role_id: string | null;
+  declined_at: string | null;
 };
 type TensionRow = {
   id: string;
@@ -159,7 +164,7 @@ export async function loadWorkspace(): Promise<WorkspaceData> {
     supabase.from("roles").select("id,title,category,is_circle,parent_role_id,purpose,scope,responsibilities,accountabilities,source,definition_status").order("title"),
     supabase.from("role_assignments").select("role_id,person_id,ends_on").is("ends_on", null),
     supabase.from("projects").select("id,title,owner_id,role_id,status,summary,last_update_at,next_prompt_on,source_tension_id,participant_ids,created_at").order("created_at", { ascending: false }),
-    supabase.from("actions").select("id,title,owner_id,status,due_on,project_id,source_label,source_tension_id").order("created_at", { ascending: false }),
+    supabase.from("actions").select("id,title,owner_id,status,due_on,project_id,source_label,source_tension_id,proposed_by,decline_reason,decline_note,suggested_role_id,declined_at").order("created_at", { ascending: false }),
     supabase.from("tensions").select("id,title,raiser_id,project_id,status,resolution_proposed_by,latest_note,created_at").order("created_at", { ascending: false }),
     supabase.from("governance_proposals").select("id,tension_id,title,proposal,proposer_id,stage,meeting_notes,created_at,accepted_at").order("created_at", { ascending: false }),
     supabase.from("attention_signals").select("id,recipient_id,tension_id,project_id,signal_type,message,created_by,created_at").is("acknowledged_at", null).order("created_at", { ascending: false }),
@@ -228,6 +233,11 @@ export async function loadWorkspace(): Promise<WorkspaceData> {
       projectId: row.project_id ?? undefined,
       source: row.source_label ?? undefined,
       sourceTensionId: row.source_tension_id ?? undefined,
+      proposedBy: row.proposed_by ?? undefined,
+      declineReason: row.decline_reason ?? undefined,
+      declineNote: row.decline_note ?? undefined,
+      suggestedRoleId: row.suggested_role_id ?? undefined,
+      declinedAt: row.declined_at ?? undefined,
     })),
     tensions: ((tensionsResult.data ?? []) as TensionRow[]).map((row): Tension => ({
       id: row.id,

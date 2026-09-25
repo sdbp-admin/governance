@@ -46,6 +46,11 @@ export type Action = {
   projectId?: string;
   source?: string;
   sourceTensionId?: string;
+  proposedBy?: string;
+  declineReason?: "outside_scope" | "other";
+  declineNote?: string;
+  suggestedRoleId?: string;
+  declinedAt?: string;
 };
 
 export type TensionStatus = "open" | "awaiting_confirmation" | "resolved" | "needs_sync" | "governance";
@@ -82,7 +87,7 @@ export type Tension = {
 };
 
 export type TensionRequestKind = "input" | "conversation";
-export type TensionRequestStatus = "open" | "responded" | "closed";
+export type TensionRequestStatus = "open" | "responded" | "declined" | "closed";
 export type TensionRequestCloseReason = "requester_closed" | "withdrawn" | "tension_resolved" | "moved_to_governance" | "superseded";
 
 export type TensionRequest = {
@@ -100,6 +105,11 @@ export type TensionRequest = {
   closedAt?: string;
   closedBy?: string;
   closeReason?: TensionRequestCloseReason;
+  roleId?: string;
+  declineReason?: "outside_scope" | "other";
+  declineNote?: string;
+  suggestedRoleId?: string;
+  declinedAt?: string;
 };
 
 export type AttentionItem = {

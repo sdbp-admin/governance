@@ -5,6 +5,9 @@ import type { Tension, TensionRequest, TensionPoll } from "@/lib/domain";
 import { loadBoardFeed, loadCommunicationAttentionSignals } from "@/lib/supabase/board-feed";
 import { loadMeetingPolls, voteMeetingPoll, type MeetingPoll } from "@/lib/supabase/meeting-planning";
 import { markTensionRequestResponded, loadTensionRequests } from "@/lib/supabase/tension-requests";
+import { declineTensionRequest } from "@/lib/supabase/tension-requests";
+import { declineProposedAction } from "@/lib/supabase/action-management";
+import { DeclineDecision } from "@/components/decline-decision";
 import { loadOperationalAttentionSnoozes, snoozeOperationalAttention } from "@/lib/supabase/operational-attention";
 import { acknowledgeAttentionSignal, loadWorkspace, setActionStatus, updateTension, voteTensionPoll, type WorkspaceData } from "@/lib/supabase/workspace";
 import { supabase } from "@/lib/supabase/client";
@@ -49,6 +52,7 @@ export function BoardAttention({ userId, active, onCount, onOpenChat }: {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [choices, setChoices] = useState<Record<string, string[]>>({});
+  const [decliningId, setDecliningId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError("");
@@ -134,8 +138,8 @@ export function BoardAttention({ userId, active, onCount, onOpenChat }: {
   async function run(id: string, action: () => Promise<unknown>) {
     if (busy) return;
     setBusy(id); setError("");
-    try { await action(); await load(); }
-    catch (reason) { setError(readError(reason)); }
+    try { await action(); await load(); return true; }
+    catch (reason) { setError(readError(reason)); return false; }
     finally { setBusy(null); }
   }
 
@@ -176,13 +180,19 @@ export function BoardAttention({ userId, active, onCount, onOpenChat }: {
               <div className={styles.attentionActions}>
               {item.boardPostId && <button type="button" onClick={() => onOpenChat(item.boardPostId!)}>Open in Chat</button>}
               {item.kind === "request" && request && <button className={styles.primary} type="button" disabled={busy === item.id} onClick={() => void run(item.id, () => markTensionRequestResponded(request.id))}>I’ve responded</button>}
+              {item.kind === "request" && request && <button type="button" disabled={busy === item.id} onClick={() => setDecliningId(item.id)}>Decline</button>}
               {item.kind === "commitment" && action?.status === "proposed" && <button className={styles.primary} type="button" disabled={busy === item.id} onClick={() => void run(item.id, () => setActionStatus(action.id, "open"))}>Accept</button>}
+              {item.kind === "commitment" && action?.status === "proposed" && <button type="button" disabled={busy === item.id} onClick={() => setDecliningId(item.id)}>Decline</button>}
               {item.kind === "confirmation" && tension && <><button type="button" disabled={busy === item.id} onClick={() => void run(item.id, () => declineResolution(tension))}>No, keep open</button><button className={styles.primary} type="button" disabled={busy === item.id} onClick={() => void run(item.id, () => confirmResolution(tension))}>Yes, resolved</button></>}
               {item.kind === "tension_poll" && tensionPoll && <button className={styles.primary} type="button" disabled={busy === item.id} onClick={() => void run(item.id, () => voteTensionPoll(tensionPoll.id, choices[item.id] ?? []))}>Save availability</button>}
               {item.kind === "meeting_poll" && meetingPoll && <button className={styles.primary} type="button" disabled={busy === item.id} onClick={() => void run(item.id, () => voteMeetingPoll(meetingPoll.id, choices[item.id] ?? []))}>Save availability</button>}
               {item.kind === "consent" && item.proposalId && <button className={styles.primary} type="button" disabled={busy === item.id} onClick={() => void run(item.id, () => respondConsent(item.proposalId!))}>No objection</button>}
               {!item.boardPostId && <a href={workspaceLink(item)} target="_blank" rel="noopener noreferrer">Open Workspace on desktop</a>}
               </div>
+              {decliningId === item.id && ((item.kind === "request" && request) || (item.kind === "commitment" && action)) && <DeclineDecision roles={model.workspace.roles} busy={busy === item.id} onCancel={() => setDecliningId(null)} onDecline={async (reason, explanation, suggestedRoleId) => {
+                const ok = await run(item.id, () => item.kind === "request" && request ? declineTensionRequest(request.id, reason, explanation, suggestedRoleId) : declineProposedAction(action!.id, reason, explanation, suggestedRoleId));
+                if (ok) setDecliningId(null);
+              }} />}
             </div></details>
             <button
               type="button"
