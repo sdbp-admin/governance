@@ -12,12 +12,15 @@ import { isCurrentPresident, resendWorkspaceInvitation, deactivateWorkspacePerso
 import { useWorkspacePresence } from "@/lib/supabase/presence";
 import { supabase } from "@/lib/supabase/client";
 import { SpatialDialog, type SpatialRun } from "./spatial-capabilities";
+import { SpatialPulsePause } from "./spatial-pulse-pause";
 import type { SpatialProfile } from "./spatial-authenticated-launch";
 import styles from "./spatial.module.css";
 
 export type SpatialSurface = "governance" | "records" | "commitments" | "account" | "compass" | "completed" | null;
-export function SpatialSurfaces({ surface, workspace, profile, run, governanceTargetProposalId, consentProposalIds, onGovernanceResponse, onClose, onSurface, onProject, onAction, onCapture, onSignOut }: {
+export function SpatialSurfaces({ surface, workspace, profile, run, governanceTargetProposalId, consentProposalIds, onGovernanceResponse, pulseUntilForProposal, onProposalPulsePause, pulseUntilForAction, onActionPulsePause, onClose, onSurface, onProject, onAction, onCapture, onSignOut }: {
   surface: SpatialSurface; workspace: WorkspaceData; profile: SpatialProfile; run: SpatialRun; governanceTargetProposalId?: string | null; consentProposalIds: string[]; onGovernanceResponse: () => void; onClose: () => void;
+  pulseUntilForProposal: (id: string) => number | undefined; onProposalPulsePause: (id: string, hours: 0 | 24 | 48 | 72 | 168) => void;
+  pulseUntilForAction: (id: string) => number | undefined; onActionPulsePause: (id: string, hours: 0 | 24 | 48 | 72 | 168) => void;
   onSurface: (surface: SpatialSurface) => void; onProject: (id: string) => void; onAction: (action: Action) => void; onCapture: () => void; onSignOut: () => void;
 }) {
   const [inviteAllowed, setInviteAllowed] = useState(false);
@@ -34,13 +37,13 @@ export function SpatialSurfaces({ surface, workspace, profile, run, governanceTa
   if (surface === "compass") return <div className={styles.adapted}><SpatialCompass onClose={onClose} onPassword={() => onSurface("account")} /></div>;
   if (surface === "account") return <SpatialDialog title="Account & access" onClose={onClose}><SpatialAccount workspace={workspace} profile={profile} run={run} onSignOut={onSignOut} /></SpatialDialog>;
   if (surface === "completed") return <SpatialDialog title="Completed projects" onClose={onClose}><div className={styles.sourceList}>{workspace.projects.filter(p => p.status === "complete").map(p => <button key={p.id} onClick={() => onProject(p.id)}><strong>{p.title}</strong><small>{name(p.ownerId)} · completed · open context or reopen</small></button>)}</div></SpatialDialog>;
-  if (surface === "commitments") return <SpatialDialog title="All commitments" onClose={onClose}><CommitmentsOverview workspace={workspace} userId={profile.id} run={run} onOpen={onAction} /></SpatialDialog>;
+  if (surface === "commitments") return <SpatialDialog title="All commitments" onClose={onClose}><CommitmentsOverview workspace={workspace} userId={profile.id} run={run} onOpen={onAction} pulseUntilForAction={pulseUntilForAction} onActionPulsePause={onActionPulsePause} /></SpatialDialog>;
   return <section className={`${styles.mainSurface} ${styles.adapted}`} aria-label={surface === "records" ? "Records" : "Governance"}>
     <header className={styles.surfaceHeading}><div><span className={styles.eyebrow}>SDBP</span><h1>{surface === "records" ? "Records" : "Governance"}</h1></div><button onClick={onClose}>← Spatial workspace</button></header>
     {surface === "records" ? <RecordsView governanceProposals={workspace.governanceProposals} tensions={workspace.tensions} profileId={profile.id} /> : <>
       {consentProposalIds.length > 0 && <section className={styles.governanceDue} aria-label="Your Quick Consent responses"><strong>Your Quick Consent responses · {consentProposalIds.length}</strong><div>{consentProposalIds.map(id => { const proposal = workspace.governanceProposals.find(item => item.id === id); return proposal && <button type="button" key={id} onClick={() => { const target = document.getElementById(`governance-consent-${id}`); target?.scrollIntoView({ behavior: "smooth", block: "center" }); target?.focus({ preventScroll: true }); }}>{proposal.title} ↗</button>; })}</div></section>}
       <section className={styles.secondarySection}><h2>People, roles & availability</h2><OrganisationWorkspaceView workspace={workspace} currentUserId={profile.id} canInvite={inviteAllowed} personName={name} presence={presence} onInvite={(n, email) => run(() => invitePerson(n, email), "Invitation sent.")} onSaveRole={role => run(() => saveRole(role))} onDeleteRole={id => run(() => deleteRole(id))} onOpenProject={onProject} /></section>
-      <GovernanceWorkspaceView workspace={workspace} currentUserId={profile.id} personName={name} focusProposalId={governanceTargetProposalId} consentProposalIds={consentProposalIds} onResponseRecorded={onGovernanceResponse} onCreateProposal={input => run(() => createGovernanceProposal({ ...input, proposerId: profile.id }))} onStartMeeting={startMeeting} onGoTensions={onCapture} onGoRecords={() => onSurface("records")} />
+      <GovernanceWorkspaceView workspace={workspace} currentUserId={profile.id} personName={name} focusProposalId={governanceTargetProposalId} consentProposalIds={consentProposalIds} onResponseRecorded={onGovernanceResponse} pulseUntilForProposal={pulseUntilForProposal} onProposalPulsePause={onProposalPulsePause} onCreateProposal={input => run(() => createGovernanceProposal({ ...input, proposerId: profile.id }))} onStartMeeting={startMeeting} onGoTensions={onCapture} onGoRecords={() => onSurface("records")} />
     </>}
   </section>;
 }
@@ -63,14 +66,15 @@ function SpatialCompass({ onClose, onPassword }: { onClose: () => void; onPasswo
   </div>;
 }
 
-function CommitmentsOverview({ workspace, userId, run, onOpen }: { workspace: WorkspaceData; userId: string; run: SpatialRun; onOpen: (action: Action) => void }) {
+function CommitmentsOverview({ workspace, userId, run, onOpen, pulseUntilForAction, onActionPulsePause }: { workspace: WorkspaceData; userId: string; run: SpatialRun; onOpen: (action: Action) => void; pulseUntilForAction: (id: string) => number | undefined; onActionPulsePause: (id: string, hours: 0 | 24 | 48 | 72 | 168) => void }) {
   const [filter, setFilter] = useState<"active" | "done" | "declined">("active");
   const [busy, setBusy] = useState<string | null>(null);
   const actions = workspace.actions.filter(a => filter === "done" ? a.status === "done" : filter === "declined" ? a.status === "cancelled" && !!a.declineReason && a.proposedBy === userId : a.status === "open" || a.status === "proposed");
   return <><div className={styles.toolLinks}><button aria-pressed={filter === "active"} onClick={() => setFilter("active")}>Open & proposed</button><button aria-pressed={filter === "done"} onClick={() => setFilter("done")}>Completed</button><button aria-pressed={filter === "declined"} onClick={() => setFilter("declined")}>Declined proposals</button></div>
     <div className={styles.aggregateList}>{actions.map(a => {
       const source = a.sourceTensionId ? workspace.tensions.find(t => t.id === a.sourceTensionId)?.title : workspace.projects.find(p => p.id === a.projectId)?.title;
-      return <article key={a.id} data-personal={a.ownerId === userId && a.status !== "done" || undefined}><button className={styles.sourceTitle} onClick={() => onOpen(a)}><strong>{a.title}</strong><small>{workspace.people.find(p => p.id === a.ownerId)?.name ?? "Unknown"} · {a.status === "open" ? "accepted / open" : a.status}{a.due ? ` · ${a.status !== "done" && a.due < todayISO() ? "overdue · " : "due "}${a.due}` : ""}</small><small>{source ? `${a.sourceTensionId ? "From tension" : "Project"} · ${source}` : "No source project or tension recorded"}</small></button>
+      return <article key={a.id} data-personal={a.ownerId === userId && a.status !== "done" && !pulseUntilForAction(a.id) || undefined}><button className={styles.sourceTitle} onClick={() => onOpen(a)}><strong>{a.title}</strong><small>{workspace.people.find(p => p.id === a.ownerId)?.name ?? "Unknown"} · {a.status === "open" ? "accepted / open" : a.status}{a.due ? ` · ${a.status !== "done" && a.due < todayISO() ? "overdue · " : "due "}${a.due}` : ""}</small><small>{source ? `${a.sourceTensionId ? "From tension" : "Project"} · ${source}` : "No source project or tension recorded"}</small></button>
+        {a.ownerId === userId && (a.status === "open" || a.status === "proposed") && <SpatialPulsePause until={pulseUntilForAction(a.id)} onPause={hours => onActionPulsePause(a.id, hours)} />}
         {a.declineReason && <p>{workspace.people.find(p => p.id === a.ownerId)?.name ?? "Recipient"} declined: {a.declineReason === "outside_scope" ? "Outside my role or scope" : a.declineNote}{a.suggestedRoleId ? ` · Suggested role: ${workspace.roles.find(role => role.id === a.suggestedRoleId)?.title ?? "Unknown"}` : ""}</p>}
         {a.ownerId === userId && a.status !== "done" && <button disabled={busy === a.id} onClick={async () => { setBusy(a.id); await run(() => setActionStatus(a.id, a.status === "proposed" ? "open" : "done")); setBusy(null); }}>{a.status === "proposed" ? "Accept" : "Done"}</button>}
       </article>;

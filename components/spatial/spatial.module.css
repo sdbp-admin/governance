@@ -57,6 +57,11 @@
 .governanceSourceLinks button strong { display: block; margin-top: 3px; font-size: 14px; font-weight: 550; }
 .governanceSourceLinks button:hover strong, .governanceSourceLinks button:focus-visible strong { text-decoration: underline; text-underline-offset: 3px; }
 .shell [data-personal="true"], .adapted [data-personal="true"] { border-left: 2px solid #2596be; padding-left: 12px; background: #2596be09; }
+.pulsePause { margin: 10px 0; font-size: 13px; }
+.pulsePause summary { cursor: pointer; color: #236e87; }
+.pulsePause > div { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.pulsePause button { border: 1px solid #2596be55; border-radius: 5px; padding: 6px 10px; background: transparent; color: #236e87; cursor: pointer; }
+.pulsePause small { color: #667; }
 .shell .mainNavigation [data-personal] { border-left: 0; border-bottom: 2px solid #2596be; }
 .projectObject::after, .tensionObject::after {
   content: ""; position: absolute; inset: -2px; z-index: 6; border: 2px solid transparent;

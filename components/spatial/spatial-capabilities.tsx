@@ -18,6 +18,7 @@ import { declineProposedAction, removeAction, updateActionDetails } from "@/lib/
 import { DeclineDecision } from "@/components/decline-decision";
 import { loadCommentThreadSummary, type CommentThreadSummary } from "@/lib/supabase/comment-thread-state";
 import { SpatialConversation } from "./spatial-conversation";
+import { SpatialPulsePause } from "./spatial-pulse-pause";
 import styles from "./spatial.module.css";
 
 export type SpatialRun = (action: () => Promise<void>, message?: string) => Promise<boolean>;
@@ -123,9 +124,9 @@ export function SpatialNextSteps({ parent, kind, workspace, userId, run, onOpen,
   </div>;
 }
 
-export function SpatialCommitmentFocus({ action, people, roles, currentUserId, sourceTension, position, run, signalIds = [], targetCommentId, needsAttention = false, conversationNeedsAttention = false, unreadCount = 0, onOpenSource, onClose }: {
+export function SpatialCommitmentFocus({ action, people, roles, currentUserId, sourceTension, position, run, signalIds = [], targetCommentId, needsAttention = false, conversationNeedsAttention = false, unreadCount = 0, hasPulse = false, pulseUntil, onPulsePause, onOpenSource, onClose }: {
   action: Action; people: WorkspaceData["people"]; roles: WorkspaceData["roles"]; currentUserId: string; sourceTension?: Tension;
-  position: { x: number; y: number; side: "left" | "right" }; run: SpatialRun; signalIds?: string[]; targetCommentId?: string; needsAttention?: boolean; conversationNeedsAttention?: boolean; unreadCount?: number; onOpenSource?: () => void; onClose: () => void;
+  position: { x: number; y: number; side: "left" | "right" }; run: SpatialRun; signalIds?: string[]; targetCommentId?: string; needsAttention?: boolean; conversationNeedsAttention?: boolean; unreadCount?: number; hasPulse?: boolean; pulseUntil?: number; onPulsePause?: (hours: 0 | 24 | 48 | 72 | 168) => void; onOpenSource?: () => void; onClose: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [declining, setDeclining] = useState(false);
@@ -179,6 +180,7 @@ export function SpatialCommitmentFocus({ action, people, roles, currentUserId, s
     {!editing ? <>
       <h2>{action.title}</h2>
       <dl><div><dt>{action.status === "proposed" ? "Proposed to" : "Owner"}</dt><dd>{name(action.ownerId)}</dd></div><div><dt>Due</dt><dd>{action.due ? formatCommitmentDate(action.due) : "No deadline"}</dd></div></dl>
+      {hasPulse && onPulsePause && <SpatialPulsePause until={pulseUntil} onPause={onPulsePause} />}
       {sourceTension && <div className={styles.commitmentSource}><span>From tension ↗</span><button onClick={onOpenSource} aria-label={`Open tension: ${sourceTension.title}`}>{sourceTension.title}</button></div>}
       <button className={styles.commitmentConversation} data-personal={!conversationOpen && conversationNeedsAttention || undefined} data-unread={unreadCount > 0 || undefined} aria-expanded={conversationOpen}
         onClick={() => setConversationOpen(open => !open)}>Comments{unreadCount > 0 && <span className={styles.activityBadge}>{unreadCount > 9 ? "9+" : unreadCount}</span>}{threadSummary ? ` · ${threadSummary.totalCount}` : ""}</button>

@@ -5,7 +5,7 @@ import type { GovernanceProposal } from "@/lib/domain";
 import { supabase } from "@/lib/supabase/client";
 import { createTension, type WorkspacePerson } from "@/lib/supabase/workspace";
 import { useLocalDraft } from "@/lib/local-draft";
-import { notifyAttention } from "@/lib/supabase/attention-notifications";
+import { SpatialPulsePause } from "@/components/spatial/spatial-pulse-pause";
 
 type ConsentRound = {
   proposal_id: string;
@@ -13,6 +13,9 @@ type ConsentRound = {
   started_by: string;
   started_at: string;
   ended_at?: string | null;
+  deadline_at?: string | null;
+  meeting_reason?: "valid_objection" | "unanswered_deadline" | null;
+  unanswered_person_ids?: string[];
 };
 
 type ObjectionStatus = "pending_validation" | "valid" | "invalid" | "withdrawn";
@@ -44,7 +47,7 @@ const INVALID_REASONS = [
   "Other",
 ] as const;
 
-export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, personName, onStartMeeting, onGoTensions, onResponseRecorded }: {
+export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, personName, onStartMeeting, onGoTensions, onResponseRecorded, pulseUntil, onPulsePause }: {
   proposal: GovernanceProposal;
   people: WorkspacePerson[];
   currentUserId: string;
@@ -52,6 +55,8 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
   onStartMeeting: (proposal: GovernanceProposal) => Promise<void>;
   onGoTensions: () => void;
   onResponseRecorded?: () => void;
+  pulseUntil?: number;
+  onPulsePause?: (hours: 0 | 24 | 48 | 72 | 168) => void;
 }) {
   const [round, setRound] = useState<ConsentRound | null>(null);
   const [responses, setResponses] = useState<ConsentResponse[]>([]);
@@ -66,7 +71,13 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
   const [reviewDetails, setReviewDetails] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [now, setNow] = useState(() => Date.now());
   const consentEligible = proposal.stage === "prepared" || proposal.stage === "present_proposal";
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   async function load() {
     const [stewardResult, availabilityResult] = await Promise.all([
@@ -82,7 +93,7 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
 
     const roundResult = await supabase
       .from("governance_consent_rounds")
-      .select("proposal_id,status,started_by,started_at,ended_at")
+      .select("proposal_id,status,started_by,started_at,ended_at,deadline_at,meeting_reason,unanswered_person_ids")
       .eq("proposal_id", proposal.id)
       .maybeSingle();
     if (roundResult.error) throw roundResult.error;
@@ -126,7 +137,6 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
     try {
       const result = await supabase.rpc("start_governance_quick_consent", { target_proposal_id: proposal.id });
       if (result.error) throw result.error;
-      await notifyAttention({ kind: "governance_consent", proposalId: proposal.id });
       await load();
       window.dispatchEvent(new Event("focus"));
     } catch (err) {
@@ -293,13 +303,19 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
   const requiredPeople = people.filter((person) => isAvailable(person.id));
   const onLeavePeople = people.filter((person) => !isAvailable(person.id));
   const requiredResponses = requiredPeople.filter((person) => responseByPerson.has(person.id)).length;
+  const deadline = round.deadline_at ? new Date(round.deadline_at).getTime() : null;
+  const remaining = deadline === null ? null : deadline - now;
+  const deadlineLabel = deadline === null ? null : new Date(deadline).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  const unanswered = (round.unanswered_person_ids ?? []).map(personName);
   const reviewingAsProcessSteward = Boolean(reviewingPersonId && currentUserId === proposal.proposerId && isProcessSteward);
 
   if (round.status === "meeting_required") {
     return <div className="governance-round">
-      <span className="kind">Valid objection</span>
+      <span className="kind">{round.meeting_reason === "unanswered_deadline" ? "Response deadline passed" : "Valid objection"}</span>
       <h4>Governance meeting required</h4>
-      <p>A validity check found concrete harm that needs integration. This proposal cannot pass as written.</p>
+      {round.meeting_reason === "unanswered_deadline"
+        ? <p>{responses.filter(response => response.response === "no_objection").length} no objections · {responses.filter(response => response.response === "objection").length} recorded objections · {unanswered.length} no responses{unanswered.length ? ` (${unanswered.join(", ")})` : ""}. Silence was not counted as consent or an objection. The recorded responses remain on file for the governance meeting.</p>
+        : <p>A validity check found concrete harm that needs integration. This proposal cannot pass as written.</p>}
       {validObjections.length > 0 && <div className="governance-entry-list">{validObjections.map((response) => <ObjectionEntry key={response.person_id} response={response} proposal={proposal} currentUserId={currentUserId} personName={personName} busy={busy} isProcessSteward={isProcessSteward} onWithdraw={withdrawObjection} onCreateTension={createTensionFromObjection} />)}</div>}
       <div className="process-actions"><button className="primary" type="button" onClick={() => void onStartMeeting(proposal)}>{proposal.stage === "prepared" ? "Start governance meeting" : "Continue governance meeting"}</button></div>
       {error && <div className="auth-message error">{error}</div>}
@@ -313,7 +329,9 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
   return <div className="governance-round">
     <span className="kind">Quick consent</span>
     <h4>{requiredResponses} of {requiredPeople.length} required responses</h4>
-    <p>Silence does not count as consent. Everyone currently participating in governance must respond. Board members on leave remain board members but are not counted as waiting. Raising an objection does not stop other responses: it is first tested for validity. Final acceptance waits while an objection is pending; only a valid objection routes the proposal to a governance meeting.</p>
+    <p>Silence does not count as consent. Everyone currently participating in governance can respond until the deadline. If responses are missing then, this proposal moves to a governance meeting; nobody is recorded as objecting merely because they did not answer. Board members on leave are not counted as waiting. Objections are checked for validity before they can block Quick Consent.</p>
+    {deadlineLabel && <p className="objection-essential">Response deadline: <strong>{deadlineLabel}</strong>. {remaining !== null && remaining <= 0 ? "The window has ended; the meeting result is being recorded." : remaining !== null && remaining <= 24 * 60 * 60 * 1000 && !ownResponse && ownAvailable ? "Your response is still missing. You have less than 24 hours; otherwise a governance meeting will be required." : "Unanswered responses at this time will require a governance meeting."}</p>}
+    {ownAvailable && !ownResponse && onPulsePause && <SpatialPulsePause until={pulseUntil} onPause={onPulsePause} />}
     {onLeavePeople.length > 0 && <small className="draft-saved-note">{onLeavePeople.length} board {onLeavePeople.length === 1 ? "member is" : "members are"} currently on leave and not included in the required response count.</small>}
 
     {objections.length > 0 && <div className="governance-entry-list">{objections.map((response) => <ObjectionEntry key={response.person_id} response={response} proposal={proposal} currentUserId={currentUserId} personName={personName} busy={busy} isProcessSteward={isProcessSteward} onWithdraw={withdrawObjection} onBeginReview={beginReview} onCreateTension={createTensionFromObjection} />)}</div>}

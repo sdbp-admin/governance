@@ -12,6 +12,7 @@ import { Capture, ProjectTools, TensionTools, SpatialPoll, SpatialNextSteps, Spa
 import { SpatialConversation } from "./spatial-conversation";
 import { activeProjectActions, layoutProjectObjects, layoutProjectPreviewObjects } from "./spatial-project-objects";
 import { SpatialSurfaces, type SpatialSurface } from "./spatial-surfaces";
+import { SpatialPulsePause } from "./spatial-pulse-pause";
 import { buildSpatialSignalTrails, loadSpatialMentions, spatialAttention, loadGovernanceResponseAttention, loadSpatialUnreadActivity, type PersonalAttention, type SpatialSignalTrail, type SpatialUnreadActivity } from "./spatial-attention";
 import type { SpatialProfile } from "@/components/spatial/spatial-authenticated-launch";
 import styles from "@/components/spatial/spatial.module.css";
@@ -120,13 +121,15 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
     return () => window.clearTimeout(timer);
   }, [pulsePauses, pulseNow]);
 
-  function pauseTensionPulse(tensionId: string, hours: number) {
+  function pausePulses(ids: string[], hours: 0 | 24 | 48 | 72 | 168) {
     const now = Date.now();
     setPulseNow(now);
     setPulsePauses(current => {
       const next = { ...current };
-      if (hours > 0) next[tensionId] = now + hours * 60 * 60 * 1000;
-      else delete next[tensionId];
+      for (const id of ids) {
+        if (hours > 0) next[id] = now + hours * 60 * 60 * 1000;
+        else delete next[id];
+      }
       savePulsePauses(pulsePauseStorageKey, next);
       return next;
     });
@@ -191,9 +194,15 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
     const timer = window.setTimeout(() => document.getElementById(`spatial-tension-${newlyCreatedTensionId}`)?.focus({ preventScroll: true }), 40);
     return () => window.clearTimeout(timer);
   }, [depth.kind, newlyCreatedTensionId, newlyCreatedIsVisible]);
-  const signalTrails = buildSpatialSignalTrails(workspace, attention, unreadActivity).map(trail =>
-    trail.needsAttention && trail.tensionId && trail.id === `attention:tension-${trail.tensionId}` && (pulsePauses[trail.tensionId] ?? 0) > pulseNow
+  const allSignalTrails = buildSpatialSignalTrails(workspace, attention, unreadActivity);
+  const signalTrails = allSignalTrails.map(trail =>
+    trail.needsAttention && Math.max(pulsePauses[trail.id] ?? 0,
+      trail.tensionId && trail.id === `attention:tension-${trail.tensionId}` ? pulsePauses[trail.tensionId] ?? 0 : 0) > pulseNow
       ? { ...trail, needsAttention: false } : trail);
+  const pulseIds = (test: (trail: SpatialSignalTrail) => boolean) => allSignalTrails.filter(trail => trail.needsAttention && test(trail)).map(trail => trail.id);
+  const pauseUntil = (ids: string[]) => ids.length && ids.every(id => (pulsePauses[id] ?? 0) > pulseNow)
+    ? Math.min(...ids.map(id => pulsePauses[id])) : undefined;
+  const activeConsentPulse = signalTrails.some(trail => trail.endpoint === "governance" && trail.needsAttention);
   const needsProject = (id: string) => signalTrails.some(trail => trail.projectId === id && trail.needsAttention);
   const needsTension = (id: string) => signalTrails.some(trail => trail.tensionId === id && !trail.actionId && trail.needsAttention);
   const needsAction = (id: string) => signalTrails.some(trail => trail.actionId === id && trail.needsAttention);
@@ -375,7 +384,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
         {zoomed && <button onClick={up}>← {surface ? "Project" : depth.kind === "tension" ? selectedProject?.title ?? "Organisation" : "Organisation"}</button>}
         {zoomed && <span>{depth.kind === "project" ? selectedProject?.title : "Tension"}</span>}
       </nav>
-      <nav className={styles.mainNavigation} aria-label="Workspace surfaces"><button onClick={() => setMainSurface(null)} aria-current={!mainSurface ? "page" : undefined}>Workspace</button><button data-consent-due={consentProposalIds.length > 0 || undefined} onClick={() => { setGovernanceTargetProposalId(consentProposalIds.length === 1 ? consentProposalIds[0] : null); setMainSurface("governance"); if (consentProposalIds.length !== 1) window.setTimeout(() => document.querySelector<HTMLElement>(`.${styles.mainSurface}`)?.scrollTo({ top: 0, behavior: "smooth" }), 0); }}>Governance{consentProposalIds.length > 0 && <span className={styles.governanceCount} aria-label={`${consentProposalIds.length} Quick Consent ${consentProposalIds.length === 1 ? "response" : "responses"} needed`}>{consentProposalIds.length}</span>}</button><button onClick={() => setMainSurface("records")}>Records</button></nav>
+      <nav className={styles.mainNavigation} aria-label="Workspace surfaces"><button onClick={() => setMainSurface(null)} aria-current={!mainSurface ? "page" : undefined}>Workspace</button><button data-consent-due={activeConsentPulse || undefined} onClick={() => { setGovernanceTargetProposalId(consentProposalIds.length === 1 ? consentProposalIds[0] : null); setMainSurface("governance"); if (consentProposalIds.length !== 1) window.setTimeout(() => document.querySelector<HTMLElement>(`.${styles.mainSurface}`)?.scrollTo({ top: 0, behavior: "smooth" }), 0); }}>Governance{consentProposalIds.length > 0 && <span className={styles.governanceCount} aria-label={`${consentProposalIds.length} Quick Consent ${consentProposalIds.length === 1 ? "response" : "responses"} needed`}>{consentProposalIds.length}</span>}</button><button onClick={() => setMainSurface("records")}>Records</button></nav>
       <details className={styles.utilities}><summary>Utilities</summary><div><button data-personal={attention.some(a => a.kind === "commitment") || undefined} onClick={() => setMainSurface("commitments")}>All commitments</button><button onClick={() => setMainSurface("compass")}>Compass</button><button onClick={() => { const url = new URL(window.location.href); url.search = "?tactical=1"; window.open(url, "_blank", "noopener"); }}>Tactical meeting</button><button onClick={() => { const url = new URL(window.location.href); url.search = "?governanceMeeting=1"; window.open(url, "_blank", "noopener"); }}>Governance meeting</button><button data-personal={attention.some(a => a.projectId && workspace.projects.some(p => p.id === a.projectId && p.status === "complete")) || undefined} onClick={() => setMainSurface("completed")}>Completed projects</button></div></details>
       <div className={styles.profile}><button onClick={() => setMainSurface("account")}>{profile.name} · Account</button></div>
     </header>
@@ -505,6 +514,9 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
         needsAttention={needsAction(focusedAction.id)}
         conversationNeedsAttention={signalTrails.some(trail => trail.actionId === focusedAction.id && trail.endpoint === "action_conversation" && trail.needsAttention)}
         unreadCount={signalTrails.filter(trail => trail.actionId === focusedAction.id && trail.endpoint === "action_conversation").reduce((sum, trail) => sum + trail.unreadCount, 0)}
+        hasPulse={pulseIds(trail => trail.actionId === focusedAction.id).length > 0}
+        pulseUntil={pauseUntil(pulseIds(trail => trail.actionId === focusedAction.id))}
+        onPulsePause={hours => pausePulses(pulseIds(trail => trail.actionId === focusedAction.id), hours)}
         onOpenSource={focusedAction.sourceTensionId ? () => navigate({ kind: "tension", projectId: selectedProject.id, tensionId: focusedAction.sourceTensionId! }) : undefined}
         onClose={() => setFocusedActionId(null)} />}
       </div>
@@ -536,7 +548,10 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
       })}
       {depth.kind === "project" && selectedProject && <ProjectContext key={selectedProject.id} project={selectedProject} workspace={workspace} peopleById={peopleById}
         surface={surface} onSurface={setSurface} tensionCount={linked.length} userId={profile.id} run={run} onCapture={() => setCapture("tension")} attention={attention.filter(a => signalTrails.some(trail => trail.id === `attention:${a.id}` && trail.projectId === selectedProject.id))} requests={requests}
-        trails={signalTrails.filter(trail => trail.projectId === selectedProject.id)} onPersonal={openPersonal} />}
+        trails={signalTrails.filter(trail => trail.projectId === selectedProject.id)} onPersonal={openPersonal}
+        hasPulse={pulseIds(trail => trail.projectId === selectedProject.id && !trail.tensionId && !trail.actionId && trail.endpoint !== "governance").length > 0}
+        pulseUntil={pauseUntil(pulseIds(trail => trail.projectId === selectedProject.id && !trail.tensionId && !trail.actionId && trail.endpoint !== "governance"))}
+        onPulsePause={hours => pausePulses(pulseIds(trail => trail.projectId === selectedProject.id && !trail.tensionId && !trail.actionId && trail.endpoint !== "governance"), hours)} />}
       {depth.kind === "project" && selectedProject && surface && <div className={styles.projectReading} ref={surfaceRef} tabIndex={-1} aria-label={surface === "conversation" ? "Project conversation" : "Project commitments"}>
         <button className={styles.closeReading} onClick={() => setSurface(null)}>← Back to project</button>
         {surface === "conversation" ? <SpatialConversation key={selectedProject.id} kind="project" id={selectedProject.id} userId={profile.id} people={workspace.people} signalIds={(workspace.attentionSignals ?? []).filter(s => s.projectId === selectedProject.id && s.recipientId === profile.id && s.signalType === "project_comment").map(s => s.id)} targetCommentId={attentionTarget?.kind === "project" && attentionTarget.id === selectedProject.id ? attentionTarget.commentId : undefined} /> :
@@ -549,7 +564,10 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
         targetActionId={attentionTarget?.kind === "action" ? attentionTarget.id : undefined} targetRequestId={attentionTarget?.kind === "request" ? attentionTarget.id : undefined}
         targetResolution={attentionTarget?.kind === "resolution" && attentionTarget.id === selectedTension.id}
         pulsePausedUntil={(pulsePauses[selectedTension.id] ?? 0) > pulseNow ? pulsePauses[selectedTension.id] : undefined}
-        onPulsePause={hours => pauseTensionPulse(selectedTension.id, hours)}
+        onPulsePause={hours => pausePulses([selectedTension.id, `attention:tension-${selectedTension.id}`], hours)}
+        otherPulseUntil={pauseUntil(pulseIds(trail => trail.tensionId === selectedTension.id && !trail.actionId && trail.id !== `attention:tension-${selectedTension.id}` && trail.endpoint !== "governance"))}
+        hasOtherPulse={pulseIds(trail => trail.tensionId === selectedTension.id && !trail.actionId && trail.id !== `attention:tension-${selectedTension.id}` && trail.endpoint !== "governance").length > 0}
+        onOtherPulsePause={hours => pausePulses(pulseIds(trail => trail.tensionId === selectedTension.id && !trail.actionId && trail.id !== `attention:tension-${selectedTension.id}` && trail.endpoint !== "governance"), hours)}
         onGovernance={proposalId => { setGovernanceTargetProposalId(proposalId ?? null); setMainSurface("governance"); }} />}
       {((depth.kind === "project" && !selectedProject) || (depth.kind === "tension" && !selectedTension)) &&
         <div className={styles.missing}><h1>This context is no longer active.</h1><button onClick={up}>Return to the landscape</button></div>}
@@ -566,7 +584,12 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
     </div>
     {depth.kind === "organisation" && projectTooltip && !mainSurface && <div className={styles.projectTooltip} data-side={projectTooltip.side}
       style={{ left: projectTooltip.x, top: projectTooltip.y }} role="tooltip"><strong>{projectTooltip.title}</strong><small>{projectTooltip.summary}</small></div>}
-    <SpatialSurfaces surface={mainSurface} workspace={workspace} profile={profile} run={run} governanceTargetProposalId={governanceTargetProposalId} consentProposalIds={consentProposalIds} onGovernanceResponse={() => { setGovernanceTargetProposalId(null); void refresh(true); }}
+    <SpatialSurfaces surface={mainSurface} workspace={workspace} profile={profile} run={run} governanceTargetProposalId={governanceTargetProposalId} consentProposalIds={consentProposalIds}
+      pulseUntilForAction={id => pauseUntil(pulseIds(trail => trail.actionId === id))}
+      onActionPulsePause={(id, hours) => pausePulses(pulseIds(trail => trail.actionId === id), hours)}
+      pulseUntilForProposal={id => pauseUntil(pulseIds(trail => trail.endpoint === "governance" && governanceAttention.some(a => `attention:${a.id}` === trail.id && a.proposalId === id)))}
+      onProposalPulsePause={(id, hours) => pausePulses(pulseIds(trail => trail.endpoint === "governance" && governanceAttention.some(a => `attention:${a.id}` === trail.id && a.proposalId === id)), hours)}
+      onGovernanceResponse={() => { setGovernanceTargetProposalId(null); void refresh(true); }}
       onClose={() => { setMainSurface(null); setGovernanceTargetProposalId(null); }} onSurface={surface => { setMainSurface(surface); if (surface !== "governance") setGovernanceTargetProposalId(null); }}
       onProject={id => navigate({ kind: "project", projectId: id })} onAction={openAction} onCapture={() => { navigate({ kind: "organisation" }); setCapture("tension"); }} onSignOut={onSignOut} />
     {capture && <Capture kind={capture} projectId={depth.kind === "project" ? projectId : undefined} userId={profile.id} run={run}
@@ -574,7 +597,9 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
         if (capture === "project") setNewlyCreatedProjectId(id);
         else if (depth.kind === "organisation") setNewlyCreatedTensionId(id);
       }} onClose={() => setCapture(null)} />}
-    {orphanAction && <SpatialDialog title="Commitment" onClose={() => setOrphanAction(null)}><h3>{orphanAction.title}</h3><p>No source project or tension is recorded for this commitment.</p></SpatialDialog>}
+    {orphanAction && <SpatialDialog title="Commitment" onClose={() => setOrphanAction(null)}><h3>{orphanAction.title}</h3><p>No source project or tension is recorded for this commitment.</p>
+      {pulseIds(trail => trail.actionId === orphanAction.id).length > 0 && <SpatialPulsePause until={pauseUntil(pulseIds(trail => trail.actionId === orphanAction.id))} onPause={hours => pausePulses(pulseIds(trail => trail.actionId === orphanAction.id), hours)} />}
+    </SpatialDialog>}
     {attentionError && <div className={styles.attentionWarning} role="status">{attentionError}</div>}
     {error && <div className={styles.error} role="alert">{error}<button onClick={() => void refresh(true)}>Retry</button></div>}
     {notice && <div className={styles.notice} role="status"><span>{notice}</span>{newlyCreatedTensionId && newlyCreatedIsVisible && <button onClick={() => {
@@ -674,9 +699,10 @@ function InteractiveProjectCircle({ id, domId, kind = "project", title, summary,
   </div>;
 }
 
-function ProjectContext({ project, workspace, peopleById, surface, onSurface, tensionCount, userId, run, onCapture, attention, requests, trails, onPersonal }: {
+function ProjectContext({ project, workspace, peopleById, surface, onSurface, tensionCount, userId, run, onCapture, attention, requests, trails, onPersonal, hasPulse, pulseUntil, onPulsePause }: {
   project: Project; workspace: WorkspaceData; peopleById: Map<string, string>; surface: ProjectSurface; onSurface: (surface: ProjectSurface) => void; tensionCount: number;
   userId: string; run: Run; onCapture: () => void; attention: PersonalAttention[]; requests: TensionRequest[]; trails: SpatialSignalTrail[]; onPersonal: (item: PersonalAttention) => void;
+  hasPulse: boolean; pulseUntil?: number; onPulsePause: (hours: 0 | 24 | 48 | 72 | 168) => void;
 }) {
   const [summary, setSummary] = useState({ totalCount: 0, unreadCount: 0 });
   const [summaryError, setSummaryError] = useState("");
@@ -688,7 +714,7 @@ function ProjectContext({ project, workspace, peopleById, surface, onSurface, te
   }, [project.id, surface]);
   const actions = workspace.actions.filter((a) => a.projectId === project.id && isActiveAction(a));
   const projectMention = attention.find((item) => item.kind === "mention" && !item.tensionId && !item.actionId);
-  const personalCommitment = attention.find((item) => item.kind === "commitment" && !item.tensionId);
+  const personalCommitment = attention.find((item) => item.kind === "commitment" && !item.tensionId && trails.some(trail => trail.id === `attention:${item.id}` && trail.needsAttention));
   const unreadCount = trails.reduce((sum, trail) => sum + trail.unreadCount, 0);
   const conversationTrails = trails.filter(trail => trail.endpoint === "project_conversation");
   const conversationUnread = conversationTrails.reduce((sum, trail) => sum + trail.unreadCount, 0);
@@ -696,6 +722,7 @@ function ProjectContext({ project, workspace, peopleById, surface, onSurface, te
   const updateNeedsAttention = trails.some(trail => trail.endpoint === "project_update" && trail.needsAttention);
   return <div className={styles.projectContext} data-reading={Boolean(surface)}>
     <header><span className={styles.eyebrow}>Project</span><h1>{project.title}</h1></header>
+    {hasPulse && <SpatialPulsePause until={pulseUntil} onPause={onPulsePause} />}
     <div className={styles.projectFacts}>
       <p className={styles.currentState}>{project.summary || "No current state has been recorded."}</p>
       <div className={styles.owner}><span aria-hidden="true">{initials(peopleById.get(project.ownerId) ?? "?")}</span><div><strong>{peopleById.get(project.ownerId) ?? "Unknown"}</strong><small>Project owner</small></div></div>
@@ -716,9 +743,10 @@ function ProjectContext({ project, workspace, peopleById, surface, onSurface, te
   </div>;
 }
 
-function TensionContext({ tension, workspace, requests, currentUserId, peopleById, urgent, run, initialTab, attention, trails, targetCommentId, targetActionId, targetRequestId, targetResolution, pulsePausedUntil, onPulsePause, onGovernance }: {
+function TensionContext({ tension, workspace, requests, currentUserId, peopleById, urgent, run, initialTab, attention, trails, targetCommentId, targetActionId, targetRequestId, targetResolution, pulsePausedUntil, onPulsePause, hasOtherPulse, otherPulseUntil, onOtherPulsePause, onGovernance }: {
   tension: Tension; workspace: WorkspaceData; requests: TensionRequest[]; currentUserId: string;
-  peopleById: Map<string, string>; urgent: boolean; run: Run; initialTab: "conversation" | "requests" | "commitments"; attention: PersonalAttention[]; trails: SpatialSignalTrail[]; targetCommentId?: string; targetActionId?: string; targetRequestId?: string; targetResolution?: boolean; pulsePausedUntil?: number; onPulsePause: (hours: number) => void; onGovernance: (proposalId?: string) => void;
+  peopleById: Map<string, string>; urgent: boolean; run: Run; initialTab: "conversation" | "requests" | "commitments"; attention: PersonalAttention[]; trails: SpatialSignalTrail[]; targetCommentId?: string; targetActionId?: string; targetRequestId?: string; targetResolution?: boolean; pulsePausedUntil?: number; onPulsePause: (hours: 0 | 24 | 48 | 72 | 168) => void;
+  hasOtherPulse: boolean; otherPulseUntil?: number; onOtherPulsePause: (hours: 0 | 24 | 48 | 72 | 168) => void; onGovernance: (proposalId?: string) => void;
 }) {
   const [tab, setTab] = useState<"conversation" | "requests" | "commitments">(initialTab);
   const [requestOpen, setRequestOpen] = useState(false);
@@ -774,11 +802,12 @@ function TensionContext({ tension, workspace, requests, currentUserId, peopleByI
     <header className={styles.tensionIdentity}><div className={styles.tensionMeta}><span className={styles.eyebrow}>Tension</span><span>Raised {elapsed(tension.createdAt)} · {personName(tension.raiserId)}</span><span>{tensionState(tension)}{urgent ? " · explicitly urgent" : ""}</span></div><h1 data-prose={tension.title.length > 180 || undefined}>{tension.title}</h1>
       {tension.latestNote && <details className={styles.needContext} open><summary>Recorded need / context</summary><p>{tension.latestNote}</p></details>}
     </header>
+    {hasOtherPulse && <SpatialPulsePause until={otherPulseUntil} onPause={onOtherPulsePause} />}
     {requestGroups.length > 0 && <div className={styles.dependencyStrip}>{requestGroups.map((group) => {
       const open = group.filter(request => request.status === "open");
       const mine = open.some(request => request.recipientId === currentUserId);
       const names = open.length ? open.map(request => personName(request.recipientId)) : group.map(request => personName(request.recipientId));
-      return <button key={group[0].batchId || group[0].id} data-owes={mine || undefined} onClick={() => setTab("requests")}>
+      return <button key={group[0].batchId || group[0].id} data-owes={mine && group.some(request => trails.some(trail => trail.id === `attention:request-${request.id}` && trail.needsAttention)) || undefined} onClick={() => setTab("requests")}>
         {open.length ? `Waiting for ${names.join(", ")}` : `Responses from ${names.join(", ")}`}<small>{` · ${age(group[0].requestedAt)}`}</small>
       </button>;
     })}</div>}
@@ -796,7 +825,7 @@ function TensionContext({ tension, workspace, requests, currentUserId, peopleByI
         {pulsePausedUntil && <button type="button" onClick={() => { onPulsePause(0); setPulseMenuOpenId(null); }}>Resume now</button>}
         <small>Unread badges and the underlying work stay visible.</small>
       </div>}
-    </div> : <p className={styles.exactAttention} data-personal key={a.id}>{a.label}{a.kind === "governance" && <button onClick={() => onGovernance(a.proposalId)}>Open Governance</button>}</p>)}
+    </div> : <p className={styles.exactAttention} data-personal={trails.some(trail => trail.id === `attention:${a.id}` && trail.needsAttention) || undefined} key={a.id}>{a.label}{a.kind === "governance" && <button onClick={() => onGovernance(a.proposalId)}>Open Governance</button>}</p>)}
     <div className={styles.tensionTabs} role="tablist" aria-label="Tension information">
       {(["conversation", "requests", "commitments"] as const).map((name) => {
         const needsAttention = name === "conversation" ? conversationNeedsAttention : name === "requests" ? requestsNeedAttention : commitmentsNeedAttention;
@@ -819,7 +848,7 @@ function TensionContext({ tension, workspace, requests, currentUserId, peopleByI
           const mine = group.find(request => request.status === "open" && request.recipientId === currentUserId);
           const recipientNames = group.map(request => personName(request.recipientId));
           return <article className={styles.requestRow} id={targeted && targetRequestId ? `spatial-request-${targetRequestId}` : undefined} tabIndex={targeted ? -1 : undefined}
-            data-target={targeted || undefined} key={first.batchId || first.id} data-open={open.length > 0 || undefined} data-personal={Boolean(mine) || undefined}>
+            data-target={targeted || undefined} key={first.batchId || first.id} data-open={open.length > 0 || undefined} data-personal={Boolean(mine && group.some(request => trails.some(trail => trail.id === `attention:request-${request.id}` && trail.needsAttention))) || undefined}>
             <div><strong>{open.length ? `Waiting for ${open.map(request => personName(request.recipientId)).join(", ")}` : group.some(request => request.status === "declined") ? `Declined by ${group.filter(request => request.status === "declined").map(request => personName(request.recipientId)).join(", ")}` : `Responses received from ${recipientNames.join(", ")}`}</strong>
               <small>{personName(first.requesterId)} → {recipientNames.join(", ")}{first.roleId ? ` · ${workspace.roles.find(role => role.id === first.roleId)?.title ?? "Role"}` : ""} · {first.kind === "conversation" ? "Real conversation" : "Input / help"} · requested {elapsed(first.requestedAt)}</small></div>
             {first.detail && <p>{first.detail}</p>}
