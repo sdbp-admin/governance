@@ -15,8 +15,9 @@ import { SpatialDialog, type SpatialRun } from "./spatial-capabilities";
 import { SpatialPulsePause } from "./spatial-pulse-pause";
 import type { SpatialProfile } from "./spatial-authenticated-launch";
 import styles from "./spatial.module.css";
+import organisationStyles from "../organisation-governance.module.css";
 
-export type SpatialSurface = "governance" | "records" | "commitments" | "account" | "compass" | "completed" | null;
+export type SpatialSurface = "organisation" | "governance" | "records" | "commitments" | "account" | "compass" | "completed" | null;
 export function SpatialSurfaces({ surface, workspace, profile, run, governanceTargetProposalId, consentProposalIds, onGovernanceResponse, pulseUntilForProposal, onProposalPulsePause, pulseUntilForAction, onActionPulsePause, onClose, onSurface, onProject, onAction, onCapture, onSignOut }: {
   surface: SpatialSurface; workspace: WorkspaceData; profile: SpatialProfile; run: SpatialRun; governanceTargetProposalId?: string | null; consentProposalIds: string[]; onGovernanceResponse: () => void; onClose: () => void;
   pulseUntilForProposal: (id: string) => number | undefined; onProposalPulsePause: (id: string, hours: 0 | 24 | 48 | 72 | 168) => void;
@@ -38,13 +39,13 @@ export function SpatialSurfaces({ surface, workspace, profile, run, governanceTa
   if (surface === "account") return <SpatialDialog title="Account & access" onClose={onClose}><SpatialAccount workspace={workspace} profile={profile} run={run} onSignOut={onSignOut} /></SpatialDialog>;
   if (surface === "completed") return <SpatialDialog title="Completed projects" onClose={onClose}><div className={styles.sourceList}>{workspace.projects.filter(p => p.status === "complete").map(p => <button key={p.id} onClick={() => onProject(p.id)}><strong>{p.title}</strong><small>{name(p.ownerId)} · completed · open context or reopen</small></button>)}</div></SpatialDialog>;
   if (surface === "commitments") return <SpatialDialog title="All commitments" onClose={onClose}><CommitmentsOverview workspace={workspace} userId={profile.id} run={run} onOpen={onAction} pulseUntilForAction={pulseUntilForAction} onActionPulsePause={onActionPulsePause} /></SpatialDialog>;
-  return <section className={`${styles.mainSurface} ${styles.adapted}`} aria-label={surface === "records" ? "Records" : "Governance"}>
-    <header className={styles.surfaceHeading}><div><span className={styles.eyebrow}>SDBP</span><h1>{surface === "records" ? "Records" : "Governance"}</h1></div><button onClick={onClose}>← Spatial workspace</button></header>
-    {surface === "records" ? <RecordsView governanceProposals={workspace.governanceProposals} tensions={workspace.tensions} profileId={profile.id} /> : <>
-      {consentProposalIds.length > 0 && <section className={styles.governanceDue} aria-label="Your Quick Consent responses"><strong>Your Quick Consent responses · {consentProposalIds.length}</strong><div>{consentProposalIds.map(id => { const proposal = workspace.governanceProposals.find(item => item.id === id); return proposal && <button type="button" key={id} onClick={() => { const target = document.getElementById(`governance-consent-${id}`); target?.scrollIntoView({ behavior: "smooth", block: "center" }); target?.focus({ preventScroll: true }); }}>{proposal.title} ↗</button>; })}</div></section>}
-      <section className={styles.secondarySection}><h2>People, roles & availability</h2><OrganisationWorkspaceView workspace={workspace} currentUserId={profile.id} canInvite={inviteAllowed} personName={name} presence={presence} onInvite={(n, email) => run(() => invitePerson(n, email), "Invitation sent.")} onSaveRole={role => run(() => saveRole(role))} onDeleteRole={id => run(() => deleteRole(id))} onOpenProject={onProject} /></section>
+  const title = surface === "records" ? "Records" : surface === "organisation" ? "Organisation" : "Governance";
+  return <section className={`${styles.mainSurface} ${styles.adapted} ${surface !== "records" ? organisationStyles.surface : ""}`} aria-label={title}>
+    <header className={styles.surfaceHeading}><div><span className={styles.eyebrow}>SDBP</span><h1>{title}</h1></div><button onClick={onClose}>← Spatial workspace</button></header>
+    {surface === "records" ? <RecordsView governanceProposals={workspace.governanceProposals} tensions={workspace.tensions} profileId={profile.id} /> : surface === "organisation" ?
+      <OrganisationWorkspaceView workspace={workspace} currentUserId={profile.id} canInvite={inviteAllowed} personName={name} presence={presence} onInvite={(n, email) => run(() => invitePerson(n, email), "Invitation sent.")} onSaveRole={role => run(() => saveRole(role))} onDeleteRole={id => run(() => deleteRole(id))} onOpenProject={onProject} onGoRecords={() => onSurface("records")} /> :
       <GovernanceWorkspaceView workspace={workspace} currentUserId={profile.id} personName={name} focusProposalId={governanceTargetProposalId} consentProposalIds={consentProposalIds} onResponseRecorded={onGovernanceResponse} pulseUntilForProposal={pulseUntilForProposal} onProposalPulsePause={onProposalPulsePause} onCreateProposal={input => run(() => createGovernanceProposal({ ...input, proposerId: profile.id }))} onStartMeeting={startMeeting} onGoTensions={onCapture} onGoRecords={() => onSurface("records")} />
-    </>}
+    }
   </section>;
 }
 

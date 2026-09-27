@@ -5,12 +5,13 @@ import type { RoleDefinition } from "@/lib/domain";
 import type { WorkspaceData } from "@/lib/supabase/workspace";
 import type { WorkspacePresenceSnapshot } from "@/lib/supabase/presence";
 import { supabase } from "@/lib/supabase/client";
-import { HelpTip } from "@/components/guidance";
+import { AGREEMENT_CATEGORIES } from "./governance-effect-editor";
+import styles from "./organisation-governance.module.css";
 import { RoleEditorModal, blankRole } from "@/components/role-editor-modal";
 
 type GovernanceAvailability = { id: string; governance_available: boolean; governance_leave_expected_return_on?: string | null };
 
-export function OrganisationWorkspaceView({ workspace, currentUserId, canInvite, personName, presence, onInvite, onSaveRole, onDeleteRole }: {
+export function OrganisationWorkspaceView({ workspace, currentUserId, canInvite, personName, presence, onInvite, onSaveRole, onDeleteRole, onGoRecords }: {
   workspace: WorkspaceData;
   currentUserId: string;
   canInvite: boolean;
@@ -20,7 +21,11 @@ export function OrganisationWorkspaceView({ workspace, currentUserId, canInvite,
   onSaveRole: (role: RoleDefinition) => Promise<boolean>;
   onDeleteRole: (id: string) => Promise<boolean>;
   onOpenProject: (id: string) => void;
+  onGoRecords?: () => void;
 }) {
+  const [view, setView] = useState<"structure" | "roles" | "circles" | "people">("structure");
+  const [query, setQuery] = useState("");
+  const [unfilledOnly, setUnfilledOnly] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<RoleDefinition | null>(null);
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
@@ -62,8 +67,21 @@ export function OrganisationWorkspaceView({ workspace, currentUserId, canInvite,
   const unfilledRoles = workspace.roles.filter((role) => !role.isCircle && !role.holderIds.length);
 
   return <>
-    <div className="org-launch-top"><div><span className="section-kicker">People and structure</span><h2>Who is here, and how are we working together?</h2></div><div className="org-actions">{canInvite && <button className="primary small" onClick={() => setInviteOpen(true)}>+ Invite person</button>}<button className="secondary small" onClick={() => setEditingRole(blankRole(currentUserId))}>+ Add role or circle</button></div></div>
-    <OrganisationStructure roles={workspace.roles} peopleCount={workspace.people.length} selectedRole={selectedRole} personName={personName} onSelect={setSelectedRoleId} onEdit={setEditingRole} />
+    <div className={styles.toolbar}>
+      <nav className={styles.tabs} aria-label="Organisation views">
+        {(["structure", "roles", "circles", "people"] as const).map(tab => <button key={tab} aria-pressed={view === tab} onClick={() => { setView(tab); setQuery(""); }}>{tab === "structure" ? "Structure" : tab === "roles" ? `Roles · ${workspace.roles.filter(role => !role.isCircle).length}` : tab === "circles" ? `Circles · ${workspace.roles.filter(role => role.isCircle).length}` : `People · ${workspace.people.length}`}</button>)}
+      </nav>
+      <div className="org-actions">{canInvite && <button className="secondary small" onClick={() => setInviteOpen(true)}>+ Invite person</button>}<button className="secondary small" onClick={() => setEditingRole({ ...blankRole(currentUserId), isCircle: view === "circles", holderIds: view === "circles" ? [] : [currentUserId] })}>+ Add role or circle</button></div>
+    </div>
+    {(view === "roles" || view === "circles") && <div className={styles.toolbar}><input className={styles.search} aria-label={view === "roles" ? "Search all roles" : "Search all circles"} placeholder={view === "roles" ? "Find any role or holder…" : "Find any circle…"} value={query} onChange={event => setQuery(event.target.value)} />{view === "roles" && <label><input type="checkbox" checked={unfilledOnly} onChange={event => setUnfilledOnly(event.target.checked)} /> Unfilled only · {unfilledRoles.length}</label>}</div>}
+    {view !== "people" && <div className={styles.orgLayout}>
+      {view === "structure" ? <OrganisationStructure roles={workspace.roles} peopleCount={workspace.people.length} selectedRoleId={selectedRoleId} personName={personName} onSelect={setSelectedRoleId} /> : <div className={styles.list} aria-label={view === "roles" ? "All organisational roles" : "All organisational circles"}>
+        {workspace.roles.filter(role => Boolean(role.isCircle) === (view === "circles") && (view !== "roles" || !unfilledOnly || !role.holderIds.length) && [role.title, ...role.holderIds.map(personName)].join(" ").toLowerCase().includes(query.toLowerCase())).sort((a, b) => a.title.localeCompare(b.title)).map(role => <button className={styles.listRow} key={role.id} aria-pressed={selectedRoleId === role.id} onClick={() => setSelectedRoleId(role.id)}><span><strong>{role.title}</strong><small>{structurePath(role, workspace.roles)}</small></span><small>{role.isCircle ? `${workspace.roles.filter(child => child.parentId === role.id).length} contained roles / circles · ${circleMembers(role.id, workspace.roles).length} members` : role.holderIds.map(personName).join(", ") || "Unfilled"}</small></button>)}
+        {!workspace.roles.some(role => Boolean(role.isCircle) === (view === "circles") && (view !== "roles" || !unfilledOnly || !role.holderIds.length) && [role.title, ...role.holderIds.map(personName)].join(" ").toLowerCase().includes(query.toLowerCase())) && <p className={styles.empty}>{query || unfilledOnly && view === "roles" ? "No matching results." : view === "circles" ? "No circles yet. Roles can sit directly under SDBP." : "No roles yet."}</p>}
+      </div>}
+      <StructureDetail role={selectedRole} roles={workspace.roles} personName={personName} onEdit={setEditingRole} onSelect={setSelectedRoleId} onPeople={() => setView("people")} />
+    </div>}
+    {view === "people" && <>
     <section className="section"><div className="section-head"><div><span className="section-kicker">People</span><h2>SDBP workspace</h2></div></div>{availabilityError && <div className="auth-message error">{availabilityError}</div>}<div className="people-strip">{workspace.people.map((person) => {
       const roles = workspace.roles.filter((role) => !role.isCircle && role.holderIds.includes(person.id));
       const status = availabilityById.get(person.id);
@@ -76,32 +94,54 @@ export function OrganisationWorkspaceView({ workspace, currentUserId, canInvite,
       const presenceLabel = activeNow ? "● Active now" : connected ? "◐ Away" : "○ Offline";
       const presenceBackground = activeNow ? "var(--green-soft)" : connected ? "rgba(213,168,55,.14)" : "rgba(43,55,70,.06)";
       const presenceColor = activeNow ? "#6f8617" : connected ? "#8a6c1d" : "var(--muted)";
-      return <article className="people-compact" key={person.id}><div className="person-avatar">{person.name.charAt(0)}</div><div><div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}><h3>{person.name}</h3><span style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "3px 7px", borderRadius: "999px", fontSize: "11px", fontWeight: 700, background: presenceBackground, color: presenceColor }}>{presenceLabel}</span></div><small>{person.linked ? "active account" : "invited"}{!available ? ` · on leave${expected ? ` · expected ${formatDate(expected)}` : ""}` : ""}</small><small style={{ display: "block", marginTop: "3px", color: "var(--muted)" }}>{activeNow ? "Last active now" : !person.linked ? "Has not joined yet" : lastSeen ? `Last active ${relativeLastSeen(lastSeen, now)}` : presence.lastSeenSupported ? "Last active not recorded yet" : "Last active available after database update"}</small><div className="role-list compact-role-list">{roles.map((role) => <button className={`role-chip role-chip-${role.category}`} key={role.id} onClick={() => setSelectedRoleId(role.id)}>{role.title}</button>)}</div><div className="actions compact-actions">{available && (mine || canManageAvailability) && <button className="quiet small" type="button" disabled={availabilityBusy} onClick={() => setLeavePersonId(person.id)}>{mine ? "Mark myself on leave" : "Mark on leave"}</button>}{!available && mine && <button className="secondary small" type="button" disabled={availabilityBusy} onClick={() => void setGovernanceAvailability(person.id, true)}>{availabilityBusy ? "Saving…" : "Mark me available"}</button>}{!available && !mine && canManageAvailability && <button className="quiet small" type="button" disabled={availabilityBusy} onClick={() => setLeavePersonId(person.id)}>Update leave</button>}</div></div></article>;
+      return <article className="people-compact" key={person.id}><div className="person-avatar">{person.name.charAt(0)}</div><div><div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}><h3>{person.name}</h3><span style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "3px 7px", borderRadius: "999px", fontSize: "11px", fontWeight: 700, background: presenceBackground, color: presenceColor }}>{presenceLabel}</span></div><small>{person.linked ? "active account" : "invited"}{!available ? ` · on leave${expected ? ` · expected ${formatDate(expected)}` : ""}` : ""}</small><small style={{ display: "block", marginTop: "3px", color: "var(--muted)" }}>{activeNow ? "Last active now" : !person.linked ? "Has not joined yet" : lastSeen ? `Last active ${relativeLastSeen(lastSeen, now)}` : presence.lastSeenSupported ? "Last active not recorded yet" : "Last active available after database update"}</small><div className="role-list compact-role-list">{roles.map((role) => <button className={`role-chip role-chip-${role.category}`} key={role.id} onClick={() => { setSelectedRoleId(role.id); setView("roles"); }}>{role.title}</button>)}</div><div className="actions compact-actions">{available && (mine || canManageAvailability) && <button className="quiet small" type="button" disabled={availabilityBusy} onClick={() => setLeavePersonId(person.id)}>{mine ? "Mark myself on leave" : "Mark on leave"}</button>}{!available && mine && <button className="secondary small" type="button" disabled={availabilityBusy} onClick={() => void setGovernanceAvailability(person.id, true)}>{availabilityBusy ? "Saving…" : "Mark me available"}</button>}{!available && !mine && canManageAvailability && <button className="quiet small" type="button" disabled={availabilityBusy} onClick={() => setLeavePersonId(person.id)}>Update leave</button>}</div></div></article>;
     })}</div></section>
-    {unfilledRoles.length > 0 && <section className="section"><div className="section-head"><div><span className="section-kicker">Unfilled</span><h2>Roles without a holder <HelpTip label="Why show unfilled roles?">An unfilled role makes a missing responsibility visible instead of letting it disappear into the background.</HelpTip></h2></div></div><div className="unfilled-role-list">{unfilledRoles.map((role) => <button className={`role-chip role-chip-${role.category}`} key={role.id} onClick={() => setSelectedRoleId(role.id)}>{role.title}</button>)}</div></section>}
+    </>}
+    <details className={styles.secondary}><summary>Statutes & standing agreements</summary>
+      <p>The statutes are SDBP’s legal foundation. Standing agreements record accepted ongoing ways of working.</p>{onGoRecords && <button className="secondary small" onClick={onGoRecords}>Statutes in Records</button>}
+      {AGREEMENT_CATEGORIES.map(category => { const items = workspace.standingAgreements.filter(agreement => agreement.status === "current" && agreement.category === category.value); return items.length ? <section key={category.value}><h3>{category.label}</h3>{items.map(agreement => <details key={agreement.id}><summary>{agreement.title}</summary><p>{agreement.body}</p></details>)}</section> : null; })}
+      {!workspace.standingAgreements.some(agreement => agreement.status === "current") && <p>No standing agreements recorded yet.</p>}
+    </details>
     {inviteOpen && <InviteModal onClose={() => setInviteOpen(false)} onInvite={async (name, email) => { if (await onInvite(name, email)) setInviteOpen(false); }} />}
-    {editingRole && <RoleEditorModal role={editingRole} roles={workspace.roles} people={workspace.people} existing={workspace.roles.some((role) => role.id === editingRole.id)} onClose={() => setEditingRole(null)} onSave={async (role) => { if (await onSaveRole(role)) { setEditingRole(null); setSelectedRoleId(role.id); } }} onDelete={async (id) => { if (await onDeleteRole(id)) { setEditingRole(null); setSelectedRoleId(null); } }} />}
+    {editingRole && <RoleEditorModal role={editingRole} roles={workspace.roles} people={workspace.people} existing={workspace.roles.some((role) => role.id === editingRole.id)} onClose={() => setEditingRole(null)} onSave={async (role) => { if (await onSaveRole(role)) { setEditingRole(null); setSelectedRoleId(role.id); if (view === "people") setView("structure"); } }} onDelete={async (id) => { if (await onDeleteRole(id)) { setEditingRole(null); setSelectedRoleId(null); } }} />}
     {leavePersonId && <LeaveModal personName={personName(leavePersonId)} initialDate={availabilityById.get(leavePersonId)?.governance_leave_expected_return_on ?? ""} busy={availabilityBusy} onClose={() => setLeavePersonId(null)} onSave={async (date) => { if (await setGovernanceAvailability(leavePersonId, false, date)) setLeavePersonId(null); }} />}
   </>;
 }
 
-function OrganisationStructure({ roles, peopleCount, selectedRole, personName, onSelect, onEdit }: { roles: RoleDefinition[]; peopleCount: number; selectedRole?: RoleDefinition; personName: (id: string) => string; onSelect: (id: string | null) => void; onEdit: (role: RoleDefinition) => void }) {
-  const roots = roles.filter((role) => !role.parentId);
-  return <section className="organisation-structure"><div className="structure-canvas"><button className="structure-root" type="button" onClick={() => onSelect(null)}><strong>SDBP</strong><small>{peopleCount} people · {roots.length} direct structural objects</small></button><div className="structure-roots">{roots.length ? roots.map((role) => <StructureNode key={role.id} role={role} roles={roles} personName={personName} onSelect={onSelect} />) : <p className="structure-empty">No roles or circles have been defined yet.</p>}</div></div><StructureDetail role={selectedRole} roles={roles} personName={personName} onEdit={onEdit} /></section>;
+function OrganisationStructure({ roles, peopleCount, selectedRoleId, personName, onSelect }: { roles: RoleDefinition[]; peopleCount: number; selectedRoleId: string | null; personName: (id: string) => string; onSelect: (id: string | null) => void }) {
+  const roots = roles.filter(role => !role.parentId || !roles.some(parent => parent.id === role.parentId));
+  return <div className={styles.structure} aria-label="SDBP organisational structure"><div className={styles.root}><button className={styles.rootTitle} onClick={() => onSelect(null)}><strong>SDBP</strong><small>{peopleCount} people · {roles.filter(role => !role.isCircle).length} roles</small></button><div className={styles.nodes}>{roots.map(role => <StructureNode key={role.id} role={role} roles={roles} selectedId={selectedRoleId} personName={personName} onSelect={onSelect} />)}{!roots.length && <p className={styles.empty}>Add the first role or circle to define the structure.</p>}</div></div></div>;
 }
 
-function StructureNode({ role, roles, personName, onSelect }: { role: RoleDefinition; roles: RoleDefinition[]; personName: (id: string) => string; onSelect: (id: string) => void }) {
-  const children = roles.filter((candidate) => candidate.parentId === role.id);
-  if (!role.isCircle) return <button className={`structure-role structure-role-${role.category}`} type="button" onClick={() => onSelect(role.id)}><strong>{role.title}</strong><small>{role.holderIds.length ? role.holderIds.map(personName).join(" · ") : "Unfilled"}</small></button>;
-  return <div className="structure-circle"><button className="structure-circle-title" type="button" onClick={() => onSelect(role.id)}><span>Circle</span><strong>{role.title}</strong><small>{circleMembers(role.id, roles).map(personName).join(" · ") || "No members yet"}</small></button><div className="structure-children">{children.map((child) => <StructureNode key={child.id} role={child} roles={roles} personName={personName} onSelect={onSelect} />)}{!children.length && <span className="structure-empty-circle">Empty circle</span>}</div></div>;
+function StructureNode({ role, roles, selectedId, personName, onSelect }: { role: RoleDefinition; roles: RoleDefinition[]; selectedId: string | null; personName: (id: string) => string; onSelect: (id: string) => void }) {
+  const children = roles.filter(candidate => candidate.parentId === role.id);
+  if (!role.isCircle) return <button className={styles.role} data-unfilled={!role.holderIds.length || undefined} aria-pressed={selectedId === role.id} onClick={() => onSelect(role.id)}><strong>{role.title}</strong><small>{role.holderIds.map(personName).join(" · ") || "Unfilled"}</small></button>;
+  return <div className={styles.circle} data-selected={selectedId === role.id || undefined}><button className={styles.circleTitle} onClick={() => onSelect(role.id)}><small>Circle</small><strong>{role.title}</strong><small>{circleMembers(role.id, roles).length} members</small></button><div className={styles.nodes}>{children.map(child => <StructureNode key={child.id} role={child} roles={roles} selectedId={selectedId} personName={personName} onSelect={onSelect} />)}{!children.length && <small className={styles.empty}>No contained roles yet</small>}</div></div>;
 }
 
-function StructureDetail({ role, roles, personName, onEdit }: { role?: RoleDefinition; roles: RoleDefinition[]; personName: (id: string) => string; onEdit: (role: RoleDefinition) => void }) {
-  if (!role) return <aside className="structure-detail"><span className="section-kicker">Organisation root</span><h3>SDBP</h3><p>Roles without a parent sit directly under SDBP. Circles can contain roles and other circles.</p></aside>;
-  const parent = role.parentId ? roles.find((candidate) => candidate.id === role.parentId) : undefined;
-  const children = roles.filter((candidate) => candidate.parentId === role.id);
-  const holderIds = role.isCircle ? circleMembers(role.id, roles) : role.holderIds;
-  return <aside className="structure-detail"><div className="structure-detail-head"><div><span className="section-kicker">{role.isCircle ? "Circle" : "Role"}</span><h3>{role.title}</h3></div><button className="secondary small" onClick={() => onEdit(role)}>Edit</button></div><Detail label="Parent" value={parent?.title ?? "SDBP"} /><Detail label="Purpose" value={role.purpose || "Not defined yet."} /><Detail label="Scope / domain" value={role.scope || "Not defined yet."} /><DetailList label="Responsibilities" values={role.responsibilities} /><DetailList label="Accountabilities" values={role.accountabilities} />{role.isCircle && <DetailList label="Contained structure" values={children.map((child) => `${child.title} · ${child.isCircle ? "circle" : "role"}`)} />}<DetailList label={role.isCircle ? "Members through contained roles" : "Holder(s)"} values={holderIds.map(personName)} /></aside>;
+function StructureDetail({ role, roles, personName, onEdit, onSelect, onPeople }: { role?: RoleDefinition; roles: RoleDefinition[]; personName: (id: string) => string; onEdit: (role: RoleDefinition) => void; onSelect: (id: string | null) => void; onPeople: () => void }) {
+  if (!role) return <aside className={styles.detail}><span className="section-kicker">Organisation</span><h3>SDBP</h3><p>Select a role or circle to see its purpose, scope, accountabilities and people.</p><p>Small blue circles are roles. Larger enclosing circles contain roles and other circles. Dashed roles are unfilled.</p><p>Use Roles or Circles to find every object without navigating the structure.</p></aside>;
+  const parent = roles.find(candidate => candidate.id === role.parentId);
+  const children = roles.filter(candidate => candidate.parentId === role.id);
+  const holders = role.isCircle ? circleMembers(role.id, roles) : role.holderIds;
+  return <aside className={styles.detail} aria-label={`${role.title} definition`}>
+    <div className="structure-detail-head"><div><span className="section-kicker">{role.isCircle ? "Circle" : "Role"}</span><h3>{role.title}</h3></div><button className="secondary small" onClick={() => onEdit(role)}>Edit</button></div>
+    <div className={styles.links}><button onClick={() => onSelect(parent?.id ?? null)}>Within {parent?.title ?? "SDBP"} ↗</button></div>
+    <Detail label="Purpose" value={role.purpose || "Not defined yet."} /><Detail label="Scope / domain" value={role.scope || "Not defined yet."} />
+    <DetailList label="Responsibilities" values={role.responsibilities} /><DetailList label="Accountabilities" values={role.accountabilities} />
+    {role.isCircle && <><strong>Contained roles & circles</strong><div className={styles.links}>{children.map(child => <button key={child.id} onClick={() => onSelect(child.id)}>{child.title} · {child.isCircle ? "circle" : "role"} ↗</button>)}{!children.length && <p>Empty circle · roles can be added later.</p>}</div><button className="secondary small" onClick={() => onEdit({ ...blankRole(""), parentId: role.id })}>+ Add within this circle</button></>}
+    <DetailList label={role.isCircle ? "Members through contained roles" : "Holder(s)"} values={holders.map(personName)} />
+    <div className={styles.links}><button onClick={onPeople}>People & availability ↗</button></div>
+    <Detail label="Source" value={role.source || "Not recorded."} />
+  </aside>;
+}
+
+function structurePath(role: RoleDefinition, roles: RoleDefinition[]) {
+  const names: string[] = [];
+  const visited = new Set<string>([role.id]);
+  let parent = roles.find(candidate => candidate.id === role.parentId);
+  while (parent && !visited.has(parent.id)) { visited.add(parent.id); names.unshift(parent.title); parent = roles.find(candidate => candidate.id === parent!.parentId); }
+  return ["SDBP", ...names].join(" → ");
 }
 
 function Detail({ label, value }: { label: string; value: string }) { return <div className="structure-detail-row"><strong>{label}</strong><p>{value}</p></div>; }

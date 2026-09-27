@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import type { GovernanceEffect, GovernanceProposal, Tension } from "@/lib/domain";
 import type { WorkspaceData } from "@/lib/supabase/workspace";
-import { HelpTip } from "@/components/guidance";
+import { supabase } from "@/lib/supabase/client";
+import { GovernanceFocus } from "./governance-focus";
+import styles from "./organisation-governance.module.css";
 import { MeetingPlanning } from "@/components/meeting-planning";
-import { GovernanceEffectEditor, governanceEffectIsComplete, governanceEffectSummary, AGREEMENT_CATEGORIES } from "@/components/governance-effect-editor";
+import { GovernanceEffectEditor, governanceEffectIsComplete, governanceEffectSummary } from "@/components/governance-effect-editor";
 import { ValidatedQuickConsentPanel } from "@/components/governance-quick-consent";
 import { useLocalDraft } from "@/lib/local-draft";
 
@@ -27,34 +29,84 @@ export function GovernanceWorkspaceView({ workspace, currentUserId, personName, 
   const ready = workspace.tensions.filter((tension) => tension.status === "governance" && !used.has(tension.id));
   const open = workspace.governanceProposals.filter((proposal) => proposal.stage !== "accepted" && proposal.stage !== "withdrawn");
   const accepted = workspace.governanceProposals.filter((proposal) => proposal.stage === "accepted");
-  const boardRoles = workspace.roles.filter((role) => role.category === "board");
-  const operatingRoles = workspace.roles.filter((role) => role.category === "operating");
-  const currentAgreements = workspace.standingAgreements.filter((agreement) => agreement.status === "current");
-  const focusConsent = Boolean(focusProposalId && consentProposalIds.includes(focusProposalId));
+  const [view, setView] = useState<"proposals" | "preparation" | "meetings" | "history">("proposals");
+  const [selectedId, setSelectedId] = useState<string | null>(focusProposalId ?? null);
+  const [tensionId, setTensionId] = useState<string | null>(null);
+  const [rounds, setRounds] = useState<{ proposal_id: string; status: string; deadline_at: string | null }[]>([]);
+  const [roundError, setRoundError] = useState("");
+  const selected = workspace.governanceProposals.find(proposal => proposal.id === selectedId);
+  const proposedRole = selected?.governanceEffect?.kind === "role" ? selected.governanceEffect.role : undefined;
+  const selectedTension = ready.find(tension => tension.id === tensionId);
+  const [revision, setRevision] = useState(0);
 
   useEffect(() => {
-    if (!focusProposalId) return;
-    const timer = window.setTimeout(() => {
-      const target = document.getElementById(`${focusConsent ? "governance-consent" : "governance-proposal"}-${focusProposalId}`);
-      target?.scrollIntoView({ behavior: "smooth", block: "center" });
-      target?.focus({ preventScroll: true });
-    }, 60);
-    return () => window.clearTimeout(timer);
-  }, [focusProposalId, focusConsent]);
+    let alive = true;
+    const load = async () => {
+      const result = await supabase.from("governance_consent_rounds").select("proposal_id,status,deadline_at");
+      if (!alive) return;
+      if (result.error) setRoundError("Consent status could not be loaded. Open a proposal to check its response round.");
+      else { setRounds(result.data ?? []); setRoundError(""); }
+    };
+    void load();
+    window.addEventListener("focus", load);
+    const timer = window.setInterval(load, 60_000);
+    return () => { alive = false; window.removeEventListener("focus", load); window.clearInterval(timer); };
+  }, [workspace.governanceProposals, revision]);
+
+  useEffect(() => {
+    if (focusProposalId) { setSelectedId(focusProposalId); setView("proposals"); }
+  }, [focusProposalId]);
+
+  function responseRecorded() { setRevision(value => value + 1); onResponseRecorded?.(); }
+  function selectProposal(id: string) { setSelectedId(id); }
+  const roundFor = (id: string) => rounds.find(round => round.proposal_id === id);
+  const labelFor = (proposal: GovernanceProposal) => {
+    const round = roundFor(proposal.id);
+    if (proposal.stage === "accepted" || proposal.stage === "withdrawn") return stageName(proposal.stage);
+    return round?.status === "open" ? "Quick Consent open" : round?.status === "meeting_required" ? "Governance meeting needed" : stageName(proposal.stage);
+  };
 
   return <>
-    <div className="governance-lean-intro"><strong>Current Governance shows what is true now.</strong><HelpTip label="What belongs in Governance?">Use Governance for changes that remain true after today: roles, responsibilities, authority or standing ways of working. Decision History explains how Current Governance got here; the activity ledger only shows who changed what and when.</HelpTip></div>
-    <MeetingPlanning people={workspace.people} currentUserId={currentUserId} personName={personName} />
-    <section className="section current-governance-section"><div className="section-head"><div><span className="section-kicker">Present structure</span><h2>Current Governance</h2></div></div><div className="current-governance-grid"><article className="current-governance-card foundation-card"><span className="kind">Foundation</span><h3>SDBP Statutes</h3><p>The statutes remain the legal foundation. The Workspace does not rewrite them through ordinary governance.</p><button className="secondary small" onClick={onGoRecords}>Open in Records</button></article><RoleGroup title="Board roles" roles={boardRoles} personName={personName} /><RoleGroup title="Operating roles" roles={operatingRoles} personName={personName} /></div><div className="standing-agreements-block"><div className="section-head compact-section-head"><div><span className="section-kicker">Standing agreements</span><h3>Ongoing ways of working</h3></div></div>{currentAgreements.length ? <div className="agreement-groups">{AGREEMENT_CATEGORIES.map((category) => { const items = currentAgreements.filter((agreement) => agreement.category === category.value); if (!items.length) return null; return <section className="agreement-group" key={category.value}><h4>{category.label}</h4><div className="agreement-list">{items.map((agreement) => <details className="governance-detail" key={agreement.id}><summary><strong>{agreement.title}</strong></summary><p>{agreement.body}</p></details>)}</div></section>; })}</div> : <div className="calm-empty compact-empty governance-empty"><span>○</span><h3>No standing agreements recorded yet</h3><p>They appear here when a governance proposal explicitly creates one.</p></div>}</div></section>
-    {ready.length > 0 && <section className="section"><div className="section-head"><div><span className="section-kicker">Needs a proposal</span><h2>Structural tensions</h2></div></div><div className="governance-ready-list">{ready.map((tension) => <ProposalStarter key={tension.id} tension={tension} mine={tension.raiserId === currentUserId} personName={personName} workspace={workspace} currentUserId={currentUserId} onCreate={onCreateProposal} />)}</div></section>}
-    {open.length > 0 && <section className="section"><div className="section-head"><div><span className="section-kicker">Prepared</span><h2>Ready to process</h2></div></div><div className="governance-proposal-stack">{open.map((proposal) => <article id={`governance-proposal-${proposal.id}`} tabIndex={-1} className="governance-proposal-card" key={proposal.id}><div className="governance-proposal-head"><div><span className="kind">Proposed by {personName(proposal.proposerId)}</span><h3>{proposal.title}</h3></div><span className="governance-stage-badge">{stageName(proposal.stage)}</span></div><div className="governance-proposal-text"><strong>Proposal</strong><p>{proposal.proposal}</p></div><div className="effect-summary-line">{governanceEffectSummary(proposal.governanceEffect, workspace.roles, workspace.standingAgreements)}</div><div id={`governance-consent-${proposal.id}`} tabIndex={-1}><ValidatedQuickConsentPanel proposal={proposal} people={workspace.people} currentUserId={currentUserId} personName={personName} onStartMeeting={onStartMeeting} onGoTensions={onGoTensions} onResponseRecorded={onResponseRecorded} pulseUntil={pulseUntilForProposal?.(proposal.id)} onPulsePause={consentProposalIds.includes(proposal.id) && onProposalPulsePause ? hours => onProposalPulsePause(proposal.id, hours) : undefined} /></div></article>)}</div></section>}
-    {!ready.length && !open.length && <div className="governance-no-waiting"><span>✓</span><div><strong>No governance item is waiting.</strong><p>If something structural needs to change, raise the tension first.</p></div><button className="secondary small" onClick={onGoTensions}>Go to Tensions</button></div>}
-    <details className="governance-history section"><summary><div><span className="section-kicker">Institutional memory</span><h2>Decision History</h2><p>{accepted.length} accepted {accepted.length === 1 ? "decision" : "decisions"}</p></div><span className="history-chevron">⌄</span></summary>{accepted.length ? <div className="decision-history-list">{accepted.map((proposal) => <article className="decision-history-row" key={proposal.id}><div><span className="kind">{proposal.acceptedAt ? formatDate(proposal.acceptedAt) : "Accepted"} · {personName(proposal.proposerId)}</span><h3>{proposal.title}</h3><p>{governanceEffectSummary(proposal.governanceEffect, workspace.roles, workspace.standingAgreements)}</p></div><details><summary>Read decision</summary><p className="decision-text">{proposal.proposal}</p></details></article>)}</div> : <div className="calm-empty compact-empty"><span>○</span><h3>No accepted governance yet</h3></div>}</details>
+    <div className={styles.toolbar}>
+      <nav className={styles.tabs} aria-label="Governance views">
+        <button aria-pressed={view === "proposals"} onClick={() => setView("proposals")}>Active proposals · {open.length}</button>
+        <button aria-pressed={view === "preparation"} onClick={() => setView("preparation")}>Needs preparation · {ready.length}</button>
+        <button aria-pressed={view === "meetings"} onClick={() => setView("meetings")}>Meetings & availability</button>
+        <button aria-pressed={view === "history"} onClick={() => setView("history")}>Decision history · {accepted.length}</button>
+      </nav>
+    </div>
+    {view === "proposals" && <>
+      <div className={styles.legend}><span>Every active proposal · select a circle to read and respond</span><span>{consentProposalIds.length ? `${consentProposalIds.length} awaiting your Quick Consent response` : "No Quick Consent response waiting for you"}</span></div>
+      {roundError && <p role="status">{roundError}</p>}
+      <div className={styles.landscape} aria-label="All active governance proposals">
+        {open.map(proposal => {
+          const due = consentProposalIds.includes(proposal.id);
+          const paused = (pulseUntilForProposal?.(proposal.id) ?? 0) > Date.now();
+          const round = roundFor(proposal.id);
+          return <button key={proposal.id} className={styles.object} data-due={due || undefined} data-pulse={due && !paused || undefined} onClick={() => selectProposal(proposal.id)}>
+            <small>{labelFor(proposal)}</small><strong>{proposal.title}</strong><small>{personName(proposal.proposerId)}</small>
+            {round?.status === "open" && round.deadline_at && <small>Respond by {new Date(round.deadline_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</small>}
+            {due && <span className={styles.due}>Your response needed{paused ? " · pulse paused" : ""}</span>}
+          </button>;
+        })}
+        {!open.length && <div className={styles.empty}><h2>No active proposals</h2><p>{ready.length ? `${ready.length} structural tensions are ready for proposal preparation.` : "Raise a tension when something in the organisation needs to change."}</p><button className="secondary small" onClick={() => ready.length ? setView("preparation") : onGoTensions()}>{ready.length ? "Prepare a proposal" : "Bring something up"}</button></div>}
+      </div>
+    </>}
+    {view === "preparation" && <><p className="muted-copy">Turn a structural tension into a defined change to a role, circle or standing agreement.</p><div className={styles.landscape}>{ready.map(tension => <button className={styles.object} data-stage="preparation" key={tension.id} onClick={() => setTensionId(tension.id)}><small>Needs a proposal</small><strong>{tension.title}</strong><small>Raised by {personName(tension.raiserId)}</small></button>)}{!ready.length && <p className={styles.empty}>No structural tensions waiting for a proposal.</p>}</div><button className="secondary small" onClick={onGoTensions}>Bring something up</button></>}
+    {view === "meetings" && <><button className="secondary small" onClick={() => { const url = new URL(window.location.href); url.search = "?governanceMeeting=1"; window.open(url, "_blank", "noopener"); }}>Open Governance Meeting</button><MeetingPlanning people={workspace.people} currentUserId={currentUserId} personName={personName} /></>}
+    {view === "history" && <><p className="muted-copy">Accepted changes form the current organisation. Withdrawn proposals remain in the record.</p><div className={styles.list}>{workspace.governanceProposals.filter(proposal => proposal.stage === "accepted" || proposal.stage === "withdrawn").map(proposal => <button className={styles.listRow} key={proposal.id} onClick={() => selectProposal(proposal.id)}><span><strong>{proposal.title}</strong><small>{governanceEffectSummary(proposal.governanceEffect, workspace.roles, workspace.standingAgreements)}</small></span><small>{proposal.stage === "withdrawn" ? "Withdrawn" : proposal.acceptedAt ? formatDate(proposal.acceptedAt) : "Accepted"}</small></button>)}</div><button className="secondary small" onClick={onGoRecords}>Open Records</button></>}
+    {selected && <GovernanceFocus key={selected.id} title="Governance proposal" onClose={() => setSelectedId(null)} focusTargetId={consentProposalIds.includes(selected.id) ? `governance-consent-${selected.id}` : undefined}>
+      <article id={`governance-proposal-${selected.id}`} tabIndex={-1}>
+        <span className="kind">Proposed by {personName(selected.proposerId)} · {labelFor(selected)}</span><h2>{selected.title}</h2>
+        <p>{selected.proposal}</p>
+        <div className="effect-summary-line">{selected.stage === "accepted" ? "" : "Proposed change: "}{governanceEffectSummary(selected.governanceEffect, workspace.roles, workspace.standingAgreements)}</div>
+        {proposedRole && <details className={styles.secondary}><summary>Read proposed {proposedRole.isCircle ? "circle" : "role"} definition</summary><p><strong>Within</strong><br />{workspace.roles.find(role => role.id === proposedRole.parentId)?.title ?? "SDBP"}</p><p><strong>Purpose</strong><br />{proposedRole.purpose || "Not defined."}</p><p><strong>Scope / domain</strong><br />{proposedRole.scope || "Not defined."}</p><strong>Responsibilities</strong><ul>{proposedRole.responsibilities.map((item, index) => <li key={index}>{item}</li>)}</ul><strong>Accountabilities</strong><ul>{proposedRole.accountabilities.map((item, index) => <li key={index}>{item}</li>)}</ul></details>}
+        {workspace.tensions.find(tension => tension.id === selected.tensionId) && <details className={styles.secondary}><summary>Source tension</summary><p>{workspace.tensions.find(tension => tension.id === selected.tensionId)?.title}</p></details>}
+        <div id={`governance-consent-${selected.id}`} tabIndex={-1}><ValidatedQuickConsentPanel proposal={selected} people={workspace.people} currentUserId={currentUserId} personName={personName} onStartMeeting={onStartMeeting} onGoTensions={onGoTensions} onResponseRecorded={responseRecorded} pulseUntil={pulseUntilForProposal?.(selected.id)} onPulsePause={consentProposalIds.includes(selected.id) && onProposalPulsePause ? hours => onProposalPulsePause(selected.id, hours) : undefined} /></div>
+      </article>
+    </GovernanceFocus>}
+    {selectedTension && <GovernanceFocus key={selectedTension.id} title="Prepare governance" onClose={() => setTensionId(null)}><ProposalStarter tension={selectedTension} mine={selectedTension.raiserId === currentUserId} personName={personName} workspace={workspace} currentUserId={currentUserId} onCreate={async input => { const saved = await onCreateProposal(input); if (saved) { setTensionId(null); setView("proposals"); } return saved; }} /></GovernanceFocus>}
   </>;
-}
-
-function RoleGroup({ title, roles, personName }: { title: string; roles: WorkspaceData["roles"]; personName: (id: string) => string }) {
-  return <article className="current-governance-card role-group-card"><span className="kind">{title}</span><div className="current-role-list">{roles.length ? roles.map((role) => <details className="governance-detail" key={role.id}><summary><strong>{role.title}</strong><small>{role.holderIds.length ? role.holderIds.map(personName).join(", ") : "unfilled"}</small></summary>{role.purpose && <p><strong>Purpose</strong><br />{role.purpose}</p>}{role.scope && <p><strong>Scope</strong><br />{role.scope}</p>}{role.responsibilities.length > 0 && <div><strong>Responsibilities</strong><ul>{role.responsibilities.map((item) => <li key={item}>{item}</li>)}</ul></div>}{role.accountabilities.length > 0 && <div><strong>Accountabilities</strong><ul>{role.accountabilities.map((item) => <li key={item}>{item}</li>)}</ul></div>}</details>) : <p className="muted-copy">No roles in this group.</p>}</div></article>;
 }
 
 function ProposalStarter({ tension, mine, personName, workspace, currentUserId, onCreate }: { tension: Tension; mine: boolean; personName: (id: string) => string; workspace: WorkspaceData; currentUserId: string; onCreate: (input: { tensionId: string; title: string; proposal: string; governanceEffect: GovernanceEffect }) => Promise<boolean> }) {
