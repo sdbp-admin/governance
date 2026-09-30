@@ -792,6 +792,10 @@ function TensionContext({ tension, workspace, requests, currentUserId, peopleByI
   }, [resolutionTargeted]);
   async function resolve() {
     if (busy) return;
+    const prompt = mine
+      ? `Resolve “${tension.title}”? This closes the tension. To quiet its attention without resolving it, use Pause pulse instead.`
+      : `Mark “${tension.title}” as looking resolved? The raiser will still need to confirm. To quiet its attention without changing its status, use Pause pulse instead.`;
+    if (!window.confirm(prompt)) return;
     setBusy(true);
     await run(() => updateTension(tension.id, mine
       ? { status: "resolved", resolutionProposedBy: null, latestNote: `${personName(currentUserId)} confirmed the tension is resolved.` }
