@@ -154,6 +154,7 @@ export function SpatialCommitmentFocus({ action, people, roles, currentUserId, s
   }, [action.id]);
 
   async function changeStatus(status: "open" | "done") {
+    if (status === "done" && !window.confirm(`Complete “${action.title}”? This closes the commitment. To quiet its attention without completing it, use Pause pulse instead.`)) return;
     setBusy(true);
     const { setActionStatus } = await import("@/lib/supabase/workspace");
     await run(() => setActionStatus(action.id, status), status === "open" ? "Commitment accepted." : "Commitment completed.");
