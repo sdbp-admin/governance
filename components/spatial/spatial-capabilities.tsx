@@ -189,7 +189,7 @@ export function SpatialCommitmentFocus({ action, people, roles, currentUserId, s
       <div className={styles.commitmentActions}><button disabled={busy} onClick={() => { setTitle(action.title); setOwnerId(action.ownerId); setDue(action.due ?? ""); setEditing(true); }}>Edit</button>
         {action.ownerId === currentUserId && action.status === "proposed" && <button data-personal={needsAttention || undefined} disabled={busy} onClick={() => void changeStatus("open")}>Accept</button>}
         {action.ownerId === currentUserId && action.status === "proposed" && <button disabled={busy} onClick={() => setDeclining(true)}>Decline</button>}
-        {action.ownerId === currentUserId && action.status === "open" && <button data-personal={needsAttention || undefined} disabled={busy} onClick={() => void changeStatus("done")}>Done</button>}</div>
+        {action.ownerId === currentUserId && action.status === "open" && <button data-personal={needsAttention || undefined} disabled={busy} onClick={() => void changeStatus("done")}>Complete commitment</button>}</div>
       {declining && <DeclineDecision roles={roles} busy={busy} onCancel={() => setDeclining(false)} onDecline={async (reason, explanation, suggestedRoleId) => {
         setBusy(true);
         const ok = await run(() => declineProposedAction(action.id, reason, explanation, suggestedRoleId), "Decline recorded for the proposer.");

@@ -64,7 +64,7 @@ export function ContextualNextSteps({
         <button className="quiet small" type="button" onClick={() => setEditingAction(action)}>Edit</button>
         {action.ownerId === currentUserId && action.status === "proposed" && <button className="secondary small" type="button" onClick={() => void onStatus(action.id, "open")}>Accept</button>}
         {action.ownerId === currentUserId && action.status === "proposed" && <button className="quiet small" type="button" onClick={() => setDecliningAction(action)}>Decline</button>}
-        {action.ownerId === currentUserId && action.status === "open" && <button className="quiet small" type="button" onClick={() => { if (window.confirm(`Complete “${action.title}”? This closes the commitment. To quiet its attention without completing it, use Pause pulse instead.`)) void onStatus(action.id, "done"); }}>Done</button>}
+        {action.ownerId === currentUserId && action.status === "open" && <button className="quiet small" type="button" onClick={() => { if (window.confirm(`Complete “${action.title}”? This closes the commitment. To quiet its attention without completing it, use Pause pulse instead.`)) void onStatus(action.id, "done"); }}>Complete commitment</button>}
       </div>
     </div>)}</div>}
     {declined.length > 0 && <div className="context-step-list"><strong>Declined proposals</strong>{declined.map(action => <p key={action.id}>{action.title} · {personName(action.ownerId)} declined: {action.declineReason === "outside_scope" ? "Outside my role or scope" : action.declineNote}{action.suggestedRoleId ? ` · Suggested role: ${roles.find(role => role.id === action.suggestedRoleId)?.title ?? "Unknown"}` : ""}</p>)}</div>}
