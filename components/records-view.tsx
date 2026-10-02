@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type DragEvent } from "react";
 import type { GovernanceProposal, Tension } from "@/lib/domain";
 import { formatShortDate } from "@/lib/prototype-utils";
 import { MINUTES_GPT_PROMPT } from "@/lib/records-followups";
+import { RecordsSearch } from "./records-search";
 import { loadActivity, type ActivityEntry } from "@/lib/supabase/activity";
 import {
   archiveRecord,
@@ -128,7 +129,7 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
     }
   }
 
-  async function openRecord(record: RecordSummary) {
+  async function openRecord(record: RecordSummary, page?: number) {
     const storagePath = record.currentVersion?.storagePath;
     if (!storagePath) return;
 
@@ -148,7 +149,7 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
         setError("Your browser blocked the new tab. Allow pop-ups for this site and try again.");
         return;
       }
-      opened.location.href = url;
+      opened.location.href = page ? `${url}#page=${page}` : url;
     } catch (openError) {
       opened?.close();
       setError(readError(openError));
@@ -221,6 +222,7 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
 
     {!profileId && <div className="records-status warning">Live Records require an authenticated board profile.</div>}
     {error && <div className="records-status error">{error}</div>}
+    {profileId && !loading && <RecordsSearch records={records} onOpen={openRecord} />}
 
     <div className="records-grid records-drop-grid">
       <article className="record-card record-1 records-drop-card">

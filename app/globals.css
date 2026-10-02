@@ -243,6 +243,19 @@ p { line-height: 1.55; }
 .governance-note p { color:#c6d0d7; margin:6px 0 0; font-size:13px; }
 .note-divider { height:1px; background:rgba(255,255,255,.13); margin:22px 0 3px; }
 
+.records-search { margin: 18px 0 24px; }
+.records-search-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.records-search-form label { display: grid; gap: 6px; font-size: 13px; min-width: 0; }
+.records-search-form label:first-child { flex: 1 1 260px; }
+.records-search-form input, .records-search-form select { width: 100%; min-width: 0; padding: 10px 12px; border: 1px solid #2b374630; border-radius: 6px; background: #fff; color: inherit; font: inherit; }
+.records-search-note, .records-search-coverage { margin: 12px 0; color: var(--muted); font-size: 13px; }
+.records-search-results { display: grid; gap: 10px; margin: 14px 0; }
+.records-search-result { display: grid; gap: 5px; width: 100%; min-width: 0; padding: 14px 16px; border: 1px solid #2b374620; border-radius: 8px; background: #ffffff80; text-align: left; color: var(--ink); cursor: pointer; overflow-wrap: anywhere; }
+.records-search-result small { color: var(--muted); }
+.records-search-result p { margin: 4px 0; font-size: 14px; line-height: 1.5; }
+.records-search-result span { color: #236e87; font-size: 12px; }
+.records-search-result:hover, .records-search-result:focus-visible { border-color: #2596be80; }
+.records-search-coverage summary { cursor: pointer; }
 .records-grid { display:grid; grid-template-columns:1.2fr .9fr .9fr; gap:16px; align-items:stretch; }
 .record-card { min-height:330px; border-radius:22px; padding:25px; background:white; border:1px solid var(--border); display:flex; flex-direction:column; transition:transform .18s ease, box-shadow .18s ease; overflow:hidden; position:relative; }
 .record-1 { background:linear-gradient(155deg,#fff 0 72%,var(--accent-soft) 72%); }
