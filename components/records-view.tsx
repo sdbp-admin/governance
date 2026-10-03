@@ -5,6 +5,7 @@ import type { GovernanceProposal, Tension } from "@/lib/domain";
 import { formatShortDate } from "@/lib/prototype-utils";
 import { MINUTES_GPT_PROMPT } from "@/lib/records-followups";
 import { RecordsSearch } from "./records-search";
+import { ConstitutionRecord } from "./constitution-record";
 import { loadActivity, type ActivityEntry } from "@/lib/supabase/activity";
 import {
   archiveRecord,
@@ -38,6 +39,7 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
   const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
   const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
+  const [constitutionRequest, setConstitutionRequest] = useState<{ article: string } | null>(null);
 
   const accepted = governanceProposals.filter((proposal) => proposal.stage === "accepted");
   const statutes = records.filter((record) => record.recordType === "statutes");
@@ -222,7 +224,7 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
 
     {!profileId && <div className="records-status warning">Live Records require an authenticated board profile.</div>}
     {error && <div className="records-status error">{error}</div>}
-    {profileId && !loading && <RecordsSearch records={records} onOpen={openRecord} />}
+    {profileId && !loading && <RecordsSearch records={records} onOpen={openRecord} onOpenConstitution={article => setConstitutionRequest({ article })} />}
 
     <div className="records-grid records-drop-grid">
       <article className="record-card record-1 records-drop-card">
@@ -240,6 +242,8 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
           onFile={(file) => storeFile("statutes", file)}
         />
       </article>
+
+      <ConstitutionRecord request={constitutionRequest} />
 
       <article className="record-card record-2 records-drop-card minutes-card">
         <div className="record-mark">M</div>
