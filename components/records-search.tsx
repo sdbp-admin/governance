@@ -5,7 +5,7 @@ import type { RecordSummary } from '@/lib/supabase/records';
 import { searchConstitution, type ConstitutionHit } from '@/lib/constitution-search';
 import { indexRecordDocument, loadRecordIndexStates, searchRecordDocuments, type RecordIndexState, type RecordSearchHit, type RecordSearchScope } from '@/lib/supabase/record-search';
 
-export function RecordsSearch({ records, onOpen, onOpenConstitution }: { records: RecordSummary[]; onOpen: (record: RecordSummary, page?: number) => Promise<void>; onOpenConstitution: (article: string) => void }) {
+export function RecordsSearch({ records, onOpen, onOpenConstitution, constitutionBody }: { records: RecordSummary[]; onOpen: (record: RecordSummary, page?: number) => Promise<void>; onOpenConstitution: (article: string) => void; constitutionBody: string | null }) {
   const [query, setQuery] = useState('');
   const [scope, setScope] = useState<RecordSearchScope | 'constitution' | 'all'>('board_minutes');
   const [constitutionHits, setConstitutionHits] = useState<ConstitutionHit[]>([]);
@@ -18,6 +18,10 @@ export function RecordsSearch({ records, onOpen, onOpenConstitution }: { records
   const [error, setError] = useState('');
   const [indexError, setIndexError] = useState('');
   const searchGeneration = useRef(0);
+  useEffect(() => {
+    searchGeneration.current++;
+    setHits([]); setConstitutionHits([]); setSearched(false); setSearching(false);
+  }, [constitutionBody]);
   const documents = records.filter(record => (record.recordType === 'statutes' || record.recordType === 'board_minutes') && record.currentVersion?.storagePath);
   const versionsKey = documents.map(record => record.currentVersion!.id).sort().join(',');
   const recordsRef = useRef(documents);
@@ -66,7 +70,8 @@ export function RecordsSearch({ records, onOpen, onOpenConstitution }: { records
     const generation = ++searchGeneration.current;
     setSearching(true); setError('');
     try {
-      const local = scope === 'constitution' || scope === 'all' ? searchConstitution(query) : [];
+      if ((scope === 'constitution' || scope === 'all') && constitutionBody === null) throw new Error('The current Constitution has not loaded. Reopen Records to retry.');
+      const local = scope === 'constitution' || scope === 'all' ? searchConstitution(query, constitutionBody!) : [];
       if (generation === searchGeneration.current) { setConstitutionHits(local); setSearched(true); }
       const result = scope === 'constitution' ? [] : await searchRecordDocuments(query, scope === 'all' ? 'both' : scope);
       if (generation === searchGeneration.current) setHits(result);

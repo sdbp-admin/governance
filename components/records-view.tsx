@@ -40,6 +40,7 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
   const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
   const [constitutionRequest, setConstitutionRequest] = useState<{ article: string } | null>(null);
+  const [constitutionBody, setConstitutionBody] = useState<string | null>(null);
 
   const accepted = governanceProposals.filter((proposal) => proposal.stage === "accepted");
   const statutes = records.filter((record) => record.recordType === "statutes");
@@ -224,7 +225,7 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
 
     {!profileId && <div className="records-status warning">Live Records require an authenticated board profile.</div>}
     {error && <div className="records-status error">{error}</div>}
-    {profileId && !loading && <RecordsSearch records={records} onOpen={openRecord} onOpenConstitution={article => setConstitutionRequest({ article })} />}
+    {profileId && !loading && <RecordsSearch records={records} onOpen={openRecord} constitutionBody={constitutionBody} onOpenConstitution={article => setConstitutionRequest({ article })} />}
 
     <div className="records-grid records-drop-grid">
       <article className="record-card record-1 records-drop-card">
@@ -243,7 +244,7 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
         />
       </article>
 
-      <ConstitutionRecord request={constitutionRequest} />
+      <ConstitutionRecord key={profileId ?? 'signed-out'} profileId={profileId} request={constitutionRequest} onCurrentBody={setConstitutionBody} onReplaced={() => void refreshRecordsAndActivity()} />
 
       <article className="record-card record-2 records-drop-card minutes-card">
         <div className="record-mark">M</div>

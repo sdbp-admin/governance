@@ -2,12 +2,12 @@ import { CONSTITUTION_DRAFT } from './constitution';
 
 export type ConstitutionHit = { article: string; excerpt: string };
 
-export function searchConstitution(query: string): ConstitutionHit[] {
+export function searchConstitution(query: string, body = CONSTITUTION_DRAFT): ConstitutionHit[] {
   const terms = query.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
   if (!terms.length) return [];
-  return CONSTITUTION_DRAFT.split(/\n(?=## Article \d+\.)/).slice(1).flatMap(section => {
+  return body.split(/\n(?=## )/).flatMap(section => {
     const [heading, ...lines] = section.split('\n');
-    const article = heading.replace(/^## /, '');
+    const article = heading.replace(/^#+ /, '');
     const text = lines.join(' ').replace(/\*\*/g, '').replace(/\s+/g, ' ').trim();
     const lower = `${article} ${text}`.toLocaleLowerCase();
     if (!terms.every(term => lower.includes(term))) return [];
