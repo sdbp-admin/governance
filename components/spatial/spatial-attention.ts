@@ -226,15 +226,24 @@ export function spatialAttention(workspace: WorkspaceData, requests: TensionRequ
 export async function loadGovernanceResponseAttention(workspace: WorkspaceData, userId: string): Promise<PersonalAttention[]> {
   const ids = workspace.governanceProposals.filter(p => p.stage === "prepared" || p.stage === "present_proposal").map(p => p.id);
   if (!ids.length) return [];
-  const [rounds, responses, person] = await Promise.all([
+  const [rounds, responses, person, chairReviews] = await Promise.all([
     supabase.from("governance_consent_rounds").select("proposal_id,status").in("proposal_id", ids).eq("status", "open"),
     supabase.from("governance_consent_responses").select("proposal_id,person_id").in("proposal_id", ids).eq("person_id", userId),
     supabase.from("people").select("governance_available").eq("id", userId).single(),
+    supabase.rpc("load_governance_objection_review_attention"),
   ]);
-  if (rounds.error || responses.error || person.error) throw rounds.error ?? responses.error ?? person.error;
-  if (person.data?.governance_available === false) return [];
-  return (rounds.data ?? []).filter(r => !responses.data?.some(response => response.proposal_id === r.proposal_id)).map(r => {
+  if (rounds.error || responses.error || person.error || chairReviews.error) throw rounds.error ?? responses.error ?? person.error ?? chairReviews.error;
+  const responseAttention: PersonalAttention[] = (person.data?.governance_available === false ? [] : rounds.data ?? []).filter(r => !responses.data?.some(response => response.proposal_id === r.proposal_id)).map(r => {
     const proposal = workspace.governanceProposals.find(p => p.id === r.proposal_id)!;
     return { id: `consent-${r.proposal_id}`, kind: "governance", proposalId: proposal.id, tensionId: proposal.tensionId, projectId: workspace.tensions.find(t => t.id === proposal.tensionId)?.linkedProjectId, label: `Your Quick Consent response is needed · ${proposal.title}` };
   });
+  const reviewAttention: PersonalAttention[] = (chairReviews.data ?? []).flatMap((row: { proposal_id: string; objector_id: string }) => {
+    const proposal = workspace.governanceProposals.find(p => p.id === row.proposal_id);
+    if (!proposal) return [];
+    const objector = workspace.people.find(p => p.id === row.objector_id)?.name ?? "a participant";
+    return [{ id: `consent-review-${row.proposal_id}-${row.objector_id}`, kind: "governance", proposalId: proposal.id, tensionId: proposal.tensionId,
+      projectId: workspace.tensions.find(t => t.id === proposal.tensionId)?.linkedProjectId,
+      label: `Chair review needed · objection by ${objector} · ${proposal.title}` }];
+  });
+  return [...responseAttention, ...reviewAttention];
 }
