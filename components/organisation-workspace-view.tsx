@@ -11,7 +11,8 @@ import { RoleEditorModal, blankRole } from "@/components/role-editor-modal";
 
 type GovernanceAvailability = { id: string; governance_available: boolean; governance_leave_expected_return_on?: string | null };
 
-export function OrganisationWorkspaceView({ workspace, currentUserId, canInvite, personName, presence, onInvite, onSaveRole, onDeleteRole, onGoRecords }: {
+export function OrganisationWorkspaceView({ workspace, currentUserId, canInvite, personName, presence, onInvite, onSaveRole, onDeleteRole, onGoRecords, searchRoleId, onSearchTargetHandled }: {
+  searchRoleId?: string | null; onSearchTargetHandled?: () => void;
   workspace: WorkspaceData;
   currentUserId: string;
   canInvite: boolean;
@@ -29,6 +30,11 @@ export function OrganisationWorkspaceView({ workspace, currentUserId, canInvite,
   const [inviteOpen, setInviteOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<RoleDefinition | null>(null);
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!searchRoleId) return;
+    setSelectedRoleId(searchRoleId); setQuery(''); setUnfilledOnly(false);
+    onSearchTargetHandled?.();
+  }, [searchRoleId, onSearchTargetHandled]);
   const [leavePersonId, setLeavePersonId] = useState<string | null>(null);
   const [availability, setAvailability] = useState<GovernanceAvailability[]>([]);
   const [canManageAvailability, setCanManageAvailability] = useState(false);

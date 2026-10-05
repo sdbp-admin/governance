@@ -13,6 +13,10 @@ import { SpatialConversation } from "./spatial-conversation";
 import { activeProjectActions, layoutProjectObjects, layoutProjectPreviewObjects } from "./spatial-project-objects";
 import { SpatialSurfaces, type SpatialSurface } from "./spatial-surfaces";
 import { SpatialPulsePause } from "./spatial-pulse-pause";
+import { WorkspaceSearch } from "@/components/workspace-search";
+import type { SearchTarget } from "@/lib/supabase/workspace-search";
+import { createRecordSignedUrl } from "@/lib/supabase/records";
+import { createWorkFileSignedUrl } from "@/lib/supabase/work-attachments";
 import { buildSpatialSignalTrails, loadSpatialMentions, spatialAttention, loadGovernanceResponseAttention, loadSpatialUnreadActivity, type PersonalAttention, type SpatialSignalTrail, type SpatialUnreadActivity } from "./spatial-attention";
 import type { SpatialProfile } from "@/components/spatial/spatial-authenticated-launch";
 import styles from "@/components/spatial/spatial.module.css";
@@ -67,6 +71,8 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
   const [focusedActionId, setFocusedActionId] = useState<string | null>(null);
   const [projectTooltip, setProjectTooltip] = useState<ProjectTooltip | null>(null);
   const [orphanAction, setOrphanAction] = useState<Action | null>(null);
+  const [searchRoleId, setSearchRoleId] = useState<string | null>(null);
+  const [searchConstitutionArticle, setSearchConstitutionArticle] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -373,6 +379,46 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
     if (item.tensionId) { navigate({ kind: "tension", tensionId: item.tensionId, projectId: item.projectId }); setTensionTab(item.kind === "request" || item.kind === "need" ? "requests" : "conversation"); if (item.kind === "confirmation") setAttentionTarget({ kind: "resolution", id: item.tensionId }); else if (item.commentId) setAttentionTarget({ kind: "tension", id: item.tensionId, commentId: item.commentId }); else if (item.requestId) setAttentionTarget({ kind: "request", id: item.requestId }); return; }
     if (item.projectId) { navigate({ kind: "project", projectId: item.projectId }); if (item.kind === "mention") setSurface("conversation"); if (item.commentId) setAttentionTarget({ kind: "project", id: item.projectId, commentId: item.commentId }); }
   }
+
+  function openSearchResult(target: SearchTarget) {
+    if (target.kind === 'board') { window.open(`/governance/board/?post=${encodeURIComponent(target.id)}`, '_blank', 'noopener'); return; }
+    if (target.kind === 'proposal') { setGovernanceTargetProposalId(target.id); setMainSurface('governance'); return; }
+    if (target.kind === 'role') { setSearchRoleId(target.id); setMainSurface('organisation'); return; }
+    if (target.kind === 'constitution') { setSearchConstitutionArticle(target.article); setMainSurface('records'); return; }
+    if (target.kind === 'record' || target.kind === 'attachment') {
+      if (target.kind === 'attachment' && target.attachment.url) {
+        if (/^https?:\/\//i.test(target.attachment.url)) window.open(target.attachment.url, '_blank', 'noopener,noreferrer');
+        else setNotice('This link does not use a supported web address.');
+        return;
+      }
+      const path = target.kind === 'record' ? target.record.currentVersion?.storagePath : target.attachment.storagePath;
+      if (!path) { setNotice('This file is no longer available.'); return; }
+      const opened = window.open('about:blank','_blank');
+      if (!opened) { setNotice('Allow pop-ups to open this document.'); return; }
+      opened.opener = null;
+      void (target.kind === 'record' ? createRecordSignedUrl(path) : createWorkFileSignedUrl(path)).then(url => {
+        opened.location.href = target.kind === 'record' && target.page ? `${url}#page=${target.page}` : url;
+      }).catch(reason => { opened.close(); setNotice(readError(reason)); });
+      return;
+    }
+    if (target.kind === 'project') {
+      navigate({kind:'project',projectId:target.id});
+      if (target.commentId) { setSurface('conversation'); setAttentionTarget({kind:'project',id:target.id,commentId:target.commentId}); }
+    } else if (target.kind === 'tension') {
+      const tension = workspace.tensions.find(t => t.id === target.id);
+      navigate({kind:'tension',tensionId:target.id,projectId:tension?.linkedProjectId});
+      setTensionTab('conversation');
+      if (target.commentId) setAttentionTarget({kind:'tension',id:target.id,commentId:target.commentId});
+    } else if (target.kind === 'action') {
+      const action = workspace.actions.find(a => a.id === target.id);
+      if (!action) { setNotice('This commitment is no longer available.'); return; }
+      const project = action.projectId ?? workspace.tensions.find(t=>t.id===action.sourceTensionId)?.linkedProjectId;
+      if (project && (action.status === 'open' || action.status === 'proposed')) {
+        navigate({kind:'project',projectId:project}); setFocusedActionId(action.id);
+      } else { setMainSurface(null); setOrphanAction(action); }
+      setAttentionTarget({kind:'action',id:action.id,commentId:target.commentId});
+    }
+  }
   if (loading) return <main className={styles.loading}><span /><h1>Opening your landscape</h1></main>;
 
   return <main className={styles.shell} data-depth={depth.kind} data-resizing={resizing || undefined}>
@@ -386,6 +432,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
       </nav>
       <nav className={styles.mainNavigation} aria-label="Workspace surfaces"><button onClick={() => setMainSurface(null)} aria-current={!mainSurface ? "page" : undefined}>Workspace</button><button aria-current={mainSurface === "organisation" ? "page" : undefined} onClick={() => setMainSurface("organisation")}>Organisation</button><button aria-current={mainSurface === "governance" ? "page" : undefined} data-consent-due={activeConsentPulse || undefined} onClick={() => { setGovernanceTargetProposalId(consentProposalIds.length === 1 ? consentProposalIds[0] : null); setMainSurface("governance"); if (consentProposalIds.length !== 1) window.setTimeout(() => document.querySelector<HTMLElement>(`.${styles.mainSurface}`)?.scrollTo({ top: 0, behavior: "smooth" }), 0); }}>Governance{consentProposalIds.length > 0 && <span className={styles.governanceCount} aria-label={`${consentProposalIds.length} Quick Consent ${consentProposalIds.length === 1 ? "response" : "responses"} needed`}>{consentProposalIds.length}</span>}</button><button onClick={() => setMainSurface("records")}>Records</button></nav>
       <details className={styles.utilities}><summary>Utilities</summary><div><button data-personal={attention.some(a => a.kind === "commitment") || undefined} onClick={() => setMainSurface("commitments")}>All commitments</button><button onClick={() => setMainSurface("compass")}>Compass</button><button onClick={() => { const url = new URL(window.location.href); url.search = "?tactical=1"; window.open(url, "_blank", "noopener"); }}>Tactical meeting</button><button onClick={() => { const url = new URL(window.location.href); url.search = "?governanceMeeting=1"; window.open(url, "_blank", "noopener"); }}>Governance meeting</button><button data-personal={attention.some(a => a.projectId && workspace.projects.some(p => p.id === a.projectId && p.status === "complete")) || undefined} onClick={() => setMainSurface("completed")}>Completed projects</button></div></details>
+      <WorkspaceSearch workspace={workspace} userId={profile.id} onOpen={openSearchResult} />
       <div className={styles.profile}><button onClick={() => setMainSurface("account")}>{profile.name} · Account</button></div>
     </header>
     <div ref={field} className={styles.field} aria-label="Spatial workspace" data-surface={surface ?? "none"} inert={Boolean(mainSurface) || undefined}>
@@ -585,6 +632,8 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
     {depth.kind === "organisation" && projectTooltip && !mainSurface && <div className={styles.projectTooltip} data-side={projectTooltip.side}
       style={{ left: projectTooltip.x, top: projectTooltip.y }} role="tooltip"><strong>{projectTooltip.title}</strong><small>{projectTooltip.summary}</small></div>}
     <SpatialSurfaces surface={mainSurface} workspace={workspace} profile={profile} run={run} governanceTargetProposalId={governanceTargetProposalId} consentProposalIds={consentProposalIds}
+      searchRoleId={searchRoleId} searchConstitutionArticle={searchConstitutionArticle}
+      onSearchTargetHandled={() => { setSearchRoleId(null); setSearchConstitutionArticle(null); }}
       pulseUntilForAction={id => pauseUntil(pulseIds(trail => trail.actionId === id))}
       onActionPulsePause={(id, hours) => pausePulses(pulseIds(trail => trail.actionId === id), hours)}
       pulseUntilForProposal={id => pauseUntil(pulseIds(trail => trail.endpoint === "governance" && governanceAttention.some(a => `attention:${a.id}` === trail.id && a.proposalId === id)))}
@@ -597,7 +646,8 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
         if (capture === "project") setNewlyCreatedProjectId(id);
         else if (depth.kind === "organisation") setNewlyCreatedTensionId(id);
       }} onClose={() => setCapture(null)} />}
-    {orphanAction && <SpatialDialog title="Commitment" onClose={() => setOrphanAction(null)}><h3>{orphanAction.title}</h3><p>No source project or tension is recorded for this commitment.</p>
+    {orphanAction && <SpatialDialog title="Commitment" onClose={() => setOrphanAction(null)}><h3>{orphanAction.title}</h3><p>{orphanAction.status} · {workspace.people.find(p=>p.id===orphanAction.ownerId)?.name ?? 'Owner'}</p>
+      {attentionTarget?.kind === 'action' && attentionTarget.id === orphanAction.id && attentionTarget.commentId && <SpatialConversation kind="action" id={orphanAction.id} people={workspace.people} userId={profile.id} targetCommentId={attentionTarget.commentId} />}
       {pulseIds(trail => trail.actionId === orphanAction.id).length > 0 && <SpatialPulsePause until={pauseUntil(pulseIds(trail => trail.actionId === orphanAction.id))} onPause={hours => pausePulses(pulseIds(trail => trail.actionId === orphanAction.id), hours)} />}
     </SpatialDialog>}
     {attentionError && <div className={styles.attentionWarning} role="status">{attentionError}</div>}

@@ -20,6 +20,8 @@ import {
 } from "@/lib/supabase/records";
 
 type Props = {
+  searchConstitutionArticle?: string | null;
+  onSearchTargetHandled?: () => void;
   governanceProposals: GovernanceProposal[];
   tensions: Tension[];
   profileId?: string;
@@ -28,7 +30,7 @@ type Props = {
 
 const RECORD_ACCEPT = ".pdf,.txt,.md,.doc,.docx,application/pdf,text/plain,text/markdown,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
-export function RecordsView({ governanceProposals, tensions, profileId, onNotice }: Props) {
+export function RecordsView({ governanceProposals, tensions, profileId, onNotice, searchConstitutionArticle, onSearchTargetHandled }: Props) {
   const [records, setRecords] = useState<RecordSummary[]>([]);
   const [archivedRecords, setArchivedRecords] = useState<RecordSummary[]>([]);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
@@ -41,6 +43,11 @@ export function RecordsView({ governanceProposals, tensions, profileId, onNotice
   const [copied, setCopied] = useState(false);
   const [constitutionRequest, setConstitutionRequest] = useState<{ article: string } | null>(null);
   const [constitutionBody, setConstitutionBody] = useState<string | null>(null);
+  useEffect(() => {
+    if (!searchConstitutionArticle || !constitutionBody) return;
+    setConstitutionRequest({article:searchConstitutionArticle});
+    onSearchTargetHandled?.();
+  }, [searchConstitutionArticle, constitutionBody, onSearchTargetHandled]);
 
   const accepted = governanceProposals.filter((proposal) => proposal.stage === "accepted");
   const statutes = records.filter((record) => record.recordType === "statutes");

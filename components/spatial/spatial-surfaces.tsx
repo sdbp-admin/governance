@@ -18,7 +18,8 @@ import styles from "./spatial.module.css";
 import organisationStyles from "../organisation-governance.module.css";
 
 export type SpatialSurface = "organisation" | "governance" | "records" | "commitments" | "account" | "compass" | "completed" | null;
-export function SpatialSurfaces({ surface, workspace, profile, run, governanceTargetProposalId, consentProposalIds, onGovernanceResponse, pulseUntilForProposal, onProposalPulsePause, pulseUntilForAction, onActionPulsePause, onClose, onSurface, onProject, onAction, onCapture, onSignOut }: {
+export function SpatialSurfaces({ surface, workspace, profile, run, governanceTargetProposalId, consentProposalIds, onGovernanceResponse, pulseUntilForProposal, onProposalPulsePause, pulseUntilForAction, onActionPulsePause, onClose, onSurface, onProject, onAction, onCapture, onSignOut, searchRoleId, searchConstitutionArticle, onSearchTargetHandled }: {
+  searchRoleId?: string | null; searchConstitutionArticle?: string | null; onSearchTargetHandled?: () => void;
   surface: SpatialSurface; workspace: WorkspaceData; profile: SpatialProfile; run: SpatialRun; governanceTargetProposalId?: string | null; consentProposalIds: string[]; onGovernanceResponse: () => void; onClose: () => void;
   pulseUntilForProposal: (id: string) => number | undefined; onProposalPulsePause: (id: string, hours: 0 | 24 | 48 | 72 | 168) => void;
   pulseUntilForAction: (id: string) => number | undefined; onActionPulsePause: (id: string, hours: 0 | 24 | 48 | 72 | 168) => void;
@@ -42,8 +43,8 @@ export function SpatialSurfaces({ surface, workspace, profile, run, governanceTa
   const title = surface === "records" ? "Records" : surface === "organisation" ? "Organisation" : "Governance";
   return <section className={`${styles.mainSurface} ${styles.adapted} ${surface !== "records" ? organisationStyles.surface : ""}`} aria-label={title}>
     <header className={styles.surfaceHeading}><div><span className={styles.eyebrow}>SDBP</span><h1>{title}</h1></div><button onClick={onClose}>← Spatial workspace</button></header>
-    {surface === "records" ? <RecordsView governanceProposals={workspace.governanceProposals} tensions={workspace.tensions} profileId={profile.id} /> : surface === "organisation" ?
-      <OrganisationWorkspaceView workspace={workspace} currentUserId={profile.id} canInvite={inviteAllowed} personName={name} presence={presence} onInvite={(n, email) => run(() => invitePerson(n, email), "Invitation sent.")} onSaveRole={role => run(() => saveRole(role))} onDeleteRole={id => run(() => deleteRole(id))} onOpenProject={onProject} onGoRecords={() => onSurface("records")} /> :
+    {surface === "records" ? <RecordsView governanceProposals={workspace.governanceProposals} tensions={workspace.tensions} profileId={profile.id} searchConstitutionArticle={searchConstitutionArticle} onSearchTargetHandled={onSearchTargetHandled} /> : surface === "organisation" ?
+      <OrganisationWorkspaceView workspace={workspace} currentUserId={profile.id} canInvite={inviteAllowed} personName={name} presence={presence} onInvite={(n, email) => run(() => invitePerson(n, email), "Invitation sent.")} onSaveRole={role => run(() => saveRole(role))} onDeleteRole={id => run(() => deleteRole(id))} onOpenProject={onProject} onGoRecords={() => onSurface("records")} searchRoleId={searchRoleId} onSearchTargetHandled={onSearchTargetHandled} /> :
       <GovernanceWorkspaceView workspace={workspace} currentUserId={profile.id} personName={name} focusProposalId={governanceTargetProposalId} consentProposalIds={consentProposalIds} onResponseRecorded={onGovernanceResponse} pulseUntilForProposal={pulseUntilForProposal} onProposalPulsePause={onProposalPulsePause} onCreateProposal={input => run(() => createGovernanceProposal({ ...input, proposerId: profile.id }))} onStartMeeting={startMeeting} onGoTensions={onCapture} onGoRecords={() => onSurface("records")} />
     }
   </section>;
