@@ -9,6 +9,7 @@ import { loadCommentThreadSummary, markCommentThreadSeen, announceCommentThreadC
 import { loadProjectConflicts, type ProjectConflict } from "@/lib/supabase/project-coi";
 import { acknowledgeAttentionSignal, type WorkspacePerson } from "@/lib/supabase/workspace";
 import styles from "./spatial.module.css";
+import { ProcessGuidance } from "@/components/process-guidance";
 
 type Comment = Awaited<ReturnType<typeof loadProjectComments>>[number] | Awaited<ReturnType<typeof loadTensionComments>>[number] | Awaited<ReturnType<typeof loadActionComments>>[number];
 export function SpatialConversation({ kind, id, people, userId, signalIds = [], targetCommentId, compact = false }: { kind: CommentThreadType; id: string; people: WorkspacePerson[]; userId: string; signalIds?: string[]; targetCommentId?: string; compact?: boolean }) {
@@ -102,7 +103,7 @@ export function SpatialConversation({ kind, id, people, userId, signalIds = [], 
   }
   const newComment = (c: Comment) => c.authorId !== userId && (!seenBefore || c.createdAt > seenBefore);
   const firstNew = comments.findIndex(newComment);
-  return <section className={styles.conversationPlane} data-compact={compact || undefined}><header><h2>Conversation</h2><small>{comments.length} {comments.length === 1 ? "comment" : "comments"}</small></header>
+  return <section className={styles.conversationPlane} data-compact={compact || undefined}><header><h2>Conversation <ProcessGuidance topic="conversation" compass /></h2><small>{comments.length} {comments.length === 1 ? "comment" : "comments"}</small></header>
     {conflicts.length > 0 && <p className={styles.coiNote}>COI active · {conflicts.map(c => name(c.personId)).join(", ")}. Visible comments remain visible to conflicted people.</p>}
     <div className={styles.thread} data-targeting={Boolean(targetCommentId) || undefined}>{loading ? <p>Opening conversation…</p> : comments.map((c, index) => {
       const conflict = conflicts.some(item => item.personId === c.authorId);

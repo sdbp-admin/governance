@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase/client";
 import { AGREEMENT_CATEGORIES } from "./governance-effect-editor";
 import styles from "./organisation-governance.module.css";
 import { RoleEditorModal, blankRole } from "@/components/role-editor-modal";
+import { ProcessGuidance } from "@/components/process-guidance";
 
 type GovernanceAvailability = { id: string; governance_available: boolean; governance_leave_expected_return_on?: string | null };
 
@@ -131,7 +132,7 @@ function StructureDetail({ role, roles, personName, onEdit, onSelect, onPeople }
   const children = roles.filter(candidate => candidate.parentId === role.id);
   const holders = role.isCircle ? circleMembers(role.id, roles) : role.holderIds;
   return <aside className={styles.detail} aria-label={`${role.title} definition`}>
-    <div className="structure-detail-head"><div><span className="section-kicker">{role.isCircle ? "Circle" : "Role"}</span><h3>{role.title}</h3></div><button className="secondary small" onClick={() => onEdit(role)}>Edit</button></div>
+    <div className="structure-detail-head"><div><span className="section-kicker">{role.isCircle ? "Circle" : "Role"}</span><h3>{role.title} <ProcessGuidance topic="organisation" /></h3></div><button className="secondary small" onClick={() => onEdit(role)}>Edit</button></div>
     <div className={styles.links}><button onClick={() => onSelect(parent?.id ?? null)}>Within {parent?.title ?? "SDBP"} ↗</button></div>
     <Detail label="Purpose" value={role.purpose || "Not defined yet."} /><Detail label="Scope / domain" value={role.scope || "Not defined yet."} />
     <DetailList label="Responsibilities" values={role.responsibilities} /><DetailList label="Accountabilities" values={role.accountabilities} />

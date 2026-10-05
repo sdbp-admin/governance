@@ -14,6 +14,7 @@ import { activeProjectActions, layoutProjectObjects, layoutProjectPreviewObjects
 import { SpatialSurfaces, type SpatialSurface } from "./spatial-surfaces";
 import { SpatialPulsePause } from "./spatial-pulse-pause";
 import { WorkspaceSearch } from "@/components/workspace-search";
+import { ProcessGuidance } from "@/components/process-guidance";
 import type { SearchTarget } from "@/lib/supabase/workspace-search";
 import { createRecordSignedUrl } from "@/lib/supabase/records";
 import { createWorkFileSignedUrl } from "@/lib/supabase/work-attachments";
@@ -436,9 +437,9 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
       <div className={styles.profile}><button onClick={() => setMainSurface("account")}>{profile.name} · Account</button></div>
     </header>
     <div ref={field} className={styles.field} aria-label="Spatial workspace" data-surface={surface ?? "none"} inert={Boolean(mainSurface) || undefined}>
-      <div className={styles.organisationHeading} data-visible={!zoomed}><span className={styles.eyebrow}>Your perspective</span><h1>The working landscape</h1></div>
+      <div className={styles.organisationHeading} data-visible={!zoomed}><span className={styles.eyebrow}>Your perspective</span><h1>The working landscape <ProcessGuidance topic="attention" compass /></h1></div>
 
-      {depth.kind === "organisation" && <div className={styles.landscapeCreate}><button onClick={() => setCapture("project")}>+ Project</button><button onClick={() => setCapture("tension")}>Bring something up</button></div>}
+      {depth.kind === "organisation" && <div className={styles.landscapeCreate}><span className={styles.helpControl}><button onClick={() => setCapture("project")}>+ Project</button><ProcessGuidance topic="projects" compass /></span><span className={styles.helpControl}><button onClick={() => setCapture("tension")}>Bring something up</button><ProcessGuidance topic="capture" compass /></span></div>}
       {/* These circles stay mounted. Their geometry interpolates across every depth. */}
       {packed.map((node) => {
         const selected = node.project.id === projectId;
@@ -602,7 +603,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
       {depth.kind === "project" && selectedProject && surface && <div className={styles.projectReading} ref={surfaceRef} tabIndex={-1} aria-label={surface === "conversation" ? "Project conversation" : "Project commitments"}>
         <button className={styles.closeReading} onClick={() => setSurface(null)}>← Back to project</button>
         {surface === "conversation" ? <SpatialConversation key={selectedProject.id} kind="project" id={selectedProject.id} userId={profile.id} people={workspace.people} signalIds={(workspace.attentionSignals ?? []).filter(s => s.projectId === selectedProject.id && s.recipientId === profile.id && s.signalType === "project_comment").map(s => s.id)} targetCommentId={attentionTarget?.kind === "project" && attentionTarget.id === selectedProject.id ? attentionTarget.commentId : undefined} /> :
-          <section><span className={styles.eyebrow}>{selectedProject.title}</span><h2>Commitments</h2><SpatialNextSteps parent={selectedProject} kind="project" workspace={workspace} userId={profile.id} run={run} onOpen={action => { if (action.sourceTensionId) { navigate({ kind: "tension", tensionId: action.sourceTensionId, projectId: action.projectId }); setTensionTab("commitments"); setAttentionTarget({ kind: "action", id: action.id }); } }} attentionActionId={attentionTarget?.kind === "action" ? attentionTarget.id : undefined} /></section>}
+          <section><span className={styles.eyebrow}>{selectedProject.title}</span><h2>Commitments <ProcessGuidance topic="nextSteps" compass /></h2><SpatialNextSteps parent={selectedProject} kind="project" workspace={workspace} userId={profile.id} run={run} onOpen={action => { if (action.sourceTensionId) { navigate({ kind: "tension", tensionId: action.sourceTensionId, projectId: action.projectId }); setTensionTab("commitments"); setAttentionTarget({ kind: "action", id: action.id }); } }} attentionActionId={attentionTarget?.kind === "action" ? attentionTarget.id : undefined} /></section>}
       </div>}
       {depth.kind === "tension" && selectedTension && <TensionContext key={selectedTension.id} tension={selectedTension} workspace={workspace}
         requests={requests.filter((r) => r.tensionId === selectedTension.id)} currentUserId={profile.id} peopleById={peopleById}
@@ -785,7 +786,7 @@ function ProjectContext({ project, workspace, peopleById, surface, onSurface, te
       </button>
       <button data-personal={surface !== "commitments" && Boolean(personalCommitment) || undefined} onClick={() => surface === "commitments" ? onSurface(null) : personalCommitment ? onPersonal(personalCommitment) : onSurface("commitments")} aria-expanded={surface === "commitments"}><span>Commitments <i aria-hidden="true">↗</i></span><strong>{actions.length} open</strong></button>
     </div>
-    <button className={styles.captureInline} onClick={onCapture}>+ Bring something up</button>
+    <button className={styles.captureInline} onClick={onCapture}>+ Bring something up</button><ProcessGuidance topic="capture" compass />
     <ProjectTools project={project} workspace={workspace} userId={userId} run={run} needsUpdate={updateNeedsAttention} />
     {attention.some(a => a.tensionId && !workspace.tensions.some(t => t.id === a.tensionId && t.status !== "resolved")) && <details><summary>Outstanding work from resolved objects</summary>{attention.filter(a => a.tensionId && workspace.tensions.some(t => t.id === a.tensionId && t.status === "resolved")).map(a => <button key={a.id} onClick={() => onPersonal(a)}>{a.label} · {workspace.actions.find(action => action.id === a.actionId)?.title}</button>)}</details>}
     <WaitingContext projectId={project.id} workspace={workspace} requests={requests} userId={userId} onOpen={onPersonal} />
@@ -890,7 +891,7 @@ function TensionContext({ tension, workspace, requests, currentUserId, peopleByI
     <section id="tension-panel" className={styles.tensionPanel} role="tabpanel" aria-labelledby={`tab-${tab}`}>
       {tab === "conversation" && <SpatialConversation key={tension.id} kind="tension" id={tension.id} userId={currentUserId} people={workspace.people} signalIds={attention.filter(a => a.kind === "mention" && a.signalId).map(a => a.signalId!)} targetCommentId={targetCommentId} />}
       {tab === "requests" && <section className={styles.requestField}>
-        <header><h2>Requests</h2>{mine && (tension.status === "open" || tension.status === "needs_sync") && <button onClick={() => setRequestOpen(!requestOpen)}>Define what would help</button>}</header>
+        <header><h2>Requests <ProcessGuidance topic="requests" compass /></h2>{mine && (tension.status === "open" || tension.status === "needs_sync") && <button onClick={() => setRequestOpen(!requestOpen)}>Define what would help</button>}</header>
         {requestOpen && <RequestComposer tension={tension} people={workspace.people.filter((p) => p.id !== currentUserId)} roles={workspace.roles} onCancel={() => setRequestOpen(false)} onSave={async (kind, recipientIds, detail, roleId) => {
           const save = roleId ? () => defineRoleTensionRequest({ tensionId: tension.id, kind, roleId, recipientId: recipientIds[0], detail }) : () => defineTensionRequests({ tensionId: tension.id, kind, recipientIds, detail });
           if (await run(save, "Request recorded.")) setRequestOpen(false);
@@ -916,8 +917,9 @@ function TensionContext({ tension, workspace, requests, currentUserId, peopleByI
         {!activeRequests.length && <p className={styles.quietEmpty}>No durable requests are recorded. Any legacy need remains in the recorded context above.</p>}
         <SpatialPoll tension={tension} userId={currentUserId} workspace={workspace} run={run} />
       </section>}
-      {tab === "commitments" && <section className={styles.tensionCommitments}><h2>Commitments</h2><SpatialNextSteps parent={tension} kind="tension" workspace={workspace} userId={currentUserId} run={run} attentionActionId={targetActionId} attentionActionIds={attentionActionIds} /></section>}
+      {tab === "commitments" && <section className={styles.tensionCommitments}><h2>Commitments <ProcessGuidance topic="nextSteps" compass /></h2><SpatialNextSteps parent={tension} kind="tension" workspace={workspace} userId={currentUserId} run={run} attentionActionId={targetActionId} attentionActionIds={attentionActionIds} /></section>}
     </section>
+    {tension.status !== "resolved" && <ProcessGuidance topic="resolution" compass />}
     <footer ref={resolutionCheck} className={styles.resolutionEdge} data-target={resolutionTargeted || undefined} tabIndex={resolutionTargeted ? -1 : undefined} aria-label="Resolution check">
       {tension.status === "awaiting_confirmation" ? mine ? <><span>{personName(tension.resolutionProposedBy ?? "")} believes this is resolved.</span><button disabled={busy} onClick={async () => { setBusy(true); await run(() => updateTension(tension.id, { status: "open", resolutionProposedBy: null, latestNote: tension.latestNote ?? null })); setBusy(false); }}>No, keep open</button><button disabled={busy} onClick={() => void resolve()}>Yes, resolved</button></> : <span>Waiting for {personName(tension.raiserId)} to confirm.</span> :
         tension.status !== "governance" && tension.status !== "resolved" && <><span>{mine ? "Did you get what you needed?" : "Has the underlying tension been resolved?"}</span><button disabled={busy} onClick={() => void resolve()}>{mine ? "Resolve tension" : "Looks resolved"}</button></>}
@@ -1089,6 +1091,7 @@ function RequestComposer({ tension, people, roles, onCancel, onSave }: { tension
   return <form className={styles.simpleForm} onSubmit={e => { e.preventDefault(); if (!recipientIds.length || saving) return; setSaving(true); void onSave(kind, recipientIds, detail, roleId || undefined).finally(() => setSaving(false)); }}>
     <label>What would help?<select value={kind} onChange={e => setKind(e.target.value as "input" | "conversation")}><option value="input">Input or help</option><option value="conversation">A real conversation</option></select></label>
     <label>Address to<select value={roleId ? "role" : "person"} onChange={e => { setRoleId(e.target.value === "role" ? availableRoles[0]?.id ?? "" : ""); setHolderId(""); }}><option value="person">Person</option>{availableRoles.length > 0 && <option value="role">Role</option>}</select></label>
+    <ProcessGuidance topic="requests" />
     {roleId ? <><label>Role<select value={roleId} onChange={e => { setRoleId(e.target.value); setHolderId(""); }}>{availableRoles.map(role => <option key={role.id} value={role.id}>{role.title}</option>)}</select></label>
       {holders.length > 1 && <label>Which holder?<select value={holderId || holders[0]} onChange={e => setHolderId(e.target.value)}>{holders.map(id => <option key={id} value={id}>{people.find(person => person.id === id)?.name ?? "Unknown"}</option>)}</select></label>}
       {holders.length === 1 && <p>Request goes to {people.find(person => person.id === holders[0])?.name}.</p>}</> :

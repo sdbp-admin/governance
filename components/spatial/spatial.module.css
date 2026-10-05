@@ -28,6 +28,10 @@
 .utilities > div { position: absolute; right: 0; top: 30px; width: 220px; padding: 14px; background: var(--paper); box-shadow: 0 12px 40px #2b374622; border-radius: 8px; }
 .utilities button { display: block; padding: 10px; width: 100%; text-align: left; border: 0; background: none; color: var(--ink); }
 .landscapeCreate { position: absolute; z-index: 9; top: 24px; right: 40px; display: flex; gap: 22px; }
+.helpControl { display: inline-flex; align-items: center; gap: 6px; }
+.helpControl > span { margin: 0; }
+.organisationHeading h1 { display: flex; align-items: center; gap: 6px; }
+.organisationHeading[data-visible="true"] button { pointer-events: auto; }
 .landscapeCreate button, .captureInline { border: 0; background: none; color: var(--ink); padding: 10px 0; font-size: 14px; }
 .captureInline { margin-top: 10px; color: var(--blue); }
 .projectTools { font-size: 13px; margin: 14px 0; }

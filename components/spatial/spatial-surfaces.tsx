@@ -16,6 +16,7 @@ import { SpatialPulsePause } from "./spatial-pulse-pause";
 import type { SpatialProfile } from "./spatial-authenticated-launch";
 import styles from "./spatial.module.css";
 import organisationStyles from "../organisation-governance.module.css";
+import { PROCESS_GUIDANCE, ProcessGuidance, type GuidanceTopic } from "@/components/process-guidance";
 
 export type SpatialSurface = "organisation" | "governance" | "records" | "commitments" | "account" | "compass" | "completed" | null;
 export function SpatialSurfaces({ surface, workspace, profile, run, governanceTargetProposalId, consentProposalIds, onGovernanceResponse, pulseUntilForProposal, onProposalPulsePause, pulseUntilForAction, onActionPulsePause, onClose, onSurface, onProject, onAction, onCapture, onSignOut, searchRoleId, searchConstitutionArticle, onSearchTargetHandled }: {
@@ -26,6 +27,16 @@ export function SpatialSurfaces({ surface, workspace, profile, run, governanceTa
   onSurface: (surface: SpatialSurface) => void; onProject: (id: string) => void; onAction: (action: Action) => void; onCapture: () => void; onSignOut: () => void;
 }) {
   const [inviteAllowed, setInviteAllowed] = useState(false);
+  const [compassTopic, setCompassTopic] = useState<GuidanceTopic | null>(null);
+  useEffect(() => {
+    const openCompass = (event: Event) => {
+      const topic = (event as CustomEvent<GuidanceTopic>).detail;
+      if (!(topic in PROCESS_GUIDANCE)) return;
+      setCompassTopic(topic); onSurface("compass");
+    };
+    window.addEventListener("sdbp-open-compass", openCompass);
+    return () => window.removeEventListener("sdbp-open-compass", openCompass);
+  }, [onSurface]);
   const presence = useWorkspacePresence(profile.id);
   useEffect(() => { let alive = true; void canInvitePeople().then(allowed => { if (alive) setInviteAllowed(allowed); }).catch(() => { if (alive) setInviteAllowed(false); }); return () => { alive = false; }; }, [workspace]);
   const name = (id: string) => workspace.people.find(p => p.id === id)?.name ?? "Unknown";
@@ -36,13 +47,13 @@ export function SpatialSurfaces({ surface, workspace, profile, run, governanceTa
     window.open(url, "_blank", "noopener");
   }
   if (!surface) return null;
-  if (surface === "compass") return <div className={styles.adapted}><SpatialCompass onClose={onClose} onPassword={() => onSurface("account")} /></div>;
+  if (surface === "compass") return <div className={styles.adapted}><SpatialCompass topic={compassTopic} onClose={() => { setCompassTopic(null); onClose(); }} /></div>;
   if (surface === "account") return <SpatialDialog title="Account & access" onClose={onClose}><SpatialAccount workspace={workspace} profile={profile} run={run} onSignOut={onSignOut} /></SpatialDialog>;
   if (surface === "completed") return <SpatialDialog title="Completed projects" onClose={onClose}><div className={styles.sourceList}>{workspace.projects.filter(p => p.status === "complete").map(p => <button key={p.id} onClick={() => onProject(p.id)}><strong>{p.title}</strong><small>{name(p.ownerId)} · completed · open context or reopen</small></button>)}</div></SpatialDialog>;
   if (surface === "commitments") return <SpatialDialog title="All commitments" onClose={onClose}><CommitmentsOverview workspace={workspace} userId={profile.id} run={run} onOpen={onAction} pulseUntilForAction={pulseUntilForAction} onActionPulsePause={onActionPulsePause} /></SpatialDialog>;
   const title = surface === "records" ? "Records" : surface === "organisation" ? "Organisation" : "Governance";
   return <section className={`${styles.mainSurface} ${styles.adapted} ${surface !== "records" ? organisationStyles.surface : ""}`} aria-label={title}>
-    <header className={styles.surfaceHeading}><div><span className={styles.eyebrow}>SDBP</span><h1>{title}</h1></div><button onClick={onClose}>← Spatial workspace</button></header>
+    <header className={styles.surfaceHeading}><div><span className={styles.eyebrow}>SDBP</span><h1>{title} <ProcessGuidance topic={surface === "records" ? "records" : surface === "organisation" ? "organisation" : "governance"} compass /></h1></div><button onClick={onClose}>← Spatial workspace</button></header>
     {surface === "records" ? <RecordsView governanceProposals={workspace.governanceProposals} tensions={workspace.tensions} profileId={profile.id} searchConstitutionArticle={searchConstitutionArticle} onSearchTargetHandled={onSearchTargetHandled} /> : surface === "organisation" ?
       <OrganisationWorkspaceView workspace={workspace} currentUserId={profile.id} canInvite={inviteAllowed} personName={name} presence={presence} onInvite={(n, email) => run(() => invitePerson(n, email), "Invitation sent.")} onSaveRole={role => run(() => saveRole(role))} onDeleteRole={id => run(() => deleteRole(id))} onOpenProject={onProject} onGoRecords={() => onSurface("records")} searchRoleId={searchRoleId} onSearchTargetHandled={onSearchTargetHandled} /> :
       <GovernanceWorkspaceView workspace={workspace} currentUserId={profile.id} personName={name} focusProposalId={governanceTargetProposalId} consentProposalIds={consentProposalIds} onResponseRecorded={onGovernanceResponse} pulseUntilForProposal={pulseUntilForProposal} onProposalPulsePause={onProposalPulsePause} onCreateProposal={input => run(() => createGovernanceProposal({ ...input, proposerId: profile.id }))} onStartMeeting={startMeeting} onGoTensions={onCapture} onGoRecords={() => onSurface("records")} />
@@ -50,11 +61,19 @@ export function SpatialSurfaces({ surface, workspace, profile, run, governanceTa
   </section>;
 }
 
-function SpatialCompass({ onClose, onPassword }: { onClose: () => void; onPassword: () => void }) {
+function SpatialCompass({ onClose, topic }: { onClose: () => void; topic: GuidanceTopic | null }) {
+  useEffect(() => {
+    if (!topic) return;
+    const target = document.getElementById(`compass-${topic}`);
+    target?.scrollIntoView({ block: "center" }); target?.focus({ preventScroll: true });
+  }, [topic]);
   return <div className="modal-backdrop compass-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="compass-modal" role="dialog" aria-modal="true" aria-labelledby="spatial-compass-title">
       <div className="editor-head"><div><span className="section-kicker">SDBP Compass</span><h2 id="spatial-compass-title">Navigating the spatial workspace</h2></div><button className="quiet editor-close" type="button" onClick={onClose} aria-label="Close Compass">×</button></div>
       <div className="compass-grid">
+        {Object.entries(PROCESS_GUIDANCE).map(([key, guide]) => <section id={`compass-${key}`} tabIndex={-1} key={key}><h3>{guide.title}</h3><p>{guide.body}</p></section>)}
+        <section><h3>Authority belongs to roles, not seniority</h3><p>A role's purpose, scope and accountabilities explain its work. Check its recorded authority and current Standing Agreements rather than assuming that expertise or seniority gives someone permission to decide. Projects are temporary work; circles are continuing organisational structure.</p></section>
+        <section><h3>Learn from what actually happened</h3><p>Separate what you observed from your interpretation. Ask for clarification, allow uncertainty and review significant experiences at useful project moments. These are guidance for learning together, not a new performance or compliance measure.</p></section>
         <section><h3>Your project landscape</h3><p>Project circles give you a personal view of the work. Their size reflects relevance to you, and you can adjust that prominence yourself.</p></section>
         <section><h3>Follow what needs you</h3><p>When something explicitly needs your attention, the relevant circle softly pulses. Follow the pulse deeper until you reach the request, mention, commitment or other item that needs you.</p></section>
         <section><h3>Bring something up</h3><p>Use <strong>Bring something up</strong> when something needs dealing with. You do not need to decide first whether it is a task, request, conversation or governance issue.</p></section>
@@ -63,7 +82,6 @@ function SpatialCompass({ onClose, onPassword }: { onClose: () => void; onPasswo
         <section><h3>Keep organisational memory</h3><p><strong>Records</strong> contains statutes, approved minutes and accepted governance decisions.</p></section>
       </div>
       <div className="compass-principle"><strong>The app makes organisational reality visible. It does not run the organisation.</strong><p>People still make commitments, have conversations, exercise judgement and do the work.</p></div>
-      <div className="compass-account"><div><h3>Your account</h3><p>Use the email address you were invited with. If you forget your password, use the reset link on the sign-in screen.</p></div><button className="secondary" type="button" onClick={onPassword}>Change password</button></div>
     </section>
   </div>;
 }

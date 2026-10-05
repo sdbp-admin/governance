@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase/client";
 import { createTension, type WorkspacePerson } from "@/lib/supabase/workspace";
 import { useLocalDraft } from "@/lib/local-draft";
 import { SpatialPulsePause } from "@/components/spatial/spatial-pulse-pause";
+import { ProcessGuidance } from "@/components/process-guidance";
 
 type ConsentRound = {
   proposal_id: string;
@@ -327,7 +328,8 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
   }
 
   return <div className="governance-round">
-    <span className="kind">Quick consent</span>
+    <span className="kind">Quick consent</span><ProcessGuidance topic="quickConsent" />
+    <ProcessGuidance topic="objections" />
     <h4>{requiredResponses} of {requiredPeople.length} required responses</h4>
     <p>Silence does not count as consent. Everyone currently participating in governance can respond until the deadline. If responses are missing then, this proposal moves to a governance meeting; nobody is recorded as objecting merely because they did not answer. Board members on leave are not counted as waiting. Objections are checked for validity before they can block Quick Consent.</p>
     {deadlineLabel && <p className="objection-essential">Response deadline: <strong>{deadlineLabel}</strong>. {remaining !== null && remaining <= 0 ? "The window has ended; the meeting result is being recorded." : remaining !== null && remaining <= 24 * 60 * 60 * 1000 && !ownResponse && ownAvailable ? "Your response is still missing. You have less than 24 hours; otherwise a governance meeting will be required." : "Unanswered responses at this time will require a governance meeting."}</p>}

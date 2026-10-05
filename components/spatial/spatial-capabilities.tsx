@@ -16,6 +16,7 @@ import { setTensionUrgency } from "@/lib/supabase/tension-urgency";
 import { updateTensionNeedNote } from "@/lib/supabase/tension-need-edit";
 import { declineProposedAction, removeAction, updateActionDetails } from "@/lib/supabase/action-management";
 import { DeclineDecision } from "@/components/decline-decision";
+import { ProcessGuidance } from "@/components/process-guidance";
 import { loadCommentThreadSummary, type CommentThreadSummary } from "@/lib/supabase/comment-thread-state";
 import { SpatialConversation } from "./spatial-conversation";
 import { SpatialPulsePause } from "./spatial-pulse-pause";
@@ -26,11 +27,11 @@ export type SpatialRun = (action: () => Promise<void>, message?: string) => Prom
 export function SpatialDialog({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
-    const key = (event: KeyboardEvent) => { if (event.key === "Escape") { event.stopImmediatePropagation(); onClose(); } };
+    const key = (event: KeyboardEvent) => { if (event.key === "Escape" && !document.querySelector('[data-process-guidance-open]')) { event.stopImmediatePropagation(); onClose(); } };
     window.addEventListener("keydown", key, true);
     return () => { window.removeEventListener("keydown", key, true); previous?.focus(); };
   }, [onClose]);
-  return createPortal(<div className={styles.dialogBackdrop} onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}><section className={`${styles.dialog} ${styles.adapted}`} role="dialog" aria-modal="true" aria-label={title}><header><h2>{title}</h2><button onClick={onClose} aria-label={`Close ${title}`}>Close</button></header>{children}</section></div>, document.body);
+  return createPortal(<div className={styles.dialogBackdrop} onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}><section className={`${styles.dialog} ${styles.adapted}`} role="dialog" aria-modal="true" aria-label={title}><header><h2>{title} {title === "Bring something up" ? <ProcessGuidance topic="capture" compass /> : title === "Add a project" ? <ProcessGuidance topic="projects" compass /> : title === "All commitments" ? <ProcessGuidance topic="nextSteps" compass /> : null}</h2><button onClick={onClose} aria-label={`Close ${title}`}>Close</button></header>{children}</section></div>, document.body);
 }
 
 export function Capture({ kind, projectId, userId, run, onCreated, onClose }: { kind: "project" | "tension"; projectId?: string; userId: string; run: SpatialRun; onCreated?: (id: string) => void; onClose: () => void }) {
@@ -94,7 +95,7 @@ export function TensionTools({ tension, workspace, userId, urgent, run, onGovern
     <form className={styles.simpleForm} onSubmit={async e => { e.preventDefault(); setBusy(true); await run(() => setTensionProject(tension.id, projectId || null), "Project link saved."); setBusy(false); }}><label>Project<select value={projectId} onChange={e => setProjectId(e.target.value)}><option value="">No project</option>{workspace.projects.filter(p => p.status === "active" || p.id === tension.linkedProjectId).map(p => <option key={p.id} value={p.id}>{p.title}</option>)}</select></label><button disabled={busy || projectId === (tension.linkedProjectId ?? "")}>Save project link</button></form>
   </div></details>{editing && <SpatialDialog title="Edit original text" onClose={() => setEditing(false)}><form className={styles.simpleForm} onSubmit={async e => { e.preventDefault(); setBusy(true); const ok = await run(() => updateTensionTitle(tension.id, userId, title)); setBusy(false); if (ok) setEditing(false); }}><textarea autoFocus aria-label="Original text" rows={6} value={title} onChange={e => setTitle(e.target.value)} /><button disabled={busy || !title.trim()}>Save</button></form></SpatialDialog>}
     {needEdit && <SpatialDialog title="Edit recorded need" onClose={() => setNeedEdit(false)}><form className={styles.simpleForm} onSubmit={async e => { e.preventDefault(); setBusy(true); const base = (tension.latestNote ?? "").split(" — ")[0].replace(/\.$/, ""); const ok = await run(() => updateTensionNeedNote(tension.id, needDetail.trim() ? `${base} — ${needDetail.trim()}` : `${base}.`)); setBusy(false); if (ok) setNeedEdit(false); }}><label>What do you need?<textarea autoFocus rows={4} value={needDetail} onChange={e => setNeedDetail(e.target.value)} /></label><button disabled={busy}>Save</button></form></SpatialDialog>}
-    {governancePrep && <SpatialDialog title="Prepare for Governance" onClose={() => setGovernancePrep(false)}><div className={styles.simpleForm}><p><strong>About to record</strong></p><p>This tension will be identified as structural and placed in Governance preparation. Its original text and current note will be preserved. A proposal must still be prepared before a Governance Meeting can process it.</p><div className={styles.toolLinks}><button type="button" disabled={busy} onClick={() => setGovernancePrep(false)}>Cancel</button><button type="button" disabled={busy} onClick={async () => { setBusy(true); const ok = await run(() => updateTension(tension.id, { status: "governance", resolutionProposedBy: null }), "Marked for Governance preparation."); setBusy(false); if (ok) { setGovernancePrep(false); onGovernance(); } }}>Record and open preparation</button></div></div></SpatialDialog>}
+    {governancePrep && <SpatialDialog title="Prepare for Governance" onClose={() => setGovernancePrep(false)}><div className={styles.simpleForm}><ProcessGuidance topic="governance" /><p><strong>About to record</strong></p><p>This tension will be identified as structural and placed in Governance preparation. Its original text and current note will be preserved. A proposal must still be prepared before a Governance Meeting can process it.</p><div className={styles.toolLinks}><button type="button" disabled={busy} onClick={() => setGovernancePrep(false)}>Cancel</button><button type="button" disabled={busy} onClick={async () => { setBusy(true); const ok = await run(() => updateTension(tension.id, { status: "governance", resolutionProposedBy: null }), "Marked for Governance preparation."); setBusy(false); if (ok) { setGovernancePrep(false); onGovernance(); } }}>Record and open preparation</button></div></div></SpatialDialog>}
   </div>;
 }
 
@@ -180,6 +181,7 @@ export function SpatialCommitmentFocus({ action, people, roles, currentUserId, s
     <header><span>{action.status === "proposed" ? "Proposed commitment" : action.status === "done" ? "Completed commitment" : "Commitment"}</span><button onClick={onClose} aria-label="Close commitment details">×</button></header>
     {!editing ? <>
       <h2>{action.title}</h2>
+      {action.status === "proposed" && <ProcessGuidance topic="commitments" compass />}
       <dl><div><dt>{action.status === "proposed" ? "Proposed to" : "Owner"}</dt><dd>{name(action.ownerId)}</dd></div><div><dt>Due</dt><dd>{action.due ? formatCommitmentDate(action.due) : "No deadline"}</dd></div></dl>
       {hasPulse && onPulsePause && <SpatialPulsePause until={pulseUntil} onPause={onPulsePause} />}
       {sourceTension && <div className={styles.commitmentSource}><span>From tension ↗</span><button onClick={onOpenSource} aria-label={`Open tension: ${sourceTension.title}`}>{sourceTension.title}</button></div>}

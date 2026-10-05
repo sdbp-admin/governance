@@ -13,6 +13,7 @@ import {
   type WorkspaceData,
 } from "@/lib/supabase/workspace";
 import styles from "@/components/governance-meeting.module.css";
+import { ProcessGuidance } from "@/components/process-guidance";
 
 type LiveProfile = { id: string; name: string; email: string };
 type MeetingStage = "frame_need" | "present_proposal" | "clarifying_questions" | "reaction_round" | "clarify" | "objection_round" | "integration" | "outcome";
@@ -250,6 +251,7 @@ function MeetingItem({ item, workspace, busy, onPatch, onStage, onRecordProposal
     <header className={styles.workHead}><span className="section-kicker">{sourceLabel(item.source)}</span><h2>{item.title}</h2><p className={styles.sourceLine}>{item.tensionId ? "Connected to an existing Workspace tension" : "Temporary meeting item until a proposal is explicitly recorded"}</p></header>
     <nav className={styles.steps} aria-label="Governance process">{STAGES.map((stage, stepIndex) => <button key={stage} className={styles.step} data-active={stage === item.stage} data-past={stepIndex < index} type="button" disabled={!item.proposalId && stage !== "frame_need"} onClick={() => onStage(stage)}><span>{stepIndex + 1}</span>{LABELS[stage]}</button>)}</nav>
     <div className={styles.stage}>
+      {(item.stage === "objection_round" || item.stage === "integration") && <ProcessGuidance topic="objections" />}
       <StageGuide stage={item.stage} />
       {item.stage === "frame_need" && <div className={styles.form}><label>Governance need<textarea rows={3} value={item.need} onChange={(event) => onPatch({ need: event.target.value })} placeholder="What persistent structural gap needs to change?" /></label><label>Proposal title<input value={item.title} onChange={(event) => onPatch({ title: event.target.value })} /></label><label>Proposed change<textarea rows={5} value={item.proposalText} onChange={(event) => onPatch({ proposalText: event.target.value })} placeholder="What should become true?" /></label><GovernanceEffectEditor effect={item.effect} roles={workspace.roles} standingAgreements={workspace.standingAgreements} onChange={(effect) => onPatch({ effect })} /><div className={styles.recordPreview}><span>What will be recorded</span><strong>{item.title || "Proposal title"}</strong><p>{item.proposalText || "The formulated proposal will appear here before it is saved."}</p>{item.effect && <small>{governanceEffectSummary(item.effect, workspace.roles, workspace.standingAgreements)}</small>}</div><div className={styles.actions}><span /><button className="primary" type="button" disabled={busy || !item.need.trim() || !item.title.trim() || !item.proposalText.trim() || !governanceEffectIsComplete(item.effect)} onClick={onRecordProposal}>Record proposal & continue →</button></div></div>}
       {item.stage === "present_proposal" && <><ProposalSummary item={item} workspace={workspace} /><div className={styles.actions}><span /><button className="primary" type="button" onClick={() => onStage("clarifying_questions")}>Open clarifying questions →</button></div></>}
