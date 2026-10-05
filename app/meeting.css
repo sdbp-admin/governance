@@ -1,0 +1,59 @@
+.governance-meeting-popout {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 30px 34px 56px;
+}
+
+.governance-meeting-surface {
+  display: grid;
+  gap: 22px;
+}
+
+.meeting-window-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  padding: 24px 26px;
+  border-radius: 20px;
+  background: var(--brand-navy);
+  color: white;
+}
+
+.meeting-window-head .section-kicker {
+  color: #a9d8e8;
+}
+
+.meeting-window-head h1 {
+  margin-top: 6px;
+  color: white;
+  font-size: clamp(30px, 4vw, 44px);
+}
+
+.meeting-window-head p {
+  max-width: 760px;
+  margin: 10px 0 0;
+  color: #d0d9df;
+}
+
+.meeting-window-head .governance-stage-badge {
+  margin-top: 3px;
+  background: white;
+}
+
+.governance-meeting-surface > .governance-proposal-card {
+  padding: 26px;
+  box-shadow: var(--shadow);
+}
+
+@media (max-width: 700px) {
+  .governance-meeting-popout {
+    padding: 18px;
+  }
+
+  .meeting-window-head {
+    display: grid;
+    padding: 20px;
+  }
+}

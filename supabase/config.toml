@@ -1,0 +1,7 @@
+[functions.tension-notify]
+verify_jwt = true
+
+# Invoked by pg_cron using a Vault token, checked by the function against the
+# service-role-only validation RPC before any database reads or email sends.
+[functions.governance-deadlines]
+verify_jwt = false
