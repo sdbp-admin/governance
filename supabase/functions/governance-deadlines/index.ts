@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
           await sendMail({ smtpUser, smtpPassword, fromName: Deno.env.get("SMTP_FROM_NAME")?.trim() || "SDBP Workspace",
             to: person.email, subject: `${kind === "deadline_notice" ? "Response deadline set" : "Response deadline approaching"} · ${title}`,
             body: [`${person.name},`, "", kind === "deadline_notice" ? "A 72-hour response window has been set for a Quick Consent proposal:" : "Less than 24 hours remain to respond to this Quick Consent proposal:",
-              "", title, "", `Deadline: ${deadlineText}`, "", "Please choose ‘No objection’ or submit an objection for validation. If the deadline passes with unanswered responses, the proposal will require a governance meeting. Silence will not be counted as consent or an objection.",
+              "", title, "", `Deadline: ${deadlineText}`, "", "Please choose ‘No objection’ or submit an objection for validation within the 72-hour window. No response by the deadline counts as no objection, not as support or a formal Board vote. The proposal can be accepted if no pending or valid objection remains. Valid objections require integration in a Governance Meeting.",
               "", `Open Spatial Workspace: ${appUrl}`].join("\n") });
           const save = await db.from("governance_consent_deadline_notifications").insert({ proposal_id: round.proposal_id, person_id: person.id, kind });
           if (save.error && save.error.code !== "23505") throw save.error;

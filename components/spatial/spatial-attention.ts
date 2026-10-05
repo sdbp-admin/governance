@@ -227,13 +227,13 @@ export async function loadGovernanceResponseAttention(workspace: WorkspaceData, 
   const ids = workspace.governanceProposals.filter(p => p.stage === "prepared" || p.stage === "present_proposal").map(p => p.id);
   if (!ids.length) return [];
   const [rounds, responses, person, chairReviews] = await Promise.all([
-    supabase.from("governance_consent_rounds").select("proposal_id,status").in("proposal_id", ids).eq("status", "open"),
+    supabase.from("governance_consent_rounds").select("proposal_id,status,deadline_at").in("proposal_id", ids).eq("status", "open"),
     supabase.from("governance_consent_responses").select("proposal_id,person_id").in("proposal_id", ids).eq("person_id", userId),
     supabase.from("people").select("governance_available").eq("id", userId).single(),
     supabase.rpc("load_governance_objection_review_attention"),
   ]);
   if (rounds.error || responses.error || person.error || chairReviews.error) throw rounds.error ?? responses.error ?? person.error ?? chairReviews.error;
-  const responseAttention: PersonalAttention[] = (person.data?.governance_available === false ? [] : rounds.data ?? []).filter(r => !responses.data?.some(response => response.proposal_id === r.proposal_id)).map(r => {
+  const responseAttention: PersonalAttention[] = (person.data?.governance_available === false ? [] : rounds.data ?? []).filter(r => (!r.deadline_at || new Date(r.deadline_at).getTime() > Date.now()) && !responses.data?.some(response => response.proposal_id === r.proposal_id)).map(r => {
     const proposal = workspace.governanceProposals.find(p => p.id === r.proposal_id)!;
     return { id: `consent-${r.proposal_id}`, kind: "governance", proposalId: proposal.id, tensionId: proposal.tensionId, projectId: workspace.tensions.find(t => t.id === proposal.tensionId)?.linkedProjectId, label: `Your Quick Consent response is needed · ${proposal.title}` };
   });

@@ -336,15 +336,15 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
   }
 
   if (round.status === "accepted") {
-    return <div className="governance-round"><span className="kind">Quick consent</span><h4>Accepted by explicit consent</h4><p>All required participants responded and no valid objection remained. The proposal is being moved into Current Governance.</p>{objectionEntries}</div>;
+    return <div className="governance-round"><span className="kind">Quick consent</span><h4>Accepted with no remaining objection</h4><p>No pending or valid objection remained. The proposal is being moved into Current Governance.</p>{unanswered.length > 0 && <p>No response before the deadline: {unanswered.join(", ")}. Counted as no objection, not as support or a formal Board vote.</p>}{objectionEntries}</div>;
   }
 
   return <div className="governance-round">
     <span className="kind">Quick consent</span><ProcessGuidance topic="quickConsent" />
     <ProcessGuidance topic="objections" />
     <h4>{requiredResponses} of {requiredPeople.length} required responses</h4>
-    <p>Silence does not count as consent. Everyone currently participating in governance can respond until the deadline. If responses are missing then, this proposal moves to a governance meeting; nobody is recorded as objecting merely because they did not answer. Board members on leave are not counted as waiting. Objections are checked for validity before they can block Quick Consent.</p>
-    {deadlineLabel && <p className="objection-essential">Response deadline: <strong>{deadlineLabel}</strong>. {remaining !== null && remaining <= 0 ? "The window has ended; the meeting result is being recorded." : remaining !== null && remaining <= 24 * 60 * 60 * 1000 && !ownResponse && ownAvailable ? "Your response is still missing. You have less than 24 hours; otherwise a governance meeting will be required." : "Unanswered responses at this time will require a governance meeting."}</p>}
+    <p>Everyone currently participating in governance can respond within 72 hours. No response by the deadline counts as no objection, not as support or a formal Board vote. Pending objections await Chair review; valid objections require integration in a Governance Meeting. Board members on leave are not counted as waiting.</p>
+    {deadlineLabel && <p className="objection-essential">Response deadline: <strong>{deadlineLabel}</strong>. {remaining !== null && remaining <= 0 ? "The response window has ended. No response counts as no objection; any pending objection still awaits Chair review." : remaining !== null && remaining <= 24 * 60 * 60 * 1000 && !ownResponse && ownAvailable ? "Your response is still missing. Less than 24 hours remain to submit an objection." : "At the deadline, the proposal can be accepted if no pending or valid objection remains."}</p>}
     {ownAvailable && !ownResponse && onPulsePause && <SpatialPulsePause until={pulseUntil} onPause={onPulsePause} />}
     {onLeavePeople.length > 0 && <small className="draft-saved-note">{onLeavePeople.length} board {onLeavePeople.length === 1 ? "member is" : "members are"} currently on leave and not included in the required response count.</small>}
 
@@ -364,9 +364,9 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
     {!ownAvailable && <div className="objection-essential"><strong>You are currently marked on leave.</strong><p>You are not counted as waiting in this round. If you are participating again, mark yourself available before casting a new response.</p><button className="secondary small" type="button" disabled={busy} onClick={() => void resumeGovernanceParticipation()}>Mark me available again</button></div>}
 
     <div className="process-actions">
-      {ownAvailable && ownResponse?.response !== "objection" && <button className={ownResponse?.response === "no_objection" ? "secondary" : "primary"} type="button" disabled={busy} onClick={() => void respond("no_objection")}>{ownResponse?.response === "no_objection" ? "No objection ✓" : "No objection"}</button>}
+      {ownAvailable && ownResponse?.response !== "objection" && <button className={ownResponse?.response === "no_objection" ? "secondary" : "primary"} type="button" disabled={busy || (remaining !== null && remaining <= 0)} onClick={() => void respond("no_objection")}>{ownResponse?.response === "no_objection" ? "No objection ✓" : "No objection"}</button>}
       {ownResponse?.response === "objection" && (ownResponse.objection_status === "pending_validation" || ownResponse.objection_status === "valid") && <button className="secondary" type="button" disabled={busy} onClick={() => void withdrawObjection()}>Withdraw objection</button>}
-      {ownAvailable && ownResponse?.response !== "objection" && <button className="secondary" type="button" disabled={busy} onClick={() => setObjectionOpen((value) => !value)}>Objection</button>}
+      {ownAvailable && ownResponse?.response !== "objection" && <button className="secondary" type="button" disabled={busy || (remaining !== null && remaining <= 0)} onClick={() => setObjectionOpen((value) => !value)}>Objection</button>}
     </div>
 
     {objectionOpen && ownAvailable && ownResponse?.response !== "objection" && <div className="governance-inline-form">
