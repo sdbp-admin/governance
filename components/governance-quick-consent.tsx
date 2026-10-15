@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { GovernanceProposal } from "@/lib/domain";
 import { supabase } from "@/lib/supabase/client";
 import { createTension, type WorkspacePerson } from "@/lib/supabase/workspace";
 import { useLocalDraft } from "@/lib/local-draft";
 import { SpatialPulsePause } from "@/components/spatial/spatial-pulse-pause";
 import { ProcessGuidance } from "@/components/process-guidance";
+
+import { EMPTY_OBJECTION_DRAFT, OBJECTION_QUESTIONS, formatObjectionConcern, objectionDraftIsComplete, type ObjectionDraft } from "@/lib/governance-objection";
 
 type ConsentRound = {
   proposal_id: string;
@@ -65,7 +67,8 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
   const [loaded, setLoaded] = useState(false);
   const [isChair, setIsChair] = useState(false);
   const [objectionOpen, setObjectionOpen] = useState(false);
-  const [objectionText, setObjectionText, clearObjection] = useLocalDraft(`governance:objection:${proposal.id}:${currentUserId}`, "");
+  const [objectionDraft, setObjectionDraft, clearObjection] = useLocalDraft<ObjectionDraft>(`governance:objection-criteria:v1:${proposal.id}:${currentUserId}`, EMPTY_OBJECTION_DRAFT);
+  const questionId = useId();
   const [reviewingPersonId, setReviewingPersonId] = useState<string | null>(null);
   const [reviewDecision, setReviewDecision] = useState<ReviewDecision | null>(null);
   const [reviewReason, setReviewReason] = useState("");
@@ -149,14 +152,14 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
   }
 
   async function respond(response: "no_objection" | "objection") {
-    if (busy || (response === "objection" && !objectionText.trim())) return;
+    if (busy || (response === "objection" && !objectionDraftIsComplete(objectionDraft))) return;
     setBusy(true);
     setError("");
     try {
       const result = await supabase.rpc("respond_governance_quick_consent", {
         target_proposal_id: proposal.id,
         consent_response: response,
-        objection_reason: response === "objection" ? objectionText.trim() : null,
+        objection_reason: response === "objection" ? formatObjectionConcern(objectionDraft) : null,
       });
       if (result.error) throw result.error;
       setObjectionOpen(false);
@@ -312,7 +315,7 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
 
   const reviewForm = reviewingPersonId && reviewDecision && <div className="governance-inline-form">
       <p><strong>Chair assessment</strong> — use the same questions for every objection.</p>
-      <ul><li>What concrete harm would the proposal cause, or which rule must we follow that it would conflict with?</li><li>How would accepting the proposal cause that problem?</li><li>Is this a reason not to proceed, rather than a preference or suggestion for improvement?</li></ul>
+      <ol>{OBJECTION_QUESTIONS.map((question) => <li key={question}>{question}</li>)}</ol><p>Assess standing, concrete harm and the reasoning. Constitutional, statutory, legal and reserved-authority conflicts are separate grounds: the four answers are not an automatic pass/fail test.</p>
       <div className="objection-essential"><strong>{reviewDecision === "valid" ? "Validate this objection" : "Invalidate this objection"}</strong><p>Test the objection against the proposal, not against whether you agree with the objector.</p></div>
       {reviewDecision === "invalid" && <label className="field"><span>Why is it invalid?</span><select value={reviewReason} onChange={(event) => setReviewReason(event.target.value)}><option value="">Choose a process reason</option>{INVALID_REASONS.map((reason) => <option key={reason} value={reason}>{reason}</option>)}</select></label>}
       <label className="field"><span>{reviewDecision === "valid" ? "Assessment reason (required)" : reviewReason === "Other" ? "Explain the reason (required)" : "Additional explanation (optional)"}</span><textarea rows={3} value={reviewDetails} onChange={(event) => setReviewDetails(event.target.value)} /></label>
@@ -366,14 +369,23 @@ export function ValidatedQuickConsentPanel({ proposal, people, currentUserId, pe
     <div className="process-actions">
       {ownAvailable && ownResponse?.response !== "objection" && <button className={ownResponse?.response === "no_objection" ? "secondary" : "primary"} type="button" disabled={busy || (remaining !== null && remaining <= 0)} onClick={() => void respond("no_objection")}>{ownResponse?.response === "no_objection" ? "No objection ✓" : "No objection"}</button>}
       {ownResponse?.response === "objection" && (ownResponse.objection_status === "pending_validation" || ownResponse.objection_status === "valid") && <button className="secondary" type="button" disabled={busy} onClick={() => void withdrawObjection()}>Withdraw objection</button>}
-      {ownAvailable && ownResponse?.response !== "objection" && <button className="secondary" type="button" disabled={busy || (remaining !== null && remaining <= 0)} onClick={() => setObjectionOpen((value) => !value)}>Objection</button>}
+      {ownAvailable && ownResponse?.response !== "objection" && <button className="secondary" type="button" disabled={busy || (remaining !== null && remaining <= 0)} onClick={() => setObjectionOpen((value) => !value)}>Concern / potential objection</button>}
     </div>
 
     {objectionOpen && ownAvailable && ownResponse?.response !== "objection" && <div className="governance-inline-form">
-      <div className="objection-essential"><strong>State the concrete harm or risk.</strong><p>An objection is not a preference, disagreement, or a better idea. It identifies a concrete way this proposal could harm SDBP or move us backward. It will be recorded as awaiting validation; other board members can continue responding.</p></div>
-      <label className="field"><span>Objection</span><textarea rows={3} value={objectionText} onChange={(event) => setObjectionText(event.target.value)} placeholder="If we adopt this proposal, what concrete harm or risk could result?" /></label>
-      {objectionText.trim() && <small className="draft-saved-note">Draft saved on this device.</small>}
-      <div className="process-actions"><button className="quiet" type="button" onClick={() => { setObjectionOpen(false); clearObjection(); }}>Cancel</button><button className="primary" type="button" disabled={!objectionText.trim() || busy} onClick={() => void respond("objection")}>Submit objection for validation</button></div>
+      <div className="objection-essential"><strong>Concern / potential objection</strong><p>Answer all four questions and explain each Yes. The Chair reviews your reasoning and records whether this is a valid objection. The software does not decide validity.</p></div>
+      {OBJECTION_QUESTIONS.map((question, index) => {
+        const entry = objectionDraft.answers[index];
+        const update = (patch: Partial<ObjectionDraft["answers"][number]>) => setObjectionDraft((draft) => ({ ...draft, answers: draft.answers.map((answer, answerIndex) => answerIndex === index ? { ...answer, ...patch } : answer) }));
+        return <fieldset className="field" key={question} disabled={busy} style={{ border: 0, padding: 0, margin: "12px 0", minWidth: 0 }}>
+          <legend>{index + 1}. {question}</legend>
+          <div className="process-actions">{(["yes", "no"] as const).map((answer) => <label key={answer}><input type="radio" style={{ width: "auto", padding: 0 }} name={`${questionId}-${index}`} value={answer} checked={entry.answer === answer} onChange={() => update({ answer })} /> {answer === "yes" ? "Yes" : "No"}</label>)}</div>
+          {entry.answer === "yes" && <label className="field"><span>Explain your reasoning (required)</span><textarea rows={3} required value={entry.explanation} onChange={(event) => update({ explanation: event.target.value })} /></label>}
+        </fieldset>;
+      })}
+      <label className="field"><span>Separate constitutional, statutory, legal or reserved-authority conflict (optional)</span><textarea rows={3} disabled={busy} value={objectionDraft.conflict} onChange={(event) => setObjectionDraft((draft) => ({ ...draft, conflict: event.target.value }))} placeholder="Identify the requirement or authority and how adopting the proposal would conflict with it." /></label>
+      <small className="draft-saved-note">Answers are saved on this device. All four answers are required; every Yes needs an explanation.</small>
+      <div className="process-actions"><button className="quiet" type="button" onClick={() => { setObjectionOpen(false); clearObjection(); }}>Cancel</button><button className="primary" type="button" disabled={!objectionDraftIsComplete(objectionDraft) || busy} onClick={() => void respond("objection")}>Submit concern for review</button></div>
     </div>}
 
     {pendingObjections.length > 0 && <small className="draft-saved-note">Quick Consent responses remain open. Acceptance waits until {pendingObjections.length === 1 ? "the pending objection is" : "the pending objections are"} validated, invalidated or withdrawn.</small>}
@@ -398,7 +410,7 @@ function ObjectionEntry({ response, proposal, currentUserId, personName, busy, i
 
   return <div id={`governance-objection-${response.person_id}`} data-chair-review={canReview || undefined} className={`governance-entry ${status === "valid" ? "objection-valid" : ""}`}>
     <strong>Objection · {personName(response.person_id)} · {objectionStatusLabel(status)}</strong>
-    <p>{response.objection_text}</p>
+    <p style={{ whiteSpace: "pre-wrap" }}>{response.objection_text}</p>
     {response.objection_reviewed_by && <small>{response.objection_review_mode === "chair" ? "Chair assessment by " : response.objection_review_mode === "process_steward_override" ? "Historical Process Steward review by " : "Reviewed by "}{personName(response.objection_reviewed_by)}{response.objection_review_reason ? ` · ${response.objection_review_reason}` : ""}</small>}
     {status === "pending_validation" && <small>This does not block further responses. Final acceptance waits for a validity check.</small>}
     {status === "invalid" && <small>This objection is retained in the record but does not block the proposal.</small>}
@@ -423,7 +435,7 @@ function responseLabel(response?: ConsentResponse) {
 }
 
 function objectionStatusLabel(status: ObjectionStatus) {
-  return ({ pending_validation: "Awaiting validation", valid: "Valid", invalid: "Invalid", withdrawn: "Withdrawn" } as Record<ObjectionStatus, string>)[status];
+  return ({ pending_validation: "Concern / potential objection", valid: "Valid Objection", invalid: "Invalid concern", withdrawn: "Withdrawn" } as Record<ObjectionStatus, string>)[status];
 }
 
 function formatDate(value: string) {

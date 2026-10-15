@@ -911,7 +911,7 @@ function TensionContext({ tension, workspace, requests, currentUserId, peopleByI
             {mine && <button disabled={busy} onClick={async () => { setBusy(true); await run(() => markTensionRequestResponded(mine.id), "Your response is recorded."); setBusy(false); }}>I’ve responded</button>}
             {mine && <button disabled={busy} onClick={() => setDecliningRequestId(mine.id)}>Decline</button>}
             {mine && decliningRequestId === mine.id && <DeclineDecision roles={workspace.roles} busy={busy} onCancel={() => setDecliningRequestId(null)} onDecline={async (reason, explanation, suggestedRoleId) => { setBusy(true); const ok = await run(() => declineTensionRequest(mine.id, reason, explanation, suggestedRoleId), "Decline recorded for the requester."); setBusy(false); if (ok) setDecliningRequestId(null); }} />}
-            {group.some(request => request.status === "declined") && first.requesterId === currentUserId && <div className={styles.toolLinks}><button onClick={() => setRequestOpen(true)}>Forward request to another person or role</button><small>For a needed role that does not exist, use Object tools → Prepare for Governance.</small></div>}
+            {group.some(request => request.status === "declined") && first.requesterId === currentUserId && <div className={styles.toolLinks}><button onClick={() => setRequestOpen(true)}>Forward request to another person or role</button><small>For a needed role that does not exist, use Prepare for Governance above.</small></div>}
           </article>;
         })}
         {!activeRequests.length && <p className={styles.quietEmpty}>No durable requests are recorded. Any legacy need remains in the recorded context above.</p>}

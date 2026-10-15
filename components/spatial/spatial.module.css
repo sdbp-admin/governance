@@ -43,7 +43,15 @@
 .waiting button { display: block; background: none; border: 0; text-align: left; padding: 12px 0; width: 100%; color: var(--ink); border-bottom: 1px solid var(--line); }
 .waiting small { display: block; color: var(--muted); margin-top: 5px; }
 .objectTools { margin: 12px 0; }
-.objectTools > details > .toolLinks { padding: 14px 0 24px; }
+.tensionActionsHeader { display: flex; align-items: flex-start; gap: 8px; }
+.tensionActionsHeader > :last-child { margin-top: 8px; }
+.tensionActionsMenu { min-width: 0; }
+.objectTools .tensionActionsMenu > summary { width: fit-content; padding: 9px 14px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); font-size: 14px; font-weight: 600; }
+.tensionActionsMenu > summary:hover { background: #f0f4f4; }
+.tensionActionsMenu > summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+.tensionActionsMenu > .toolLinks { padding: 14px 0 18px; }
+.governanceNextStep { margin-top: 14px; }
+.governanceNextStep > p { margin: 7px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; max-width: 560px; }
 .exactAttention { position: relative; font-size: 14px; padding: 12px 16px; }
 .exactAttention[data-pausable] { margin: 1em 0; cursor: pointer; }
 .exactAttention[data-pausable]:hover, .exactAttention[data-pausable]:focus-visible { z-index: 10; }
