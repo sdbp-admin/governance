@@ -8,6 +8,40 @@ export type CommentThreadSummary = {
   lastSeenAt: string | null;
 };
 
+
+export type CommentThreadDescriptor = { kind: CommentThreadType; sourceId: string };
+
+// One authenticated request per snapshot instead of one request per thread.
+// Uses the same author exclusion and last-seen cursor as load_comment_thread_summary.
+export async function loadCommentThreadSummaries(threads: CommentThreadDescriptor[]): Promise<Map<string, CommentThreadSummary>> {
+  const selected = {
+    project: new Set<string>(),
+    tension: new Set<string>(),
+    action: new Set<string>(),
+  };
+  for (const thread of threads) selected[thread.kind].add(thread.sourceId);
+  if (!selected.project.size && !selected.tension.size && !selected.action.size) return new Map();
+
+  const { data, error } = await supabase.rpc("load_comment_thread_summaries", {
+    project_ids: [...selected.project],
+    tension_ids: [...selected.tension],
+    action_ids: [...selected.action],
+  });
+  if (error) throw error;
+
+  const summaries = new Map<string, CommentThreadSummary>();
+  for (const row of data ?? []) {
+    const threadType = row.thread_type as CommentThreadType;
+    const threadId = row.thread_id as string;
+    summaries.set(`${threadType}:${threadId}`, {
+      totalCount: Number(row.total_count ?? 0),
+      unreadCount: Number(row.unread_count ?? 0),
+      lastSeenAt: (row.last_seen_at as string | null) ?? null,
+    });
+  }
+  return summaries;
+}
+
 // Concurrent widgets requesting the same thread share one network request.
 const pendingSummaries = new Map<string, Promise<CommentThreadSummary>>();
 

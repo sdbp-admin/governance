@@ -4,7 +4,7 @@ import { loadCommunicationAttentionSignals } from "@/lib/supabase/board-feed";
 import { loadProjectComments } from "@/lib/supabase/project-comments";
 import { loadTensionComments } from "@/lib/supabase/tension-comments";
 import { loadActionComments, loadActionCommentAttentionSignals } from "@/lib/supabase/action-comments";
-import { loadCommentThreadSummary } from "@/lib/supabase/comment-thread-state";
+import { loadCommentThreadSummaries } from "@/lib/supabase/comment-thread-state";
 import type { WorkspaceData } from "@/lib/supabase/workspace";
 import { supabase } from "@/lib/supabase/client";
 
@@ -135,14 +135,12 @@ export async function loadSpatialUnreadActivity(workspace: WorkspaceData, userId
     ...[...actionIds].map(sourceId => ({ kind: "action" as const, sourceId })),
   ];
 
-  const summaries = await Promise.all(descriptors.map(async descriptor => ({
-    ...descriptor,
-    summary: await loadCommentThreadSummary(descriptor.kind, descriptor.sourceId),
-  })));
+  const summaries = await loadCommentThreadSummaries(descriptors);
 
   const unread: SpatialUnreadActivity[] = [];
-  for (const { kind, sourceId, summary } of summaries) {
-    if (summary.unreadCount <= 0) continue;
+  for (const { kind, sourceId } of descriptors) {
+    const summary = summaries.get(`${kind}:${sourceId}`);
+    if (!summary || summary.unreadCount <= 0) continue;
     if (kind === "project") {
       unread.push({ kind, sourceId, projectId: sourceId, unreadCount: summary.unreadCount });
       continue;
@@ -177,11 +175,11 @@ export async function loadSpatialMentions(workspace: WorkspaceData, userId: stri
     ...tensionSignals.map(s => ({ signal: s, kind: "tension" as const, id: s.tensionId! })),
     ...actionSignals.map(s => ({ signal: s, kind: "action" as const, id: s.actionId })),
   ];
+  const summaries = await loadCommentThreadSummaries(candidates.map(({ kind, id }) => ({ kind, sourceId: id })));
   const results = await Promise.all(candidates.map(async ({ signal, kind, id }) => {
-    const [entries, summary] = await Promise.all([
-      kind === "project" ? loadProjectComments(id) : kind === "tension" ? loadTensionComments(id) : loadActionComments(id),
-      loadCommentThreadSummary(kind, id),
-    ]);
+    const entries = await (kind === "project" ? loadProjectComments(id) : kind === "tension" ? loadTensionComments(id) : loadActionComments(id));
+    const summary = summaries.get(`${kind}:${id}`);
+    if (!summary) return null;
     // The existing unacknowledged thread signal is the prompt. The comment's recorded
     // recipient IDs and the user's seen cursor distinguish an explicit mention from
     // ordinary unread conversation, without relying on notification wording.

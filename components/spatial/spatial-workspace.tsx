@@ -3,7 +3,6 @@
 import { CSSProperties, PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Action, Project, Tension, TensionRequest } from "@/lib/domain";
 import { projectToneClass } from "@/lib/project-tone";
-import { loadCommentThreadSummary } from "@/lib/supabase/comment-thread-state";
 import { declineTensionRequest, defineRoleTensionRequest, defineTensionRequests, loadTensionRequests, markTensionRequestResponded } from "@/lib/supabase/tension-requests";
 import { DeclineDecision } from "@/components/decline-decision";
 import { loadUrgentTensionIds } from "@/lib/supabase/tension-urgency";
@@ -84,8 +83,23 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
   const field = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const refreshSequence = useRef(0);
+  const refreshInFlight = useRef<Promise<void> | null>(null);
+  const lastRefreshAt = useRef(0);
 
-  const refresh = useCallback(async (quiet = false) => {
+  const refresh = useCallback(async (quiet = false, force = false): Promise<void> => {
+    // Reuse the active load rather than launching another full set of queries.
+    // A mutation still queues a fresh snapshot once that load completes.
+    if (refreshInFlight.current) {
+      if (force) {
+        await refreshInFlight.current;
+        return refresh(true, true);
+      }
+      return refreshInFlight.current;
+    }
+    if (quiet && !force && Date.now() - lastRefreshAt.current < 45_000) return;
+    lastRefreshAt.current = Date.now();
+
+    const work = (async () => {
     const sequence = ++refreshSequence.current;
     if (!quiet) setLoading(true);
     try {
@@ -111,20 +125,34 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
       }
     }
     finally { if (sequence === refreshSequence.current) setLoading(false); }
+    })();
+    refreshInFlight.current = work;
+    try { await work; }
+    finally { if (refreshInFlight.current === work) refreshInFlight.current = null; }
   }, [profile.id]);
 
   useEffect(() => {
     const initial = window.setTimeout(() => void refresh(), 0);
     let lastInteraction = Date.now();
+    let threadRefreshTimer: ReturnType<typeof window.setTimeout> | undefined;
     const trackActivity = () => { lastInteraction = Date.now(); };
     const onFocus = (event: FocusEvent) => { if (event.isTrusted && !document.hidden) { trackActivity(); void refresh(true); } };
     window.addEventListener("focus", onFocus);
     window.addEventListener("pointerdown", trackActivity, { passive: true });
     window.addEventListener("keydown", trackActivity);
+    // Local conversation writes and read acknowledgements need a fresh attention
+    // snapshot, but adjacent events should collapse into one request.
+    const onThreadEvent = () => {
+      if (document.hidden) return;
+      window.clearTimeout(threadRefreshTimer);
+      threadRefreshTimer = window.setTimeout(() => void refresh(true, true), 300);
+    };
+    window.addEventListener("comment-thread-seen", onThreadEvent);
+    window.addEventListener("comment-thread-changed", onThreadEvent);
     const timer = window.setInterval(() => {
       if (!document.hidden && Date.now() - lastInteraction < 10 * 60_000 && !document.querySelector("input:focus, textarea:focus, select:focus")) void refresh(true);
     }, 120000);
-    return () => { window.clearTimeout(initial); window.clearInterval(timer); window.removeEventListener("focus", onFocus); window.removeEventListener("pointerdown", trackActivity); window.removeEventListener("keydown", trackActivity); };
+    return () => { window.clearTimeout(initial); window.clearTimeout(threadRefreshTimer); window.clearInterval(timer); window.removeEventListener("focus", onFocus); window.removeEventListener("pointerdown", trackActivity); window.removeEventListener("keydown", trackActivity); window.removeEventListener("comment-thread-seen", onThreadEvent); window.removeEventListener("comment-thread-changed", onThreadEvent); };
   }, [refresh]);
 
   useEffect(() => {
@@ -355,7 +383,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
     try {
       setError("");
       await action();
-      await refresh(true);
+      await refresh(true, true);
       if (message) setNotice(message);
       return true;
     } catch (reason) { setError(readError(reason)); return false; }
@@ -645,7 +673,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
       onActionPulsePause={(id, hours) => pausePulses(pulseIds(trail => trail.actionId === id), hours)}
       pulseUntilForProposal={id => pauseUntil(pulseIds(trail => trail.endpoint === "governance" && governanceAttention.some(a => `attention:${a.id}` === trail.id && a.proposalId === id)))}
       onProposalPulsePause={(id, hours) => pausePulses(pulseIds(trail => trail.endpoint === "governance" && governanceAttention.some(a => `attention:${a.id}` === trail.id && a.proposalId === id)), hours)}
-      onGovernanceResponse={() => { setGovernanceTargetProposalId(null); void refresh(true); }}
+      onGovernanceResponse={() => { setGovernanceTargetProposalId(null); void refresh(true, true); }}
       onClose={() => { setMainSurface(null); setGovernanceTargetProposalId(null); }} onSurface={surface => { setMainSurface(surface); if (surface !== "governance") setGovernanceTargetProposalId(null); }}
       onProject={id => navigate({ kind: "project", projectId: id })} onAction={openAction} onCapture={() => { navigate({ kind: "organisation" }); setCapture("tension"); }} onSignOut={onSignOut} />
     {capture && <Capture kind={capture} projectId={depth.kind === "project" ? projectId : undefined} userId={profile.id} run={run}
@@ -658,7 +686,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
       {pulseIds(trail => trail.actionId === orphanAction.id).length > 0 && <SpatialPulsePause until={pauseUntil(pulseIds(trail => trail.actionId === orphanAction.id))} onPause={hours => pausePulses(pulseIds(trail => trail.actionId === orphanAction.id), hours)} />}
     </SpatialDialog>}
     {attentionError && <div className={styles.attentionWarning} role="status">{attentionError}</div>}
-    {error && <div className={styles.error} role="alert">{error}<button onClick={() => void refresh(true)}>Retry</button></div>}
+    {error && <div className={styles.error} role="alert">{error}<button onClick={() => void refresh(true, true)}>Retry</button></div>}
     {notice && <div className={styles.notice} role="status"><span>{notice}</span>{newlyCreatedTensionId && newlyCreatedIsVisible && <button onClick={() => {
       const id = newlyCreatedTensionId; setNotice(""); setNewlyCreatedTensionId(null); navigate({ kind: "tension", tensionId: id });
     }}>Go to it</button>}</div>}
