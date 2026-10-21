@@ -112,13 +112,19 @@ Deno.serve(async (req) => {
       immediate = check.data?.is_urgent === true;
     }
     if (!immediate) return json({ sent: 0, pushed, digest: true });
-    const smtpUser = unique.length ? requiredEnv("SMTP_USER") : "";
-    const smtpPassword = unique.length ? requiredEnv("SMTP_APP_PASSWORD") : "";
-    for (const delivery of unique) {
+    const preferenceResult = await supabase.from("person_notification_preferences")
+      .select("person_id,urgent_email_enabled").in("person_id", unique.map(item => item.recipient.id));
+    if (preferenceResult.error) throw preferenceResult.error;
+    const disabled = new Set((preferenceResult.data ?? [])
+      .filter(item => item.urgent_email_enabled === false).map(item => item.person_id));
+    const urgentRecipients = unique.filter(item => !disabled.has(item.recipient.id));
+    const smtpUser = urgentRecipients.length ? requiredEnv("SMTP_USER") : "";
+    const smtpPassword = urgentRecipients.length ? requiredEnv("SMTP_APP_PASSWORD") : "";
+    for (const delivery of urgentRecipients) {
       await sendMail({ smtpUser, smtpPassword, fromName: smtpFromName,
         to: delivery.recipient.email, subject: "Urgent · " + delivery.subject, body: delivery.body });
     }
-    return json({ sent: unique.length, pushed });
+    return json({ sent: urgentRecipients.length, pushed });
   } catch (error) {
     console.error("attention notification failed", error);
     return json({ error: error instanceof Error ? error.message : "Notification failed." }, 500);
