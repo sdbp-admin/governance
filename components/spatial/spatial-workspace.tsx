@@ -2,6 +2,7 @@
 
 import { CSSProperties, PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Action, Project, Tension, TensionRequest } from "@/lib/domain";
+import { loadCommentThreadSummary } from "@/lib/supabase/comment-thread-state";
 import { projectToneClass } from "@/lib/project-tone";
 import { declineTensionRequest, defineRoleTensionRequest, defineTensionRequests, loadTensionRequests, markTensionRequestResponded } from "@/lib/supabase/tension-requests";
 import { DeclineDecision } from "@/components/decline-decision";
@@ -134,7 +135,7 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
   useEffect(() => {
     const initial = window.setTimeout(() => void refresh(), 0);
     let lastInteraction = Date.now();
-    let threadRefreshTimer: ReturnType<typeof window.setTimeout> | undefined;
+    let threadRefreshTimer: number | undefined;
     const trackActivity = () => { lastInteraction = Date.now(); };
     const onFocus = (event: FocusEvent) => { if (event.isTrusted && !document.hidden) { trackActivity(); void refresh(true); } };
     window.addEventListener("focus", onFocus);
