@@ -90,11 +90,11 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
     // Reuse the active load rather than launching another full set of queries.
     // A mutation still queues a fresh snapshot once that load completes.
     if (refreshInFlight.current) {
-      if (force) {
-        await refreshInFlight.current;
-        return refresh(true, true);
-      }
-      return refreshInFlight.current;
+      if (!force) return refreshInFlight.current;
+      await refreshInFlight.current;
+      // Forced refreshes (e.g. after a write) re-read once the older snapshot
+      // finishes; never overwrite a newer mutation with an older response.
+      quiet = true;
     }
     if (quiet && !force && Date.now() - lastRefreshAt.current < 45_000) return;
     lastRefreshAt.current = Date.now();
