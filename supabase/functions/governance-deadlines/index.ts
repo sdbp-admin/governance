@@ -39,7 +39,14 @@ Deno.serve(async (req) => {
       const title = proposalsResult.data?.find(proposal => proposal.id === round.proposal_id)?.title ?? "Governance proposal";
       for (const person of (peopleResult.data ?? []) as Person[]) {
         if (responsesResult.data?.some(response => response.proposal_id === round.proposal_id && response.person_id === person.id)) continue;
-        const kinds = ([round.deadline_notice_needed && "deadline_notice", remaining <= 24 * 60 * 60 * 1000 && "24_hour_reminder"] as const).filter(Boolean);
+        // Routine start-of-window notices appear in the daily digest.
+        // A deadline within 24 hours is the only immediate exception here.
+        const kinds: Array<"deadline_notice" | "24_hour_reminder"> = remaining <= 24 * 60 * 60 * 1000 ? ["24_hour_reminder"] : [];
+        if (kinds.length) {
+          const pref = await db.from("person_notification_preferences").select("urgent_email_enabled").eq("person_id", person.id).maybeSingle();
+          if (pref.error) throw pref.error;
+          if (pref.data?.urgent_email_enabled === false) continue;
+        }
         for (const kind of kinds) {
           if (sentResult.data?.some(row => row.proposal_id === round.proposal_id && row.person_id === person.id && row.kind === kind)) continue;
           await sendMail({ smtpUser, smtpPassword, fromName: Deno.env.get("SMTP_FROM_NAME")?.trim() || "SDBP Workspace",

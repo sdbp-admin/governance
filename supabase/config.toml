@@ -5,3 +5,7 @@ verify_jwt = true
 # service-role-only validation RPC before any database reads or email sends.
 [functions.governance-deadlines]
 verify_jwt = false
+
+# Scheduled by pg_cron with the existing, validated SDBP cron token.
+[functions/daily-attention-digest]
+verify_jwt = false

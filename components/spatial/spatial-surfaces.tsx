@@ -15,6 +15,7 @@ import { SpatialDialog, type SpatialRun } from "./spatial-capabilities";
 import { SpatialPulsePause } from "./spatial-pulse-pause";
 import type { SpatialProfile } from "./spatial-authenticated-launch";
 import styles from "./spatial.module.css";
+import { NotificationSettings } from "@/components/notification-settings";
 import organisationStyles from "../organisation-governance.module.css";
 import { PROCESS_GUIDANCE, ProcessGuidance, type GuidanceTopic } from "@/components/process-guidance";
 
@@ -115,6 +116,7 @@ function SpatialAccount({ workspace, profile, run, onSignOut }: { workspace: Wor
     e.preventDefault(); if (password !== confirm) { setMessage("The two passwords do not match."); return; } setBusy(true);
     const ok = await run(async () => { const { data, error } = await supabase.auth.getUser(); if (error) throw error; const saved = await supabase.auth.updateUser({ password, data: { ...data.user?.user_metadata, sdbp_password_set: true } }); if (saved.error) throw saved.error; }, "Password saved."); setBusy(false); if (ok) { setPassword(""); setConfirm(""); setMessage("Password saved."); }
   }}><label>New password<input type="password" autoComplete="new-password" minLength={8} required value={password} onChange={e => setPassword(e.target.value)} /></label><label>Confirm password<input type="password" autoComplete="new-password" minLength={8} required value={confirm} onChange={e => setConfirm(e.target.value)} /></label><button disabled={busy}>Save password</button></form></details>
+    <details><summary>Email notifications</summary><NotificationSettings personId={profile.id} /></details>
     {admin && <details><summary>People access</summary><p>Removing access preserves organisational history.</p>{workspace.people.map(p => <article key={p.id} className={styles.accessPerson}><div><strong>{p.name}</strong><small>{p.email} · {p.linked ? "Active member" : "Invitation pending"}{p.id === presidentId ? " · President" : ""}</small></div><div className={styles.toolLinks}>
       {!p.linked && <button disabled={busy} onClick={async () => { setBusy(true); await run(() => resendWorkspaceInvitation(p), "Invitation resent."); setBusy(false); }}>Resend invitation</button>}
       {p.id !== profile.id && p.id !== presidentId && <button disabled={busy} onClick={async () => { if (!window.confirm(p.linked ? `Remove ${p.name}'s access? Their organisational history will remain.` : `Remove the pending invitation for ${p.name}? The invitation link will no longer grant access.`)) return; setBusy(true); await run(() => deactivateWorkspacePerson(p.id), "Access removed; history preserved."); setBusy(false); }}>{p.linked ? "Remove member" : "Remove invitation"}</button>}

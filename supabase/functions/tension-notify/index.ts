@@ -102,19 +102,22 @@ Deno.serve(async (req) => {
     } catch (pushError) {
       console.error("Board push delivery failed", pushError instanceof Error ? pushError.message : pushError);
     }
+    // All routine mail is delivered by the daily attention digest.
+    // Board push alerts remain independent of email preferences.
+    // Explicitly urgent tensions may still send immediate email.
+    let immediate = false;
+    if (payload.tensionId) {
+      const check = await supabase.from("tensions").select("is_urgent").eq("id", payload.tensionId).maybeSingle();
+      if (check.error) throw check.error;
+      immediate = check.data?.is_urgent === true;
+    }
+    if (!immediate) return json({ sent: 0, pushed, digest: true });
     const smtpUser = unique.length ? requiredEnv("SMTP_USER") : "";
     const smtpPassword = unique.length ? requiredEnv("SMTP_APP_PASSWORD") : "";
     for (const delivery of unique) {
-      await sendMail({
-        smtpUser,
-        smtpPassword,
-        fromName: smtpFromName,
-        to: delivery.recipient.email,
-        subject: delivery.subject,
-        body: delivery.body,
-      });
+      await sendMail({ smtpUser, smtpPassword, fromName: smtpFromName,
+        to: delivery.recipient.email, subject: "Urgent · " + delivery.subject, body: delivery.body });
     }
-
     return json({ sent: unique.length, pushed });
   } catch (error) {
     console.error("attention notification failed", error);
