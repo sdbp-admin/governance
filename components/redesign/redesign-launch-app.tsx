@@ -71,10 +71,10 @@ export function RedesignLaunchApp({ liveProfile, accountControls }: { liveProfil
     const meeting=new URLSearchParams(window.location.search).get("meeting");
     if(meeting){setActiveMeetingId(meeting);setView("governance");}
     void refresh();
-    const refreshIfIdle=()=>{if(!userIsEditing())void refresh(true);};
+    const refreshIfIdle=()=>{if(!document.hidden&&!userIsEditing())void refresh(true);};
     const refreshFromAppSignal=(event:Event)=>{if(event.isTrusted)return;refreshIfIdle();};
     window.addEventListener("focus",refreshFromAppSignal);
-    const timer=window.setInterval(refreshIfIdle,30000);
+    const timer=window.setInterval(refreshIfIdle,120000);
     return()=>{window.removeEventListener("focus",refreshFromAppSignal);window.clearInterval(timer);};
   },[refresh]);
   useEffect(()=>{if(!notice)return;const timer=window.setTimeout(()=>setNotice(""),3600);return()=>window.clearTimeout(timer);},[notice]);

@@ -41,7 +41,7 @@ export function MeetingPlanning({ people, currentUserId, personName }: {
     void refresh();
     const onFocus = () => void refresh();
     window.addEventListener("focus", onFocus);
-    const timer = window.setInterval(() => void refresh(), 30_000);
+    const timer = window.setInterval(() => { if (!document.hidden) void refresh(); }, 5 * 60_000);
     return () => {
       window.removeEventListener("focus", onFocus);
       window.clearInterval(timer);

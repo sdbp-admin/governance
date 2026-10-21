@@ -10,7 +10,7 @@ export function TemporaryWorkFileCleanup() {
     let running = false;
 
     async function sweep() {
-      if (!alive || running) return;
+      if (!alive || running || document.hidden) return;
       running = true;
       try {
         const [projects, tensions] = await Promise.all([
@@ -38,7 +38,7 @@ export function TemporaryWorkFileCleanup() {
     }
 
     void sweep();
-    const timer = window.setInterval(() => void sweep(), 10_000);
+    const timer = window.setInterval(() => void sweep(), 30 * 60_000);
     const onFocus = () => void sweep();
     window.addEventListener("focus", onFocus);
 

@@ -115,9 +115,9 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
 
   useEffect(() => {
     const initial = window.setTimeout(() => void refresh(), 0);
-    const onFocus = () => void refresh(true);
+    const onFocus = (event: FocusEvent) => { if (event.isTrusted && !document.hidden) void refresh(true); };
     window.addEventListener("focus", onFocus);
-    const timer = window.setInterval(() => { if (!document.querySelector("input:focus, textarea:focus, select:focus")) void refresh(true); }, 30000);
+    const timer = window.setInterval(() => { if (!document.hidden && !document.querySelector("input:focus, textarea:focus, select:focus")) void refresh(true); }, 120000);
     return () => { window.clearTimeout(initial); window.clearInterval(timer); window.removeEventListener("focus", onFocus); };
   }, [refresh]);
 

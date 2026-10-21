@@ -49,7 +49,7 @@ export function GovernanceWorkspaceView({ workspace, currentUserId, personName, 
     };
     void load();
     window.addEventListener("focus", load);
-    const timer = window.setInterval(load, 60_000);
+    const timer = window.setInterval(() => { if (!document.hidden) void load(); }, 5 * 60_000);
     return () => { alive = false; window.removeEventListener("focus", load); window.clearInterval(timer); };
   }, [workspace.governanceProposals, revision]);
 
