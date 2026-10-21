@@ -56,7 +56,7 @@ export function NotificationSettings({ personId }: { personId: string }) {
       {control("include_conversations", "Direct mentions and messages for me")}
       {control("include_governance", "Governance decisions and meeting availability")}
     </fieldset>
-    {control("urgent_email_enabled", "Allow separate urgent governance deadline emails")}
+    {control("urgent_email_enabled", "Allow separate urgent emails")}
     <p style={{ fontSize: 12, margin: "6px 0" }}>Phone notifications in the Board app are managed separately. Your outstanding items remain visible in the apps regardless of email preferences.</p>
     <button type="button" disabled={loading || saving} onClick={() => void save()}>{saving ? "Saving…" : "Save email preferences"}</button>
     {message && <p role="status" style={{ fontSize: 12, marginTop: 6 }}>{message}</p>}
