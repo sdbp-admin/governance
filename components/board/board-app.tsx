@@ -6,6 +6,7 @@ import { addBoardPostComment, createBoardPost, editBoardPost, editBoardPostComme
 import { boardPushEnabled, disableBoardPush, enableBoardPush, loadBoardCounts, markBoardChatSeen, registerBoardWorker, showBoardBadge } from "@/lib/supabase/board-app";
 import { BoardAttention } from "./board-attention";
 import styles from "./board.module.css";
+import { NotificationSettings } from "@/components/notification-settings";
 
 type Person = { id: string; name: string; active: boolean };
 type Message = (BoardFeedPost | BoardFeedComment) & { parent: BoardFeedPost; reply: boolean };
@@ -247,7 +248,7 @@ function BoardChat({ member, onSignOut, authError }: { member: Person; onSignOut
 
   return <main className={styles.shell}>
     <header className={styles.header}><div><span className={styles.brand}>SDBP Board</span><p>{tab === "chat" ? "General conversation" : "What currently needs you"}</p></div>
-      <details className={styles.account}><summary aria-label="Account settings">{member.name.slice(0, 1)}</summary><div className={styles.accountMenu}><strong>{member.name}</strong><button type="button" disabled={pushBusy} onClick={() => void changePush()}>{pushBusy ? "Please wait…" : pushEnabled ? "Turn off phone notifications" : "Turn on phone notifications"}</button>{pushError && <span role="alert" className={styles.pushError}>{pushError}</span>}<button type="button" onClick={() => void onSignOut()}>Sign out</button></div></details>
+      <details className={styles.account}><summary aria-label="Account settings">{member.name.slice(0, 1)}</summary><div className={styles.accountMenu}><strong>{member.name}</strong><button type="button" disabled={pushBusy} onClick={() => void changePush()}>{pushBusy ? "Please wait…" : pushEnabled ? "Turn off phone notifications" : "Turn on phone notifications"}</button>{pushError && <span role="alert" className={styles.pushError}>{pushError}</span>}<details><summary>Email preferences</summary><NotificationSettings personId={member.id} /></details><button type="button" onClick={() => void onSignOut()}>Sign out</button></div></details>
     </header>
     <nav className={styles.tabs} aria-label="Board sections"><button type="button" aria-current={tab === "chat" ? "page" : undefined} onClick={() => { followBottom.current = true; setTab("chat"); setChatEngaged(true); }}>Chat{chatCount > 0 && <span>{chatCount}</span>}</button><button type="button" aria-current={tab === "attention" ? "page" : undefined} onClick={() => setTab("attention")}>For me{attentionCount > 0 && <span>{attentionCount}</span>}</button></nav>
     {tab === "chat" && <>
