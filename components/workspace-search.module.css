@@ -1,0 +1,15 @@
+.dialog { width:min(760px,calc(100vw - 24px)); max-height:calc(100dvh - 24px); box-sizing:border-box; padding:24px; border:1px solid var(--border); border-radius:16px; color:var(--brand-navy); background:#fafaf7; box-shadow:0 12px 48px #0003; overflow-wrap:anywhere; }
+.dialog::backdrop { background:#26364666; }
+.dialog header { display:flex; align-items:start; justify-content:space-between; gap:12px; }
+.dialog h2 { margin:0; }
+.dialog p { font-size:13px; line-height:1.5; }
+.dialog form { display:flex; align-items:end; gap:10px; margin:20px 0; }
+.label { flex:1; min-width:0; font-size:12px; }
+.label input { display:block; box-sizing:border-box; width:100%; margin-top:6px; }
+.results { display:grid; gap:8px; }
+.results button { display:grid; gap:5px; width:100%; text-align:left; white-space:normal; padding:14px; background:white; border:1px solid var(--border); border-radius:10px; }
+.results button:hover,.results button:focus-visible { border-color:var(--brand-blue); }
+.results small,.note { color:var(--muted); }
+.results span { font-size:13px; line-height:1.5; }
+.warning { background:#fff4db; padding:10px; border-radius:8px; }
+@media(max-width:480px) { .dialog { padding:16px; } .dialog form { flex-wrap:wrap; } .label { flex-basis:100%; } }

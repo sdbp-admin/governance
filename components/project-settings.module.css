@@ -1,0 +1,24 @@
+.modal {
+  width: min(720px, calc(100vw - 32px));
+  max-height: min(860px, calc(100vh - 32px));
+  overflow: auto;
+}
+
+.loading,
+.empty {
+  padding: 28px 0;
+}
+
+.rhythmNote {
+  display: block;
+  margin-top: -6px;
+  line-height: 1.5;
+}
+
+.notice {
+  margin-top: 14px;
+  padding: 11px 13px;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  font-weight: 650;
+}
