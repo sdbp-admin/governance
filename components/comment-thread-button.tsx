@@ -31,12 +31,10 @@ export function CommentThreadButton({ threadType, threadId, onOpen }: {
     window.addEventListener("focus", onFocus);
     window.addEventListener("comment-thread-seen", onThreadEvent);
     window.addEventListener("comment-thread-changed", onThreadEvent);
-    const timer = window.setInterval(() => { if (!document.hidden) void refresh(); }, 5 * 60_000);
     return () => {
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("comment-thread-seen", onThreadEvent);
       window.removeEventListener("comment-thread-changed", onThreadEvent);
-      window.clearInterval(timer);
     };
   }, [refresh, threadId, threadType]);
 

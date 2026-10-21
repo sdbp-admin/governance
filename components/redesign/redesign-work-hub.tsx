@@ -521,12 +521,10 @@ function useCommentThreadSummary(threadType: "project" | "tension", threadId: st
       const detail = (event as CustomEvent<{ threadType?: string; threadId?: string }>).detail;
       if (!detail || (detail.threadType === threadType && detail.threadId === threadId)) void refresh();
     };
-    const timer = window.setInterval(() => { if (!document.hidden) void refresh(); }, 5 * 60_000);
     window.addEventListener("focus", onFocus);
     window.addEventListener("comment-thread-seen", onThreadEvent);
     window.addEventListener("comment-thread-changed", onThreadEvent);
     return () => {
-      window.clearInterval(timer);
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("comment-thread-seen", onThreadEvent);
       window.removeEventListener("comment-thread-changed", onThreadEvent);
@@ -581,12 +579,10 @@ function useTensionConversationUnread(linkedTensionIds: string[]) {
   useEffect(() => {
     void refresh();
     const onRefresh = () => void refresh();
-    const timer = window.setInterval(() => { if (!document.hidden) onRefresh(); }, 5 * 60_000);
     window.addEventListener("focus", onRefresh);
     window.addEventListener("comment-thread-seen", onRefresh);
     window.addEventListener("comment-thread-changed", onRefresh);
     return () => {
-      window.clearInterval(timer);
       window.removeEventListener("focus", onRefresh);
       window.removeEventListener("comment-thread-seen", onRefresh);
       window.removeEventListener("comment-thread-changed", onRefresh);

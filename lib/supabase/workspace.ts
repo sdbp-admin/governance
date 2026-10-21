@@ -439,6 +439,9 @@ export async function completeProject(projectId: string) {
     updated_at: new Date().toISOString(),
   }).eq("id", projectId);
   if (error) throw error;
+  // Clean up immediately after completion, rather than repeatedly scanning every browser.
+  const { cleanupTemporaryWorkFiles } = await import("@/lib/supabase/work-attachments");
+  await cleanupTemporaryWorkFiles("project", projectId).catch((reason) => console.warn("Temporary project file cleanup pending", reason));
 }
 
 export async function createAction(input: { title: string; ownerId: string; status?: Action["status"]; due?: string; projectId?: string; source?: string; sourceTensionId?: string }) {
@@ -536,6 +539,10 @@ export async function updateTension(tensionId: string, patch: Partial<{ status: 
   const { error } = await supabase.from("tensions").update(values).eq("id", tensionId);
   if (error) throw error;
   if (shouldNotifyTensionChange(patch)) await notifyTensionChange(tensionId);
+  if (patch.status === "resolved") {
+    const { cleanupTemporaryWorkFiles } = await import("@/lib/supabase/work-attachments");
+    await cleanupTemporaryWorkFiles("tension", tensionId).catch((reason) => console.warn("Temporary tension file cleanup pending", reason));
+  }
 }
 
 export async function createGovernanceProposal(input: { tensionId: string; title: string; proposal: string; proposerId: string; governanceEffect?: GovernanceEffect }) {

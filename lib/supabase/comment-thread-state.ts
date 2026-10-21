@@ -8,7 +8,19 @@ export type CommentThreadSummary = {
   lastSeenAt: string | null;
 };
 
-export async function loadCommentThreadSummary(threadType: CommentThreadType, threadId: string): Promise<CommentThreadSummary> {
+// Concurrent widgets requesting the same thread share one network request.
+const pendingSummaries = new Map<string, Promise<CommentThreadSummary>>();
+
+export function loadCommentThreadSummary(threadType: CommentThreadType, threadId: string): Promise<CommentThreadSummary> {
+  const key = `${threadType}:${threadId}`;
+  const existing = pendingSummaries.get(key);
+  if (existing) return existing;
+  const request = fetchCommentThreadSummary(threadType, threadId).finally(() => pendingSummaries.delete(key));
+  pendingSummaries.set(key, request);
+  return request;
+}
+
+async function fetchCommentThreadSummary(threadType: CommentThreadType, threadId: string): Promise<CommentThreadSummary> {
   const { data, error } = await supabase.rpc("load_comment_thread_summary", {
     target_thread_type: threadType,
     target_thread_id: threadId,
