@@ -71,11 +71,15 @@ export function RedesignLaunchApp({ liveProfile, accountControls }: { liveProfil
     const meeting=new URLSearchParams(window.location.search).get("meeting");
     if(meeting){setActiveMeetingId(meeting);setView("governance");}
     void refresh();
-    const refreshIfIdle=()=>{if(!document.hidden&&!userIsEditing())void refresh(true);};
-    const refreshFromAppSignal=(event:Event)=>{if(event.isTrusted)return;refreshIfIdle();};
-    window.addEventListener("focus",refreshFromAppSignal);
-    const timer=window.setInterval(refreshIfIdle,120000);
-    return()=>{window.removeEventListener("focus",refreshFromAppSignal);window.clearInterval(timer);};
+    let lastInteraction=Date.now();
+    const trackActivity=()=>{lastInteraction=Date.now();};
+    const refreshIfActive=()=>{if(!document.hidden&&Date.now()-lastInteraction<10*60_000&&!userIsEditing())void refresh(true);};
+    const refreshOnFocus=(event:Event)=>{if(!event.isTrusted||document.hidden)return;trackActivity();refreshIfActive();};
+    window.addEventListener("focus",refreshOnFocus);
+    window.addEventListener("pointerdown",trackActivity,{passive:true});
+    window.addEventListener("keydown",trackActivity);
+    const timer=window.setInterval(refreshIfActive,120000);
+    return()=>{window.removeEventListener("focus",refreshOnFocus);window.removeEventListener("pointerdown",trackActivity);window.removeEventListener("keydown",trackActivity);window.clearInterval(timer);};
   },[refresh]);
   useEffect(()=>{if(!notice)return;const timer=window.setTimeout(()=>setNotice(""),3600);return()=>window.clearTimeout(timer);},[notice]);
   useEffect(()=>{

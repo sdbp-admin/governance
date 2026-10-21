@@ -115,10 +115,16 @@ export function SpatialWorkspace({ profile, onSignOut }: { profile: SpatialProfi
 
   useEffect(() => {
     const initial = window.setTimeout(() => void refresh(), 0);
-    const onFocus = (event: FocusEvent) => { if (event.isTrusted && !document.hidden) void refresh(true); };
+    let lastInteraction = Date.now();
+    const trackActivity = () => { lastInteraction = Date.now(); };
+    const onFocus = (event: FocusEvent) => { if (event.isTrusted && !document.hidden) { trackActivity(); void refresh(true); } };
     window.addEventListener("focus", onFocus);
-    const timer = window.setInterval(() => { if (!document.hidden && !document.querySelector("input:focus, textarea:focus, select:focus")) void refresh(true); }, 120000);
-    return () => { window.clearTimeout(initial); window.clearInterval(timer); window.removeEventListener("focus", onFocus); };
+    window.addEventListener("pointerdown", trackActivity, { passive: true });
+    window.addEventListener("keydown", trackActivity);
+    const timer = window.setInterval(() => {
+      if (!document.hidden && Date.now() - lastInteraction < 10 * 60_000 && !document.querySelector("input:focus, textarea:focus, select:focus")) void refresh(true);
+    }, 120000);
+    return () => { window.clearTimeout(initial); window.clearInterval(timer); window.removeEventListener("focus", onFocus); window.removeEventListener("pointerdown", trackActivity); window.removeEventListener("keydown", trackActivity); };
   }, [refresh]);
 
   useEffect(() => {
