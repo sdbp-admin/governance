@@ -7,5 +7,5 @@ verify_jwt = true
 verify_jwt = false
 
 # Scheduled by pg_cron with the existing, validated SDBP cron token.
-[functions/daily-attention-digest]
+[functions.daily-attention-digest]
 verify_jwt = false
